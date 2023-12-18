@@ -69,3 +69,31 @@ func (mar *BnbMarket) GetMarketLimits() (*banexg.MarketLimits, int, int) {
 	}
 	return &res, pricePrec, amountPrec
 }
+
+func (a BnbAsset) ToStdAsset(e *banexg.Exchange) *banexg.Asset {
+	free, _ := strconv.ParseFloat(a.Free, 64)
+	lock, _ := strconv.ParseFloat(a.Locked, 64)
+	borr, _ := strconv.ParseFloat(a.Borrowed, 64)
+	inst, _ := strconv.ParseFloat(a.Interest, 64)
+	code := e.SafeCurrencyCode(a.Asset)
+	return &banexg.Asset{
+		Code:  code,
+		Free:  free,
+		Used:  lock,
+		Total: lock + free,
+		Debt:  borr + inst,
+	}
+}
+
+func (a *FutureAsset) ToStdAsset(e *banexg.Exchange) *banexg.Asset {
+	code := e.SafeCurrencyCode(a.Asset)
+	free, _ := strconv.ParseFloat(a.AvailableBalance, 64)
+	used, _ := strconv.ParseFloat(a.InitialMargin, 64)
+	total, _ := strconv.ParseFloat(a.MarginBalance, 64)
+	return &banexg.Asset{
+		Code:  code,
+		Free:  free,
+		Used:  used,
+		Total: total,
+	}
+}

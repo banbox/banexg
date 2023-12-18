@@ -58,8 +58,8 @@ const (
 	OptReqHeaders    = "ReqHeaders"
 	OptCareMarkets   = "CareMarkets"
 	OptPrecisionMode = "PrecisionMode"
-	OptTradeMode     = "TradeMode"
-	OptTradeInverse  = "TradeInverse"
+	OptMarketType    = "MarketType"
+	OptMarketInverse = "MarketInverse"
 )
 
 const (
@@ -81,9 +81,14 @@ const (
 )
 
 const (
-	TradeSpot   = "spot"   // 现货交易
-	TradeMargin = "margin" // 保证金杠杆现货交易 margin trade
-	TradeSwap   = "swap"   // 永续合约 for perpetual swap futures that don't have a delivery date
-	TradeFuture = "future" // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
-	TradeOption = "option" // 期权 for option contracts
+	MarketSpot   = "spot"   // 现货交易
+	MarketMargin = "margin" // 保证金杠杆现货交易 margin trade
+	MarketSwap   = "swap"   // 永续合约 for perpetual swap futures that don't have a delivery date
+	MarketFuture = "future" // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
+	MarketOption = "option" // 期权 for option contracts
+)
+
+const (
+	MarginCross    = "cross"
+	MarginIsolated = "isolated"
 )

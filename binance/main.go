@@ -247,7 +247,7 @@ func NewExchange(Options map[string]interface{}) *Binance {
 				"sapiGetLendingDailyUserLeftQuota":                            {Path: "lending/daily/userLeftQuota", Host: HostSApi, Method: "GET", Cost: 0.1},
 				"sapiGetLendingDailyUserRedemptionQuota":                      {Path: "lending/daily/userRedemptionQuota", Host: HostSApi, Method: "GET", Cost: 0.1},
 				"sapiGetLendingDailyTokenPosition":                            {Path: "lending/daily/token/position", Host: HostSApi, Method: "GET", Cost: 0.1},
-				"sapiGetLendingUnionAccount":                                  {Path: "lending/union/account", Host: HostSApi, Method: "GET", Cost: 0.1},
+				"sapiGetLendingUnionAccount":                                  {Path: "lending/union/account", Host: HostSApi, Method: "GET", Cost: 0.1}, // exchange deleted
 				"sapiGetLendingUnionPurchaseRecord":                           {Path: "lending/union/purchaseRecord", Host: HostSApi, Method: "GET", Cost: 0.1},
 				"sapiGetLendingUnionRedemptionRecord":                         {Path: "lending/union/redemptionRecord", Host: HostSApi, Method: "GET", Cost: 0.1},
 				"sapiGetLendingUnionInterestHistory":                          {Path: "lending/union/interestHistory", Host: HostSApi, Method: "GET", Cost: 0.1},
@@ -902,6 +902,7 @@ func NewExchange(Options map[string]interface{}) *Binance {
 	exg.FetchCurrencies = makeFetchCurr(exg)
 	exg.FetchMarkets = makeFetchMarkets(exg)
 	exg.FetchOhlcv = makeFetchOhlcv(exg)
+	exg.FetchBalance = makeFetchBalances(exg)
 	exg.Init()
 	return exg
 }

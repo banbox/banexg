@@ -274,13 +274,13 @@ func TestGetOhlcv(t *testing.T) {
 		TimeFrame string
 		FirstBar  *banexg.Kline
 	}{
-		{TradeMode: banexg.TradeSwap, Symbol: "BTC/USDT:USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
-		{TradeMode: banexg.TradeSwap, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
-		{TradeMode: banexg.TradeSpot, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSpotBar},
+		{TradeMode: banexg.MarketSwap, Symbol: "BTC/USDT:USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
+		{TradeMode: banexg.MarketSwap, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
+		{TradeMode: banexg.MarketSpot, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSpotBar},
 	}
 	exg := getBinance(nil)
 	for _, c := range cases {
-		exg.TradeMode = c.TradeMode
+		exg.MarketType = c.TradeMode
 		klines, err := exg.FetchOhlcv(c.Symbol, c.TimeFrame, since, 0, nil)
 		if err != nil {
 			panic(err)
@@ -292,5 +292,27 @@ func TestGetOhlcv(t *testing.T) {
 			expText, _ := sonic.MarshalString(first)
 			t.Errorf("Fail %s out: %s exp: %s", c.Symbol, outText, expText)
 		}
+	}
+}
+
+func TestFetchBalances(t *testing.T) {
+	exg := getBinance(nil)
+	cases := []map[string]interface{}{
+		{"market": banexg.MarketSpot},
+		{"market": banexg.MarketSwap},
+		{"market": banexg.MarketFuture, "inverse": true},
+		{"marginMode": banexg.MarginCross},
+		{"marginMode": banexg.MarginIsolated},
+		{"market": "funding"},
+	}
+	for _, item := range cases {
+		text, _ := sonic.MarshalString(item)
+		res, err := exg.FetchBalance(&item)
+		if err != nil {
+			panic(fmt.Errorf("%s Error: %v", text, err))
+		}
+		res.Info = nil
+		resText, _ := sonic.MarshalString(res)
+		t.Logf("%s balance: %s", text, resText)
 	}
 }

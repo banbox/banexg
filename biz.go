@@ -45,8 +45,8 @@ func (e *Exchange) Init() {
 	}
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
-	utils.SetFieldBy(&e.TradeMode, e.Options, OptTradeMode, TradeSpot)
-	utils.SetFieldBy(&e.TradeInverse, e.Options, OptTradeInverse, false)
+	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
+	utils.SetFieldBy(&e.MarketInverse, e.Options, OptMarketInverse, false)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -71,6 +71,10 @@ func (e *Exchange) SafeCurrency(currId string) *Currency {
 		ID:   currId,
 		Code: code,
 	}
+}
+
+func (e *Exchange) SafeCurrencyCode(currId string) string {
+	return e.SafeCurrency(currId).Code
 }
 
 func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
@@ -236,6 +240,13 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, error) {
 	return 0, ErrNoMarketForPair
 }
 
+/*
+GetMarket
+
+	获取市场信息
+	symbol ccxt的symbol、交易所的ID
+	根据当前的MarketType和MarketInverse过滤匹配
+*/
 func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 	if e.Markets == nil || len(e.Markets) == 0 {
 		return nil, ErrMarketNotLoad
@@ -244,7 +255,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 		if mar.Spot && e.IsSwapOrDelivery() {
 			// 当前是合约模式，返回合约的Market
 			settle := mar.Quote
-			if e.TradeInverse {
+			if e.MarketInverse {
 				settle = mar.Base
 			}
 			futureSymbol := symbol + ":" + settle
@@ -256,7 +267,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 		return mar, nil
 	} else if mars, ok := e.MarketsById[symbol]; ok {
 		for _, mar := range mars {
-			if mar.Type == e.TradeMode && mar.Inverse == e.TradeInverse {
+			if mar.Type == e.MarketType && mar.Inverse == e.MarketInverse {
 				return mar, nil
 			}
 		}
@@ -268,11 +279,68 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 }
 
 /*
+GetMarketID
+
+	从CCXT的symbol得到交易所ID
+*/
+func (e *Exchange) GetMarketID(symbol string) (string, error) {
+	market, err := e.GetMarket(symbol)
+	if err != nil {
+		return "", err
+	}
+	return market.ID, nil
+}
+
+/*
+SafeMarket
+
+	从交易所品种ID转为规范化市场信息
+*/
+func (e *Exchange) SafeMarket(marketId, delimiter, marketType string) *Market {
+	if e.MarketsById != nil {
+		if mars, ok := e.MarketsById[marketId]; ok {
+			if len(mars) == 1 {
+				return mars[0]
+			}
+			if marketType == "" {
+				marketType = e.MarketType
+			}
+			for _, mar := range mars {
+				if mar.Type == marketType {
+					return mar
+				}
+			}
+		}
+	}
+	result := &Market{
+		Symbol: marketId,
+	}
+	if delimiter != "" {
+		parts := strings.Split(marketId, delimiter)
+		if len(parts) == 2 {
+			result.BaseID = parts[0]
+			result.QuoteID = parts[1]
+			result.Base = e.SafeCurrencyCode(result.BaseID)
+			result.Quote = e.SafeCurrencyCode(result.QuoteID)
+			result.Symbol = result.Base + "/" + result.Quote
+		}
+	}
+	return result
+}
+
+/*
+SafeSymbol 将交易所品种ID转为规范化品种ID
+*/
+func (e *Exchange) SafeSymbol(marketId, delimiter, marketType string) string {
+	return e.SafeMarket(marketId, delimiter, marketType).Symbol
+}
+
+/*
 ***************************  Common Functions  ******************************
  */
 
 func (e *Exchange) IsSwapOrDelivery() bool {
-	return e.TradeMode == TradeFuture || e.TradeMode == TradeSwap
+	return e.MarketType == MarketFuture || e.MarketType == MarketSwap
 }
 
 func (e *Exchange) MilliSeconds() int64 {
@@ -303,14 +371,14 @@ var testCacheApis = map[string]bool{
 	"sapiGetCapitalConfigGetall": true,
 }
 
-func (e *Exchange) RequestApi(ctx context.Context, apiKey string, params *map[string]interface{}) *HttpRes {
-	api, ok := e.Apis[apiKey]
+func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[string]interface{}) *HttpRes {
+	api, ok := e.Apis[endpoint]
 	if !ok {
-		log.Panic("invalid api", zap.String("apiKey", apiKey))
+		log.Panic("invalid api", zap.String("endpoint", endpoint))
 		return &HttpRes{Error: ErrApiNotSupport}
 	}
-	if IsUnitTest && testCacheApis[apiKey] {
-		path := filepath.Join("testdata", apiKey+".json")
+	if IsUnitTest && testCacheApis[endpoint] {
+		path := filepath.Join("testdata", endpoint+".json")
 		var res = HttpRes{}
 		err := utils.ReadJsonFile(path, &res)
 		if err == nil {
@@ -368,8 +436,8 @@ func (e *Exchange) RequestApi(ctx context.Context, apiKey string, params *map[st
 			err = cerr
 		}
 	}()
-	if IsUnitTest && testCacheApis[apiKey] {
-		path := filepath.Join("testdata", apiKey+".json")
+	if IsUnitTest && testCacheApis[endpoint] {
+		path := filepath.Join("testdata", endpoint+".json")
 		err := utils.WriteJsonFile(path, result)
 		if err != nil {
 			log.Error("write test data fail", zap.String("path", path), zap.Error(err))
@@ -393,4 +461,11 @@ func (e *Exchange) GetTimeFrame(timeframe string) string {
 		}
 	}
 	return timeframe
+}
+
+func (e *Exchange) GetArgsMarket(args map[string]interface{}) (string, bool) {
+	marketType := utils.GetMapVal(args, "market", e.MarketType)
+	marketInverse := utils.GetMapVal(args, "inverse", e.MarketInverse)
+	utils.OmitMapKeys(args, "market", "inverse")
+	return marketType, marketInverse
 }

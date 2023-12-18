@@ -2,7 +2,9 @@ package banexg
 
 import (
 	"fmt"
+	"github.com/anyongjin/banexg/utils"
 	"strings"
+	"time"
 )
 
 func (p *Precision) ToString() string {
@@ -59,4 +61,32 @@ func (l *CodeLimits) ToString() string {
 		b.WriteString(l.Deposit.ToString())
 	}
 	return b.String()
+}
+
+func (b *Balances) Init() *Balances {
+	if b.TimeStamp == 0 {
+		b.TimeStamp = time.Now().UnixMilli()
+	}
+	if b.Free == nil {
+		b.Free = map[string]float64{}
+	}
+	if b.Used == nil {
+		b.Used = map[string]float64{}
+	}
+	if b.Total == nil {
+		b.Total = map[string]float64{}
+	}
+	for code, ast := range b.Assets {
+		if ast.Total == 0 {
+			ast.Total = ast.Used + ast.Free
+		}
+		b.Free[code] = ast.Free
+		b.Used[code] = ast.Used
+		b.Total[code] = ast.Total
+	}
+	return b
+}
+
+func (a *Asset) IsEmpty() bool {
+	return utils.EqualNearly(a.Used+a.Free, 0) && utils.EqualNearly(a.Debt, 0)
 }

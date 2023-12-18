@@ -8,6 +8,7 @@ type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, error)
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, error)
 type FuncFetchOhlcv = func(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error)
+type FuncFetchBalance = func(params *map[string]interface{}) (*Balances, error)
 
 type Exchange struct {
 	ID        string   // 交易所ID
@@ -30,7 +31,7 @@ type Exchange struct {
 	MarketsWait chan interface{} // whether is loading markets
 	Markets     MarketMap        //cache for all markets
 	MarketsById MarketArrMap     // markets index by id
-	CareMarkets []string         // markets to be fetch
+	CareMarkets []string         // markets to be fetch: spot/linear/inverse/option
 
 	Symbols    []string
 	IDs        []string
@@ -44,14 +45,16 @@ type Exchange struct {
 	HttpClient *http.Client
 
 	PrecisionMode int
-	TradeMode     string // TradeSpot/TradeMargin/TradeSwap/TradeFuture/TradeOption
-	TradeInverse  bool   // true: coin-based contract
+	MarketType    string // MarketSpot/MarketMargin/MarketSwap/MarketFuture/MarketOption
+	MarketInverse bool   // true: coin-based contract
+	MarginMode    string // MarginCross/MarginIsolated
 
 	// for calling sub struct func in parent struct
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
 	FetchOhlcv      FuncFetchOhlcv
+	FetchBalance    FuncFetchBalance
 }
 
 type ExgHosts struct {
@@ -236,4 +239,22 @@ type Kline struct {
 	Low    float64
 	Close  float64
 	Volume float64
+}
+
+type Balances struct {
+	TimeStamp      int64
+	Free           map[string]float64
+	Used           map[string]float64
+	Total          map[string]float64
+	Assets         map[string]*Asset
+	IsolatedAssets map[string]map[string]*Asset // 逐仓账户资产，键是symbol
+	Info           interface{}
+}
+
+type Asset struct {
+	Code  string
+	Free  float64
+	Used  float64
+	Total float64
+	Debt  float64
 }

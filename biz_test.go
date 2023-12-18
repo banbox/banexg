@@ -6,7 +6,7 @@ func TestSetOptions(t *testing.T) {
 	FakeApiKey := "123"
 	e := Exchange{
 		Options: map[string]interface{}{
-			OptTradeMode:     TradeMargin,
+			OptMarketType:    MarketMargin,
 			OptApiKey:        FakeApiKey,
 			OptPrecisionMode: PrecModeTickSize,
 		},
@@ -22,9 +22,9 @@ func TestSetOptions(t *testing.T) {
 	} else {
 		t.Errorf("Fail ApiKey, cur %v, expect: %v", e.Creds.ApiKey, FakeApiKey)
 	}
-	if e.TradeMode == TradeMargin {
-		t.Logf("Pass TradeMode")
+	if e.MarketType == MarketMargin {
+		t.Logf("Pass MarketType")
 	} else {
-		t.Errorf("Fail TradeMode, cur %v, expect: %v", e.TradeMode, TradeMargin)
+		t.Errorf("Fail MarketType, cur %v, expect: %v", e.MarketType, MarketMargin)
 	}
 }
