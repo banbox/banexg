@@ -1,5 +1,7 @@
 package binance
 
+import "github.com/anyongjin/banexg"
+
 const (
 	HostDApiPublic    = "dapiPublic"
 	HostDApiPrivate   = "dapiPrivate"
@@ -28,6 +30,19 @@ const (
 
 var (
 	DefCareMarkets = []string{
-		"spot", "linear", "inverse",
+		banexg.MarketSpot, banexg.MarketLinear, banexg.MarketInverse,
 	}
+)
+
+const (
+	OdStatusNew             = "NEW"
+	OdStatusPartiallyFilled = "PARTIALLY_FILLED"
+	OdStatusAccept          = "ACCEPTED"
+	OdStatusFilled          = "FILLED"
+	OdStatusCanceled        = "CANCELED"
+	OdStatusCancelled       = "CANCELLED"
+	OdStatusPendingCancel   = "PENDING_CANCEL"
+	OdStatusReject          = "REJECTED"
+	OdStatusExpired         = "EXPIRED"
+	OdStatusExpiredInMatch  = "EXPIRED_IN_MATCH"
 )

@@ -316,3 +316,109 @@ type FundingAsset struct {
 	Withdrawing  string `json:"withdrawing"`  // 提币
 	BtcValuation string `json:"btcValuation"` // btc估值
 }
+
+/*
+*****************************   Private Orders   ***********************************
+ */
+type OrderBase struct {
+	Symbol        string `json:"symbol"`
+	Side          string `json:"side"`
+	ClientOrderId string `json:"clientOrderId"`
+	ExecutedQty   string `json:"executedQty"`
+	UpdateTime    int64  `json:"updateTime"`
+	Status        string `json:"status"`
+	Type          string `json:"type"`
+	OrderId       int    `json:"orderId"`
+	Price         string `json:"price"`
+	TimeInForce   string `json:"timeInForce"`
+}
+
+type SpotBase struct {
+	OrderBase
+	IcebergQty              string `json:"icebergQty"`
+	Time                    int64  `json:"time"`
+	SelfTradePreventionMode string `json:"selfTradePreventionMode"`
+	CummulativeQuoteQty     string `json:"cummulativeQuoteQty"`
+	IsWorking               bool   `json:"isWorking"`
+	OrigQty                 string `json:"origQty"`
+	StopPrice               string `json:"stopPrice"`
+}
+
+/*
+SpotOrder 现货订单
+*/
+type SpotOrder struct {
+	SpotBase
+	OrderListId       int    `json:"orderListId"` // OCO订单ID，否则为 -1
+	OrigQuoteOrderQty string `json:"origQuoteOrderQty"`
+	WorkingTime       int64  `json:"workingTime"`
+}
+
+/*
+MarginOrder 保证金杠杆订单
+*/
+type MarginOrder struct {
+	SpotBase
+	IsIsolated bool `json:"isIsolated"` // 是否是逐仓symbol交易
+}
+
+type FutBase struct {
+	OrderBase
+	ReduceOnly bool   `json:"reduceOnly"` // 是否仅减仓
+	AvgPrice   string `json:"avgPrice"`   // 平均成交价
+}
+
+type FutureBase struct {
+	FutBase
+	Time          int64  `json:"time"`          // 订单时间
+	OrigType      string `json:"origType"`      // 触发前订单类型
+	ActivatePrice string `json:"activatePrice"` // 跟踪止损激活价格, 仅`TRAILING_STOP_MARKET` 订单返回此字段
+	WorkingType   string `json:"workingType"`   // 条件价格触发类型
+	ClosePosition bool   `json:"closePosition"` // 是否条件全平仓
+	PositionSide  string `json:"positionSide"`  // 持仓方向
+	OrigQty       string `json:"origQty"`       // 原始委托数量
+	StopPrice     string `json:"stopPrice"`     // 触发价，对`TRAILING_STOP_MARKET`无效
+	PriceRate     string `json:"priceRate"`     // 跟踪止损回调比例, 仅`TRAILING_STOP_MARKET` 订单返回此字段
+}
+
+/*
+FutureOrder U本位合约订单
+*/
+type FutureOrder struct {
+	FutureBase
+	PriceProtect            bool   `json:"priceProtect"`            // 是否开启条件单触发保护
+	GoodTillDate            int64  `json:"goodTillDate"`            //订单TIF为GTD时的自动取消时间
+	SelfTradePreventionMode string `json:"selfTradePreventionMode"` //订单自成交保护模式
+	CumQuote                string `json:"cumQuote"`                // 成交金额
+	PriceMatch              string `json:"priceMatch"`              //盘口价格下单模式
+}
+
+/*
+InverseOrder 币本位合约订单
+*/
+type InverseOrder struct {
+	FutureBase
+	Pair    string `json:"pair"`    // 标的交易对
+	CumBase string `json:"cumBase"` // 成交金额(标的数量)
+}
+
+/*
+OptionOrder 期权订单
+*/
+type OptionOrder struct {
+	FutBase
+	PostOnly      bool    `json:"postOnly"`      // 仅做maker
+	PriceScale    int     `json:"priceScale"`    // 价格精度
+	OptionSide    string  `json:"optionSide"`    // 期权类型
+	QuoteAsset    string  `json:"quoteAsset"`    // 报价资产
+	Quantity      float64 `json:"quantity"`      // 订单数量
+	QuantityScale int     `json:"quantityScale"` // 数量精度
+	Fee           float64 `json:"fee"`           // 手续费
+	CreateTime    int64   `json:"createTime"`    // 订单创建时间
+	Source        string  `json:"source"`        // 订单来源
+	Mmp           bool    `json:"mmp"`           // 是否为MMP订单
+}
+
+type IBnbOrder interface {
+	ToStdOrder(e *Binance) *banexg.Order
+}

@@ -7,8 +7,6 @@ import (
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, error)
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, error)
-type FuncFetchOhlcv = func(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error)
-type FuncFetchBalance = func(params *map[string]interface{}) (*Balances, error)
 
 type Exchange struct {
 	ID        string   // 交易所ID
@@ -53,8 +51,6 @@ type Exchange struct {
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
-	FetchOhlcv      FuncFetchOhlcv
-	FetchBalance    FuncFetchBalance
 }
 
 type ExgHosts struct {
@@ -257,4 +253,55 @@ type Asset struct {
 	Used  float64
 	Total float64
 	Debt  float64
+}
+
+type Order struct {
+	Info                interface{} `json:"info"`
+	ID                  string      `json:"id"`
+	ClientOrderID       string      `json:"clientOrderId"`
+	Datetime            string      `json:"datetime"`
+	Timestamp           int64       `json:"timestamp"`
+	LastTradeTimestamp  int64       `json:"lastTradeTimestamp"`
+	LastUpdateTimestamp int64       `json:"lastUpdateTimestamp"`
+	Status              string      `json:"status"`
+	Symbol              string      `json:"symbol"`
+	Type                string      `json:"type"`
+	TimeInForce         string      `json:"timeInForce"`
+	Side                string      `json:"side"`
+	Price               float64     `json:"price"`
+	Average             float64     `json:"average"`
+	Amount              float64     `json:"amount"`
+	Filled              float64     `json:"filled"`
+	Remaining           float64     `json:"remaining"`
+	TriggerPrice        float64     `json:"triggerPrice"`
+	StopPrice           float64     `json:"stopPrice"`
+	TakeProfitPrice     float64     `json:"takeProfitPrice"`
+	StopLossPrice       float64     `json:"stopLossPrice"`
+	Cost                float64     `json:"cost"`
+	PostOnly            bool        `json:"postOnly"`
+	ReduceOnly          bool        `json:"reduceOnly"`
+	Trades              []*Trade    `json:"trades"`
+	Fee                 *Fee        `json:"fee"`
+}
+
+type Trade struct {
+	Info         interface{} `json:"info"`
+	Amount       float64     `json:"amount"`
+	Datetime     string      `json:"datetime"`
+	ID           string      `json:"id"`
+	Order        string      `json:"order"`
+	Price        float64     `json:"price"`
+	Timestamp    int64       `json:"timestamp"`
+	Type         string      `json:"type"`
+	Side         string      `json:"side"`
+	Symbol       string      `json:"symbol"`
+	TakerOrMaker string      `json:"takerOrMaker"`
+	Cost         float64     `json:"cost"`
+	Fee          *Fee        `json:"fee"`
+}
+
+type Fee struct {
+	Currency string  `json:"currency"`
+	Cost     float64 `json:"cost"`
+	Rate     float64 `json:"rate,omitempty"`
 }

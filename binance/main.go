@@ -901,8 +901,6 @@ func NewExchange(Options map[string]interface{}) *Binance {
 	exg.Sign = makeSign(exg)
 	exg.FetchCurrencies = makeFetchCurr(exg)
 	exg.FetchMarkets = makeFetchMarkets(exg)
-	exg.FetchOhlcv = makeFetchOhlcv(exg)
-	exg.FetchBalance = makeFetchBalances(exg)
 	exg.Init()
 	return exg
 }

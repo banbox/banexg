@@ -22,6 +22,7 @@ var (
 	ErrUnsupportMarket      = errors.New("unsupported market type")
 	ErrNoMarketForPair      = errors.New("no market found for pair")
 	ErrMarketNotLoad        = errors.New("markets not loaded")
+	ErrNotImplement         = errors.New("function not implement")
 )
 
 var (
@@ -86,9 +87,21 @@ const (
 	MarketSwap   = "swap"   // 永续合约 for perpetual swap futures that don't have a delivery date
 	MarketFuture = "future" // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
 	MarketOption = "option" // 期权 for option contracts
+
+	MarketLinear  = "linear"
+	MarketInverse = "inverse"
 )
 
 const (
 	MarginCross    = "cross"
 	MarginIsolated = "isolated"
+)
+
+const (
+	OdStatusOpen      = "open"
+	OdStatusClosed    = "closed"
+	OdStatusCanceled  = "canceled"
+	OdStatusCanceling = "canceling"
+	OdStatusRejected  = "rejected"
+	OdStatusExpired   = "expired"
 )

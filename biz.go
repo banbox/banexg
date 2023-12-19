@@ -305,8 +305,14 @@ func (e *Exchange) SafeMarket(marketId, delimiter, marketType string) *Market {
 			if marketType == "" {
 				marketType = e.MarketType
 			}
+			isLinear := marketType == MarketLinear
+			isInverse := marketType == MarketInverse
 			for _, mar := range mars {
 				if mar.Type == marketType {
+					return mar
+				} else if isLinear && mar.Linear {
+					return mar
+				} else if isInverse && mar.Inverse {
 					return mar
 				}
 			}
@@ -330,9 +336,25 @@ func (e *Exchange) SafeMarket(marketId, delimiter, marketType string) *Market {
 
 /*
 SafeSymbol 将交易所品种ID转为规范化品种ID
+
+marketType TradeSpot/TradeMargin/TradeSwap/TradeFuture/TradeOption
+
+	linear/inverse
 */
 func (e *Exchange) SafeSymbol(marketId, delimiter, marketType string) string {
 	return e.SafeMarket(marketId, delimiter, marketType).Symbol
+}
+
+func (e *Exchange) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error) {
+	return nil, ErrNotImplement
+}
+
+func (e *Exchange) FetchBalance(params *map[string]interface{}) (*Balances, error) {
+	return nil, ErrNotImplement
+}
+
+func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error) {
+	return nil, ErrNotImplement
 }
 
 /*
@@ -464,8 +486,7 @@ func (e *Exchange) GetTimeFrame(timeframe string) string {
 }
 
 func (e *Exchange) GetArgsMarket(args map[string]interface{}) (string, bool) {
-	marketType := utils.GetMapVal(args, "market", e.MarketType)
-	marketInverse := utils.GetMapVal(args, "inverse", e.MarketInverse)
-	utils.OmitMapKeys(args, "market", "inverse")
+	marketType := utils.PopMapVal(args, "market", e.MarketType)
+	marketInverse := utils.PopMapVal(args, "inverse", e.MarketInverse)
 	return marketType, marketInverse
 }

@@ -214,10 +214,10 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 }
 
 var marketApiMap = map[string]string{
-	"spot":    "publicGetExchangeInfo",
-	"linear":  "fapiPublicGetExchangeInfo",
-	"inverse": "dapiPublicGetExchangeInfo",
-	"option":  "eapiPublicGetExchangeInfo",
+	banexg.MarketSpot:    "publicGetExchangeInfo",
+	banexg.MarketLinear:  "fapiPublicGetExchangeInfo",
+	banexg.MarketInverse: "dapiPublicGetExchangeInfo",
+	banexg.MarketOption:  "eapiPublicGetExchangeInfo",
 }
 
 func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
@@ -315,9 +315,9 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 	}
 	var subType = ""
 	if isLinear {
-		subType = "linear"
+		subType = banexg.MarketLinear
 	} else if isInverse {
-		subType = "inverse"
+		subType = banexg.MarketInverse
 	}
 	var market = banexg.Market{
 		ID:             mar.Symbol,
@@ -494,292 +494,80 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func makeFetchOhlcv(e *Binance) banexg.FuncFetchOhlcv {
-	return func(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, error) {
-		_, err := e.LoadMarkets(false, nil)
-		if err != nil {
-			return nil, fmt.Errorf("load markets fail: %v", err)
+func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, error) {
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return nil, fmt.Errorf("load markets fail: %v", err)
+	}
+	market, err := e.GetMarket(symbol)
+	if err != nil {
+		return nil, fmt.Errorf("get market fail: %v", err)
+	}
+	var args = utils.SafeParams(params)
+	priceType := utils.PopMapVal(args, "price", "")
+	until := utils.PopMapVal(args, "until", int64(0))
+	utils.OmitMapKeys(args, "price", "until")
+	//binance docs say that the default limit 500, max 1500 for futures, max 1000 for spot markets
+	//the reality is that the time range wider than 500 candles won't work right
+	if limit == 0 {
+		limit = 500
+	} else {
+		limit = min(limit, 1500)
+	}
+	args["interval"] = e.GetTimeFrame(timeframe)
+	args["limit"] = limit
+	if priceType == "index" {
+		args["pair"] = market.ID
+	} else {
+		args["symbol"] = market.ID
+	}
+	if since > 0 {
+		args["startTime"] = since
+		//It didn't work before without the endTime
+		//https://github.com/ccxt/ccxt/issues/8454
+		if market.Inverse {
+			secs, err := utils.ParseTimeFrame(timeframe)
+			if err != nil {
+				return nil, fmt.Errorf("parse timeframe fail: %v", err)
+			}
+			endTime := since + int64(limit*secs*1000) - 1
+			args["endTime"] = min(e.MilliSeconds(), endTime)
 		}
-		market, err := e.GetMarket(symbol)
-		if err != nil {
-			return nil, fmt.Errorf("get market fail: %v", err)
-		}
-		var args = utils.SafeParams(params)
-		priceType := utils.GetMapVal(args, "price", "")
-		until := utils.GetMapVal(args, "until", int64(0))
-		utils.OmitMapKeys(args, "price", "until")
-		//binance docs say that the default limit 500, max 1500 for futures, max 1000 for spot markets
-		//the reality is that the time range wider than 500 candles won't work right
-		if limit == 0 {
-			limit = 500
+	}
+	if until > 0 {
+		args["endTime"] = until
+	}
+	method := "publicGetKlines"
+	if market.Option {
+		method = "eapiPublicGetKlines"
+	} else if priceType == "mark" {
+		if market.Inverse {
+			method = "dapiPublicGetMarkPriceKlines"
 		} else {
-			limit = min(limit, 1500)
+			method = "fapiPublicGetMarkPriceKlines"
 		}
-		args["interval"] = e.GetTimeFrame(timeframe)
-		args["limit"] = limit
-		if priceType == "index" {
-			args["pair"] = market.ID
+	} else if priceType == "index" {
+		if market.Inverse {
+			method = "dapiPublicGetIndexPriceKlines"
 		} else {
-			args["symbol"] = market.ID
+			method = "fapiPublicGetIndexPriceKlines"
 		}
-		if since > 0 {
-			args["startTime"] = since
-			//It didn't work before without the endTime
-			//https://github.com/ccxt/ccxt/issues/8454
-			if market.Inverse {
-				secs, err := utils.ParseTimeFrame(timeframe)
-				if err != nil {
-					return nil, fmt.Errorf("parse timeframe fail: %v", err)
-				}
-				endTime := since + int64(limit*secs*1000) - 1
-				args["endTime"] = min(e.MilliSeconds(), endTime)
-			}
-		}
-		if until > 0 {
-			args["endTime"] = until
-		}
-		method := "publicGetKlines"
-		if market.Option {
-			method = "eapiPublicGetKlines"
-		} else if priceType == "mark" {
-			if market.Inverse {
-				method = "dapiPublicGetMarkPriceKlines"
-			} else {
-				method = "fapiPublicGetMarkPriceKlines"
-			}
-		} else if priceType == "index" {
-			if market.Inverse {
-				method = "dapiPublicGetIndexPriceKlines"
-			} else {
-				method = "fapiPublicGetIndexPriceKlines"
-			}
-		} else if market.Linear {
-			method = "fapiPublicGetKlines"
-		} else if market.Inverse {
-			method = "dapiPublicGetKlines"
-		}
-		rsp := e.RequestApi(context.Background(), method, &args)
-		if rsp.Error != nil {
-			return nil, fmt.Errorf("api fail %v", rsp.Error)
-		}
-		if market.Option {
-			return parseOptionOhlcv(rsp)
-		} else {
-			volIndex := 5
-			if market.Inverse {
-				volIndex = 7
-			}
-			return parseBnbOhlcv(rsp, volIndex)
-		}
+	} else if market.Linear {
+		method = "fapiPublicGetKlines"
+	} else if market.Inverse {
+		method = "dapiPublicGetKlines"
 	}
-}
-
-func unmarshalBalance(content string, data interface{}) (*banexg.Balances, error) {
-	err := sonic.UnmarshalString(content, data)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal fail: %v", err)
+	rsp := e.RequestApi(context.Background(), method, &args)
+	if rsp.Error != nil {
+		return nil, fmt.Errorf("api fail %v", rsp.Error)
 	}
-	var result = banexg.Balances{
-		Info:   data,
-		Assets: map[string]*banexg.Asset{},
-	}
-	return &result, nil
-}
-
-func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = SpotAccount{}
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	result.TimeStamp = data.UpdateTime
-	for _, item := range data.Balances {
-		asset := item.ToStdAsset(e.Exchange)
-		if asset.IsEmpty() {
-			continue
+	if market.Option {
+		return parseOptionOhlcv(rsp)
+	} else {
+		volIndex := 5
+		if market.Inverse {
+			volIndex = 7
 		}
-		result.Assets[asset.Code] = asset
-	}
-	return result.Init(), nil
-}
-
-func parseMarginCrossBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = MarginCrossBalances{}
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range data.UserAssets {
-		asset := item.ToStdAsset(e.Exchange)
-		if asset.IsEmpty() {
-			continue
-		}
-		result.Assets[asset.Code] = asset
-	}
-	return result.Init(), nil
-}
-
-func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = IsolatedBalances{}
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range data.Assets {
-		symbol := e.SafeSymbol(item.Symbol, "", banexg.MarketSpot)
-		itemRes := make(map[string]*banexg.Asset)
-		if item.BaseAsset != nil {
-			asset := item.BaseAsset.ToStdAsset(e.Exchange)
-			if asset.IsEmpty() {
-				continue
-			}
-			itemRes[asset.Code] = asset
-		}
-		if item.QuoteAsset != nil {
-			asset := item.QuoteAsset.ToStdAsset(e.Exchange)
-			if asset.IsEmpty() {
-				continue
-			}
-			itemRes[asset.Code] = asset
-		}
-		result.IsolatedAssets[symbol] = itemRes
-	}
-	return result.Init(), nil
-}
-
-func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = SwapBalances{}
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range data.Assets {
-		asset := item.ToStdAsset(e.Exchange)
-		if asset.IsEmpty() {
-			continue
-		}
-		result.Assets[asset.Code] = asset
-	}
-	return result.Init(), nil
-}
-
-func parseInverseBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = InverseBalances{}
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range data.Assets {
-		asset := item.ToStdAsset(e.Exchange)
-		if asset.IsEmpty() {
-			continue
-		}
-		result.Assets[asset.Code] = asset
-	}
-	return result.Init(), nil
-}
-
-func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
-	var data = make([]*FundingAsset, 0)
-	result, err := unmarshalBalance(rsp.Content, &data)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range data {
-		code := e.SafeCurrencyCode(item.Asset)
-		free, _ := strconv.ParseFloat(item.Free, 64)
-		freeze, _ := strconv.ParseFloat(item.Freeze, 64)
-		withdraw, _ := strconv.ParseFloat(item.Withdrawing, 64)
-		lock, _ := strconv.ParseFloat(item.Locked, 64)
-		asset := banexg.Asset{
-			Code: code,
-			Free: free,
-			Used: freeze + withdraw + lock,
-		}
-		if asset.IsEmpty() {
-			continue
-		}
-		result.Assets[code] = &asset
-	}
-	return result.Init(), nil
-}
-
-/*
-query for balance and get the amount of funds available for trading or funds locked in orders
-:see: https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data                  # spot
-:see: https://binance-docs.github.io/apidocs/spot/en/#query-cross-margin-account-details-user_data   # cross margin
-:see: https://binance-docs.github.io/apidocs/spot/en/#query-isolated-margin-account-info-user_data   # isolated margin
-:see: https://binance-docs.github.io/apidocs/spot/en/#lending-account-user_data                      # lending
-:see: https://binance-docs.github.io/apidocs/spot/en/#funding-wallet-user_data                       # funding
-:see: https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data            # swap
-:see: https://binance-docs.github.io/apidocs/delivery/en/#account-information-user_data              # future
-:see: https://binance-docs.github.io/apidocs/voptions/en/#option-account-information-trade           # option
-:param dict [params]: extra parameters specific to the exchange API endpoint
-:param str [params.market]: 'spot', 'future', 'swap', 'funding', or 'spot'
-:param str [params.marginMode]: 'cross' or 'isolated', for margin trading, uses self.options.defaultMarginMode if not passed, defaults to None/None/None
-:param str[]|None [params.symbols]: unified market symbols, only used in isolated margin mode
-:returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
-*/
-func makeFetchBalances(e *Binance) banexg.FuncFetchBalance {
-	return func(params *map[string]interface{}) (*banexg.Balances, error) {
-		_, err := e.LoadMarkets(false, nil)
-		if err != nil {
-			return nil, fmt.Errorf("load markets fail: %v", err)
-		}
-		var args = utils.SafeParams(params)
-		marketType, marketInverse := e.GetArgsMarket(args)
-		marginMode := utils.GetMapVal(args, "marginMode", "")
-		method := "privateGetAccount"
-		isContract := marketType == banexg.MarketSwap || marketType == banexg.MarketFuture
-		if isContract {
-			if !marketInverse {
-				method = "fapiPrivateV2GetAccount"
-			} else {
-				method = "dapiPrivateGetAccount"
-			}
-		} else if marginMode == "isolated" {
-			method = "sapiGetMarginIsolatedAccount"
-			symbols := utils.GetMapVal(args, "symbols", []string{})
-			if len(symbols) > 0 {
-				b := strings.Builder{}
-				notFirst := false
-				for _, s := range symbols {
-					mid, err := e.GetMarketID(s)
-					if err != nil {
-						return nil, fmt.Errorf("symbol invalid %s", s)
-					}
-					if notFirst {
-						b.WriteString(",")
-						notFirst = true
-					}
-					b.WriteString(mid)
-				}
-				args["symbols"] = b.String()
-			}
-		} else if marketType == banexg.MarketMargin || marginMode == banexg.MarginCross {
-			method = "sapiGetMarginAccount"
-		} else if marketType == "funding" {
-			method = "sapiPostAssetGetFundingAsset"
-		}
-		rsp := e.RequestApi(context.Background(), method, &args)
-		if rsp.Error != nil {
-			return nil, rsp.Error
-		}
-		switch method {
-		case "privateGetAccount":
-			return parseSpotBalances(e, rsp)
-		case "sapiGetMarginAccount":
-			return parseMarginCrossBalances(e, rsp)
-		case "sapiGetMarginIsolatedAccount":
-			return parseMarginIsolatedBalances(e, rsp)
-		case "fapiPrivateV2GetAccount":
-			return parseSwapBalances(e, rsp)
-		case "dapiPrivateGetAccount":
-			return parseInverseBalances(e, rsp)
-		case "sapiPostAssetGetFundingAsset":
-			return parseFundingBalances(e, rsp)
-		default:
-			return nil, fmt.Errorf("unsupport parse balance method: %s", method)
-		}
+		return parseBnbOhlcv(rsp, volIndex)
 	}
 }

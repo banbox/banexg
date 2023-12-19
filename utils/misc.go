@@ -79,6 +79,20 @@ func GetMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 	return defVal
 }
 
+func PopMapVal[T any](items map[string]interface{}, key string, defVal T) T {
+	if val, ok := items[key]; ok {
+		delete(items, key)
+		if tVal, ok := val.(T); ok {
+			return tVal
+		} else {
+			var zero T
+			typ := reflect.TypeOf(zero)
+			panic(fmt.Sprintf("option %s should be %s", key, typ.Name()))
+		}
+	}
+	return defVal
+}
+
 func SetFieldBy[T any](field *T, items map[string]interface{}, key string, defVal T) {
 	if field == nil {
 		panic(fmt.Sprintf("field can not be nil for key: %s", key))
