@@ -6,9 +6,21 @@ import (
 )
 
 const (
-	ParamNewClientOrderId   = "newClientOrderId"
+	ParamClientOrderId      = "clientOrderId"
 	ParamOrderIds           = "orderIdList"
 	ParamOrigClientOrderIDs = "origClientOrderIdList"
+	ParamSor                = "sor" // smart order route, for create order in spot
+	ParamPostOnly           = "postOnly"
+	ParamTimeInForce        = "timeInForce"
+	ParamTriggerPrice       = "triggerPrice"
+	ParamStopLossPrice      = "stopLossPrice"
+	ParamTakeProfitPrice    = "takeProfitPrice"
+	ParamTrailingDelta      = "trailingDelta"
+	ParamReduceOnly         = "reduceOnly"
+	ParamCost               = "cost"
+	ParamClosePosition      = "closePosition" // 触发后全部平仓
+	ParamCallbackRate       = "callbackRate"  // 跟踪止损回调百分比
+	ParamTest               = "test"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -40,6 +52,10 @@ var (
 )
 
 const (
+	DefTimeInForce = TimeInForceGTC
+)
+
+const (
 	HasFail = 1 << iota
 	HasOk
 	HasEmulated
@@ -61,6 +77,7 @@ const (
 	OptPrecisionMode = "PrecisionMode"
 	OptMarketType    = "MarketType"
 	OptMarketInverse = "MarketInverse"
+	OptTimeInForce   = "TimeInForce"
 )
 
 const (
@@ -71,9 +88,9 @@ const (
 )
 
 const (
-	PrecModeDecimalPlace = 2
-	PrecModeSignifDigits = 3
-	PrecModeTickSize     = 4
+	PrecModeDecimalPlace = utils.PrecModeDecimalPlace
+	PrecModeSignifDigits = utils.PrecModeSignifDigits
+	PrecModeTickSize     = utils.PrecModeTickSize
 )
 
 const (
@@ -104,4 +121,29 @@ const (
 	OdStatusCanceling = "canceling"
 	OdStatusRejected  = "rejected"
 	OdStatusExpired   = "expired"
+)
+
+const (
+	OdTypeMarket          = "MARKET"
+	OdTypeLimit           = "LIMIT"
+	OdTypeStopLoss        = "STOP_LOSS"
+	OdTypeStopLossLimit   = "STOP_LOSS_LIMIT"
+	OdTypeTakeProfit      = "TAKE_PROFIT"
+	OdTypeTakeProfitLimit = "TAKE_PROFIT_LIMIT"
+	OdTypeStop            = "STOP"
+	OdTypeLimitMaker      = "LIMIT_MAKER"
+)
+
+const (
+	OdSideBuy  = "buy"
+	OdSideSell = "sell"
+)
+
+const (
+	TimeInForceGTC = "GTC" // Good Till Cancel 一直有效，直到被成交或取消
+	TimeInForceIOC = "IOC" // Immediate or Cancel 无法立即成交的部分取消
+	TimeInForceFOK = "FOK" // Fill or Kill 无法全部立即成交就撤销
+	TimeInForceGTX = "GTX" // Good Till Crossing 无法成为挂单方就取消
+	TimeInForceGTD = "GTD" // Good Till Date 在特定时间前有效，到期自动取消
+	TimeInForcePO  = "PO"  // Post Only
 )

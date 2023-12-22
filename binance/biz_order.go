@@ -64,21 +64,21 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 	}
 	switch method {
 	case "privateGetAllOrders":
-		return parseOrders[*SpotOrder](e, rsp)
+		return parseOrders[*SpotOrder](market, rsp)
 	case "eapiPrivateGetHistoryOrders":
-		return parseOrders[*OptionOrder](e, rsp)
+		return parseOrders[*OptionOrder](market, rsp)
 	case "fapiPrivateGetAllOrders":
-		return parseOrders[*FutureOrder](e, rsp)
+		return parseOrders[*FutureOrder](market, rsp)
 	case "dapiPrivateGetAllOrders":
-		return parseOrders[*InverseOrder](e, rsp)
+		return parseOrders[*InverseOrder](market, rsp)
 	case "sapiGetMarginAllOrders":
-		return parseOrders[*MarginOrder](e, rsp)
+		return parseOrders[*MarginOrder](market, rsp)
 	default:
 		return nil, fmt.Errorf("not support order method %s", method)
 	}
 }
 
-func parseOrders[T IBnbOrder](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Order, error) {
+func parseOrders[T IBnbOrder](m *banexg.Market, rsp *banexg.HttpRes) ([]*banexg.Order, error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
@@ -86,8 +86,18 @@ func parseOrders[T IBnbOrder](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Order,
 	}
 	var result = make([]*banexg.Order, len(data))
 	for i, item := range data {
-		result[i] = item.ToStdOrder(e)
+		result[i] = item.ToStdOrder(m)
 	}
+	return result, nil
+}
+
+func parseOrder[T IBnbOrder](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.Order, error) {
+	var data = new(T)
+	err := sonic.UnmarshalString(rsp.Content, &data)
+	if err != nil {
+		return nil, err
+	}
+	result := (*data).ToStdOrder(m)
 	return result, nil
 }
 
@@ -111,7 +121,7 @@ func mapOrderStatus(status string) string {
 	return status
 }
 
-func (o *OrderBase) ToStdOrder() *banexg.Order {
+func (o *OrderBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	status := mapOrderStatus(o.Status)
 	filled, _ := strconv.ParseFloat(o.ExecutedQty, 64)
 	lastTradeTimestamp := int64(0)
@@ -145,20 +155,25 @@ func (o *OrderBase) ToStdOrder() *banexg.Order {
 		Price:               price,
 		Filled:              filled,
 		Status:              status,
+		Symbol:              m.Symbol,
 		Fee:                 &banexg.Fee{},
 		Trades:              make([]*banexg.Trade, 0),
 	}
 }
 
-func (o *SpotBase) ToStdOrder() *banexg.Order {
-	timeStamp := o.Time
-	if timeStamp == 0 {
+func (o *SpotBase) ToStdOrder(m *banexg.Market) *banexg.Order {
+	timeStamp := int64(0)
+	if o.Time > 0 {
+		timeStamp = o.Time
+	} else if o.TransactTime > 0 {
+		timeStamp = o.TransactTime
+	} else if o.UpdateTime > 0 {
 		timeStamp = o.UpdateTime
 	}
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
 	cost, _ := strconv.ParseFloat(o.CummulativeQuoteQty, 64)
-	result := o.OrderBase.ToStdOrder()
+	result := o.OrderBase.ToStdOrder(m)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.TriggerPrice = stopPrice
@@ -167,31 +182,40 @@ func (o *SpotBase) ToStdOrder() *banexg.Order {
 	return result
 }
 
-func (o *SpotOrder) ToStdOrder(e *Binance) *banexg.Order {
-	result := o.SpotBase.ToStdOrder()
+func (o *SpotOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(m)
 	result.Info = o
-	result.Symbol = e.SafeSymbol(o.Symbol, "", banexg.MarketSpot)
+	timeStamp := int64(0)
+	if o.Time > 0 {
+		timeStamp = o.Time
+	} else if o.WorkingTime > 0 {
+		timeStamp = o.WorkingTime
+	} else if o.TransactTime > 0 {
+		timeStamp = o.TransactTime
+	} else if o.UpdateTime > 0 {
+		timeStamp = o.UpdateTime
+	}
+	result.Timestamp = timeStamp
+	result.Datetime = utils.ISO8601(timeStamp)
 	return result
 }
 
-func (o *MarginOrder) ToStdOrder(e *Binance) *banexg.Order {
-	result := o.SpotBase.ToStdOrder()
+func (o *MarginOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(m)
 	result.Info = o
-	result.Symbol = e.SafeSymbol(o.Symbol, "", banexg.MarketMargin)
 	return result
 }
 
-func (o *OptionOrder) ToStdOrder(e *Binance) *banexg.Order {
+func (o *OptionOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
 	timeStamp := o.CreateTime
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
 	}
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
-	result := o.OrderBase.ToStdOrder()
+	result := o.OrderBase.ToStdOrder(m)
 	result.Info = o
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
-	result.Symbol = e.SafeSymbol(o.Symbol, "", banexg.MarketOption)
 	result.ReduceOnly = o.ReduceOnly
 	result.Average = avgPrice
 	result.Amount = o.Quantity
@@ -201,7 +225,7 @@ func (o *OptionOrder) ToStdOrder(e *Binance) *banexg.Order {
 	return result
 }
 
-func (o *FutureBase) ToStdOrder() *banexg.Order {
+func (o *FutureBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	timeStamp := o.Time
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
@@ -209,8 +233,7 @@ func (o *FutureBase) ToStdOrder() *banexg.Order {
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
-	result := o.OrderBase.ToStdOrder()
-	result.Info = o
+	result := o.OrderBase.ToStdOrder(m)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.ReduceOnly = o.ReduceOnly
@@ -220,20 +243,18 @@ func (o *FutureBase) ToStdOrder() *banexg.Order {
 	return result
 }
 
-func (o *FutureOrder) ToStdOrder(e *Binance) *banexg.Order {
+func (o *FutureOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumQuote, 64)
-	result := o.FutureBase.ToStdOrder()
+	result := o.FutureBase.ToStdOrder(m)
 	result.Info = o
-	result.Symbol = e.SafeSymbol(o.Symbol, "", banexg.MarketLinear)
 	result.Cost = cost
 	return result
 }
 
-func (o *InverseOrder) ToStdOrder(e *Binance) *banexg.Order {
+func (o *InverseOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumBase, 64)
-	result := o.FutureBase.ToStdOrder()
+	result := o.FutureBase.ToStdOrder(m)
 	result.Info = o
-	result.Symbol = e.SafeSymbol(o.Symbol, "", banexg.MarketInverse)
 	result.Cost = cost
 	return result
 }

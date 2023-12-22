@@ -13,16 +13,17 @@
     <th rowspan="2"></th>
     <th rowspan="2">Spot</th>
     <th rowspan="2">Margin</th>
-    <th colspan="3">linear</th>
-    <th colspan="3">inverse</th>
+    <th colspan="2">Contract Linear</th>
+    <th colspan="2">Contract Inverse</th>
+    <th colspan="2">Option</th>
 </tr>
 <tr>
-    <th>swap</th>
-    <th>future</th>
-    <th>option</th>
-    <th>swap</th>
-    <th>future</th>
-    <th>option</th>
+    <th>Swap Linear</th>
+    <th>future Linear</th>
+    <th>swap Inverse</th>
+    <th>future Inverse</th>
+    <th>option linear</th>
+    <th>option inverse</th>
 </tr>
 <tr>
     <td>Desc</td>
@@ -30,9 +31,9 @@
     <td>保证金</td>
     <td>U本位永续</td>
     <td>U本位到期</td>
-    <td>U本位期权</td>
     <td>币本位永续</td>
     <td>币本位到期</td>
+    <td>U本位期权</td>
     <td>币本位期权</td>
 </tr>
 </table>

@@ -897,6 +897,10 @@ func NewExchange(Options map[string]interface{}) *Binance {
 				Keys: map[string]bool{"ApiKey": true, "Secret": true},
 			},
 		},
+		newOrderRespType: map[string]string{
+			banexg.OdTypeMarket: "FULL",
+			banexg.OdTypeLimit:  "FULL",
+		},
 	}
 	exg.Sign = makeSign(exg)
 	exg.FetchCurrencies = makeFetchCurr(exg)

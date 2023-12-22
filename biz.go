@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,6 +48,7 @@ func (e *Exchange) Init() {
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
 	utils.SetFieldBy(&e.MarketInverse, e.Options, OptMarketInverse, false)
+	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -357,6 +359,10 @@ func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *ma
 	return nil, ErrNotImplement
 }
 
+func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error) {
+	return nil, ErrNotImplement
+}
+
 /*
 ***************************  Common Functions  ******************************
  */
@@ -437,8 +443,8 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 	req.Header = sign.Headers
 	e.setReqHeaders(&req.Header)
 
-	log.Debug("request", zap.String("req", req.URL.String()), zap.String("method", req.Method),
-		zap.Object("header", HttpHeader(req.Header)))
+	log.Debug("request", zap.String(sign.Method, req.URL.String()),
+		zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
 	rsp, err := e.HttpClient.Do(req)
 	if err != nil {
 		return &HttpRes{Error: err}
@@ -450,6 +456,11 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		return &result
 	}
 	result.Content = string(rspData)
+	log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
+		zap.String("content", result.Content))
+	if result.Status >= 400 {
+		result.Error = fmt.Errorf(result.Content)
+	}
 	defer func() {
 		cerr := rsp.Body.Close()
 		// Only overwrite the retured error if the original error was nil and an
@@ -489,4 +500,28 @@ func (e *Exchange) GetArgsMarket(args map[string]interface{}) (string, bool) {
 	marketType := utils.PopMapVal(args, "market", e.MarketType)
 	marketInverse := utils.PopMapVal(args, "inverse", e.MarketInverse)
 	return marketType, marketInverse
+}
+
+func (e *Exchange) PrecAmount(m *Market, amount float64) (string, error) {
+	precStr := strconv.Itoa(m.Precision.Amount)
+	amtStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	return utils.DecToPrec(amtStr, e.PrecisionMode, precStr, false, e.PrecPadZero)
+}
+
+func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (string, error) {
+	precStr := strconv.Itoa(m.Precision.Price)
+	valStr := strconv.FormatFloat(value, 'f', -1, 64)
+	return utils.DecToPrec(valStr, e.PrecisionMode, precStr, round, e.PrecPadZero)
+}
+
+func (e *Exchange) PrecPrice(m *Market, price float64) (string, error) {
+	return e.precPriceCost(m, price, true)
+}
+
+func (e *Exchange) PrecCost(m *Market, cost float64) (string, error) {
+	return e.precPriceCost(m, cost, false)
+}
+
+func (e *Exchange) PrecFee(m *Market, fee float64) (string, error) {
+	return e.precPriceCost(m, fee, true)
 }

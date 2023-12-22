@@ -5,4 +5,5 @@ type BanExchange interface {
 	FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error)
 	FetchBalance(params *map[string]interface{}) (*Balances, error)
 	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error)
+	CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error)
 }

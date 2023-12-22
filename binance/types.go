@@ -6,7 +6,17 @@ import (
 
 type Binance struct {
 	*banexg.Exchange
-	RecvWindow int
+	RecvWindow       int
+	newOrderRespType map[string]string
+}
+
+/*
+*****************************   Common   ***********************************
+ */
+
+type ErrRsp struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
 }
 
 /*
@@ -327,7 +337,7 @@ type OrderBase struct {
 	ExecutedQty   string `json:"executedQty"`
 	UpdateTime    int64  `json:"updateTime"`
 	Status        string `json:"status"`
-	Type          string `json:"type"`
+	Type          string `json:"type"` // 订单类型
 	OrderId       int    `json:"orderId"`
 	Price         string `json:"price"`
 	TimeInForce   string `json:"timeInForce"`
@@ -342,6 +352,7 @@ type SpotBase struct {
 	IsWorking               bool   `json:"isWorking"`
 	OrigQty                 string `json:"origQty"`
 	StopPrice               string `json:"stopPrice"`
+	TransactTime            int64  `json:"transactTime"` // 交易时间戳
 }
 
 /*
@@ -349,9 +360,13 @@ SpotOrder 现货订单
 */
 type SpotOrder struct {
 	SpotBase
-	OrderListId       int    `json:"orderListId"` // OCO订单ID，否则为 -1
-	OrigQuoteOrderQty string `json:"origQuoteOrderQty"`
-	WorkingTime       int64  `json:"workingTime"`
+	OrderListId             int         `json:"orderListId"` // OCO订单ID，否则为 -1
+	OrigQuoteOrderQty       string      `json:"origQuoteOrderQty"`
+	WorkingTime             int64       `json:"workingTime"`
+	Fills                   []*SpotFill `json:"fills"`
+	WorkingFloor            string      `json:"workingFloor"`            // sor
+	SelfTradePreventionMode string      `json:"selfTradePreventionMode"` // sor
+	UsedSor                 bool        `json:"usedSor"`
 }
 
 /*
@@ -379,6 +394,8 @@ type FutureBase struct {
 	OrigQty       string `json:"origQty"`       // 原始委托数量
 	StopPrice     string `json:"stopPrice"`     // 触发价，对`TRAILING_STOP_MARKET`无效
 	PriceRate     string `json:"priceRate"`     // 跟踪止损回调比例, 仅`TRAILING_STOP_MARKET` 订单返回此字段
+	PriceProtect  bool   `json:"priceProtect"`  // 是否开启条件单触发保护
+	CumQty        string `json:"cumQty"`
 }
 
 /*
@@ -386,7 +403,6 @@ FutureOrder U本位合约订单
 */
 type FutureOrder struct {
 	FutureBase
-	PriceProtect            bool   `json:"priceProtect"`            // 是否开启条件单触发保护
 	GoodTillDate            int64  `json:"goodTillDate"`            //订单TIF为GTD时的自动取消时间
 	SelfTradePreventionMode string `json:"selfTradePreventionMode"` //订单自成交保护模式
 	CumQuote                string `json:"cumQuote"`                // 成交金额
@@ -419,6 +435,16 @@ type OptionOrder struct {
 	Mmp           bool    `json:"mmp"`           // 是否为MMP订单
 }
 
+type SpotFill struct {
+	Price           string `json:"price"`
+	Qty             string `json:"qty"`
+	Commission      string `json:"commission"`
+	CommissionAsset string `json:"commissionAsset"`
+	TradeId         int    `json:"tradeId"`
+	AllocId         int    `json:"allocId"`   // sor
+	MatchType       string `json:"matchType"` // sor
+}
+
 type IBnbOrder interface {
-	ToStdOrder(e *Binance) *banexg.Order
+	ToStdOrder(m *banexg.Market) *banexg.Order
 }

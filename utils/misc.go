@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"math/rand"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -20,6 +21,24 @@ func DeepCopy(src, dst map[string]interface{}) {
 		}
 		dst[k] = v
 	}
+}
+
+func UUID(length int) string {
+	randomBits := rand.Uint64()
+	text := fmt.Sprintf("%x", randomBits) // 将randomBits转化为十六进制
+	if len(text) > length {
+		text = text[:length]
+	}
+	return text
+}
+
+func ArrContains[T comparable](s []T, e T) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }
 
 /*

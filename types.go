@@ -43,9 +43,11 @@ type Exchange struct {
 	HttpClient *http.Client
 
 	PrecisionMode int
+	PrecPadZero   bool   // padding zero for precision
 	MarketType    string // MarketSpot/MarketMargin/MarketSwap/MarketFuture/MarketOption
 	MarketInverse bool   // true: coin-based contract
 	MarginMode    string // MarginCross/MarginIsolated
+	TimeInForce   string // GTC/IOC/FOK
 
 	// for calling sub struct func in parent struct
 	Sign            FuncSign
