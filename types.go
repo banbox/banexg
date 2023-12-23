@@ -67,7 +67,7 @@ type ExgHosts struct {
 
 type ExgFee struct {
 	Main    *TradeFee //默认
-	Linear  *TradeFee //现货、U本位
+	Linear  *TradeFee //U本位合约
 	Inverse *TradeFee // 币本位合约
 }
 
@@ -202,6 +202,7 @@ type Market struct {
 	Limits         *MarketLimits `json:"limits"`
 	Created        int64         `json:"created"`
 	SubType        string        `json:"subType"`
+	FeeSide        string        `json:"feeSide"` // get/give/base/quote/other
 	Info           interface{}   `json:"info"`
 }
 
@@ -303,6 +304,7 @@ type Trade struct {
 }
 
 type Fee struct {
+	IsMaker  bool    `json:"isMaker"` // for calculate fee
 	Currency string  `json:"currency"`
 	Cost     float64 `json:"cost"`
 	Rate     float64 `json:"rate,omitempty"`

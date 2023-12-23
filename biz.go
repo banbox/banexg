@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"
 	"math"
@@ -361,6 +362,62 @@ func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *ma
 
 func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error) {
 	return nil, ErrNotImplement
+}
+
+func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
+	params *map[string]interface{}) (*Fee, error) {
+	if odType == OdTypeMarket && isMaker {
+		return nil, fmt.Errorf("maker only is invalid for market order")
+	}
+	market, err := e.GetMarket(symbol)
+	if err != nil {
+		return nil, fmt.Errorf("get market fail: %v", err)
+	}
+	feeSide := market.FeeSide
+	if feeSide == "" {
+		if e.Fees != nil {
+			if market.Spot || market.Margin {
+				feeSide = e.Fees.Main.FeeSide
+			} else if market.Linear {
+				feeSide = e.Fees.Linear.FeeSide
+			} else if market.Inverse {
+				feeSide = e.Fees.Inverse.FeeSide
+			}
+		}
+		if feeSide == "" {
+			feeSide = "quote"
+		}
+	}
+	useQuote := false
+	if feeSide == "get" {
+		useQuote = side == OdSideSell
+	} else if feeSide == "give" {
+		useQuote = side == OdSideBuy
+	} else {
+		useQuote = feeSide == "quote"
+	}
+	cost := decimal.NewFromFloat(amount)
+	currency := ""
+	if useQuote {
+		cost = cost.Mul(decimal.NewFromFloat(price))
+		currency = market.Quote
+	} else {
+		currency = market.Base
+	}
+	if !market.Spot {
+		currency = market.Settle
+	}
+	feeRate := 0.0
+	if isMaker {
+		feeRate = market.Maker
+	} else {
+		feeRate = market.Taker
+	}
+	cost = cost.Mul(decimal.NewFromFloat(feeRate))
+	costVal, _ := cost.Float64()
+	return &Fee{
+		isMaker, currency, costVal, feeRate,
+	}, nil
 }
 
 /*
