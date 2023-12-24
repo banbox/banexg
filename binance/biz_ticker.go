@@ -31,9 +31,8 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 		return nil, fmt.Errorf("load markets fail: %v", err)
 	}
 	var args = utils.SafeParams(params)
-	marketType, marketInverse := e.GetArgsMarketType(args, firstSymbol)
+	marketType, _ := e.GetArgsMarketType(args, firstSymbol)
 	var method string
-	marketType = e.StdMarketType(marketType, marketInverse)
 	switch marketType {
 	case banexg.MarketOption:
 		method = "eapiPublicGetTicker"
@@ -61,12 +60,10 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 }
 
 func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*banexg.Ticker, error) {
-	_, err := e.LoadMarkets(false, nil)
+	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
+		return nil, err
 	}
-	var args = utils.SafeParams(params)
-	market, err := e.GetArgsMarket(symbol, args)
 	args["symbol"] = market.ID
 	var method string
 	if market.Option {

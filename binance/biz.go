@@ -293,16 +293,16 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 			}
 		}
 	}
-	unifiedType := ""
-	if isSpot {
-		unifiedType = banexg.MarketSpot
-	} else if isSwap {
-		unifiedType = banexg.MarketSwap
-	} else if isFuture {
-		unifiedType = banexg.MarketFuture
-	} else if isOption {
-		unifiedType = banexg.MarketOption
+	marketType := ""
+	if isOption {
+		marketType = banexg.MarketOption
 		isActive = false
+	} else if isInverse {
+		marketType = banexg.MarketInverse
+	} else if isLinear {
+		marketType = banexg.MarketLinear
+	} else if isSpot {
+		marketType = banexg.MarketSpot
 	}
 	strikePrice, _ := strconv.ParseFloat(mar.StrikePrice, 64)
 	prec := mar.GetPrecision()
@@ -312,12 +312,6 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 	}
 	if amountPrec > 0 {
 		prec.Amount = amountPrec
-	}
-	var subType = ""
-	if isLinear {
-		subType = banexg.MarketLinear
-	} else if isInverse {
-		subType = banexg.MarketInverse
 	}
 	var market = banexg.Market{
 		ID:             mar.Symbol,
@@ -329,7 +323,7 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 		BaseID:         baseId,
 		QuoteID:        quoteId,
 		SettleID:       settleId,
-		Type:           unifiedType,
+		Type:           marketType,
 		Spot:           isSpot,
 		Margin:         isSpot && mar.IsMarginTradingAllowed,
 		Swap:           isSwap,
@@ -349,7 +343,6 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 		Precision:      prec,
 		Limits:         limits,
 		Created:        mar.OnboardDate,
-		SubType:        subType,
 		Info:           mar,
 	}
 	return &market
@@ -495,15 +488,10 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
 func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, error) {
-	_, err := e.LoadMarkets(false, nil)
+	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
+		return nil, err
 	}
-	market, err := e.GetMarket(symbol)
-	if err != nil {
-		return nil, fmt.Errorf("get market fail: %v", err)
-	}
-	var args = utils.SafeParams(params)
 	priceType := utils.PopMapVal(args, "price", "")
 	until := utils.PopMapVal(args, "until", int64(0))
 	utils.OmitMapKeys(args, "price", "until")

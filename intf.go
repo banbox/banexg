@@ -8,6 +8,7 @@ type BanExchange interface {
 	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, error)
 	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, error)
 	CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error)
+	CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, error)
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params *map[string]interface{}) (*Fee, error)
 	PriceOnePip(symbol string) (float64, error)
 }

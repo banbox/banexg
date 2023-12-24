@@ -38,17 +38,11 @@ CreateOrder 提交订单到交易所
 	:returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
 func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*banexg.Order, error) {
-	_, err := e.LoadMarkets(false, nil)
+	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
+		return nil, err
 	}
-	var args = utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarketType(args, symbol)
-	market, err := e.GetMarket(symbol)
-	if err != nil {
-		return nil, fmt.Errorf("get market fail: %v", err)
-	}
-	marginMode := utils.PopMapVal(args, "marginMode", "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	sor := utils.PopMapVal(args, banexg.ParamSor, false)
 	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
 	postOnly := utils.PopMapVal(args, banexg.ParamPostOnly, false)
@@ -74,10 +68,10 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	isTakeProfit := takeProfitPrice != float64(0)
 	args["symbol"] = market.ID
 	args["side"] = strings.ToUpper(side)
-	if postOnly && (market.Spot || marketType == banexg.MarketMargin) {
+	if postOnly && (market.Spot || market.Type == banexg.MarketMargin) {
 		odType = banexg.OdTypeLimitMaker
 	}
-	if marketType == banexg.MarketMargin || marginMode != "" {
+	if market.Type == banexg.MarketMargin || marginMode != "" {
 		reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false)
 		if reduceOnly {
 			args["sideEffectType"] = "AUTO_REPAY"
@@ -124,7 +118,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	}
 	args["newClientOrderId"] = clientOrderId
 	odRspType := "RESULT"
-	if marketType == banexg.MarketSpot || marketType == banexg.MarketMargin {
+	if market.Spot || market.Type == banexg.MarketMargin {
 		if rspType, ok := e.newOrderRespType[odType]; ok {
 			odRspType = rspType
 		}
@@ -136,7 +130,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			return nil, fmt.Errorf("market order is invalid for option")
 		}
 	} else if !isBnbOrderType(market, exgOdType) {
-		return nil, fmt.Errorf("invalid order type %s for %s market", exgOdType, marketType)
+		return nil, fmt.Errorf("invalid order type %s for %s market", exgOdType, market.Type)
 	}
 	args["type"] = exgOdType
 	timeInForceRequired, priceRequired, stopPriceRequired, quantityRequired := false, false, false, false
@@ -262,12 +256,12 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		method = "fapiPrivatePostOrder"
 	} else if market.Inverse {
 		method = "dapiPrivatePostOrder"
-	} else if marketType == banexg.MarketMargin || marginMode != "" {
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = "sapiPostMarginOrder"
 	} else if market.Option {
 		method = "eapiPrivatePostOrder"
 	}
-	if market.Spot || marketType == banexg.MarketMargin {
+	if market.Spot || market.Type == banexg.MarketMargin {
 		test := utils.GetMapVal(args, banexg.ParamTest, false)
 		if test {
 			method += "Test"

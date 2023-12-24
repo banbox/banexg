@@ -73,9 +73,10 @@ func compareMarkets(t *testing.T, markets, ccxtMarkets banexg.MarketMap) error {
 		if mar.SettleID != ccxt.SettleID {
 			diffs["SettleID"] = fmt.Sprintf("%v-%v", mar.SettleID, ccxt.SettleID)
 		}
-		if mar.Type != ccxt.Type {
-			diffs["Type"] = fmt.Sprintf("%v-%v", mar.Type, ccxt.Type)
-		}
+		// 这里和ccxt的值存储的不同，无需对比
+		//if mar.Type != ccxt.Type {
+		//	diffs["Type"] = fmt.Sprintf("%v-%v", mar.Type, ccxt.Type)
+		//}
 		if mar.Spot != ccxt.Spot {
 			diffs["Spot"] = fmt.Sprintf("%v-%v", mar.Spot, ccxt.Spot)
 		}
@@ -120,9 +121,6 @@ func compareMarkets(t *testing.T, markets, ccxtMarkets banexg.MarketMap) error {
 		}
 		if mar.OptionType != ccxt.OptionType {
 			diffs["OptionType"] = fmt.Sprintf("%v-%v", mar.OptionType, ccxt.OptionType)
-		}
-		if mar.SubType != ccxt.SubType {
-			diffs["SubType"] = fmt.Sprintf("%v-%v", mar.SubType, ccxt.SubType)
 		}
 		prec1 := mar.Precision.ToString()
 		prec2 := ccxt.Precision.ToString()
@@ -300,10 +298,10 @@ func TestFetchBalances(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
 		{"market": banexg.MarketSpot},
-		{"market": banexg.MarketSwap},
-		{"market": banexg.MarketFuture, "inverse": true},
-		{"marginMode": banexg.MarginCross},
-		{"marginMode": banexg.MarginIsolated},
+		{"market": banexg.MarketLinear},
+		{"market": banexg.MarketInverse},
+		{banexg.ParamMarginMode: banexg.MarginCross},
+		{banexg.ParamMarginMode: banexg.MarginIsolated},
 		{"market": "funding"},
 	}
 	for _, item := range cases {
@@ -322,8 +320,8 @@ func TestFetchOrders(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
 		//{"market": banexg.MarketSpot},
-		{"market": banexg.MarketSwap},
-		//{"market": banexg.MarketFuture, "inverse": true},
+		{"market": banexg.MarketLinear},
+		//{"market": banexg.MarketInverse},
 		//{"market": banexg.MarketOption},
 	}
 	symbol := "GAS/USDT"
@@ -394,19 +392,19 @@ func TestGetMarketType(t *testing.T) {
 	spotBtc := "BTC/USDT"
 	swapBtc := "BTC/USDT:USDT"
 	inverseBtc := "BTC/USD:BTC"
-	mtype, inverse := exg.GetArgsMarketType(nil, spotBtc)
-	if mtype != banexg.MarketSpot || inverse {
-		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: spot", mtype, inverse)
+	mtype, _ := exg.GetArgsMarketType(nil, spotBtc)
+	if mtype != banexg.MarketSpot {
+		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: spot", mtype)
 	}
 
-	mtype, inverse = exg.GetArgsMarketType(nil, swapBtc)
-	if mtype != banexg.MarketSwap || inverse {
-		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: swap", mtype, inverse)
+	mtype, _ = exg.GetArgsMarketType(nil, swapBtc)
+	if mtype != banexg.MarketLinear {
+		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: swap", mtype)
 	}
 
-	mtype, inverse = exg.GetArgsMarketType(nil, inverseBtc)
-	if mtype != banexg.MarketSwap || !inverse {
-		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: inverse", mtype, inverse)
+	mtype, _ = exg.GetArgsMarketType(nil, inverseBtc)
+	if mtype != banexg.MarketInverse {
+		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: inverse", mtype)
 	}
 }
 
@@ -443,4 +441,20 @@ func TestGetMarketById(t *testing.T) {
 			t.Errorf("FAIL SafeMarket %v %v out: %v exp: %v", it.symbol, it.market, mar.Symbol, it.output)
 		}
 	}
+}
+
+func TestMarketCopy(t *testing.T) {
+	exg := getBinance(nil)
+	_, err := exg.LoadMarkets(false, nil)
+	if err != nil {
+		panic(err)
+	}
+	symbol := "BTC/USDT"
+	mar, err := exg.GetMarket(symbol)
+	if err != nil {
+		panic(err)
+	}
+	mar2 := *mar
+	mar2.Type = banexg.MarketMargin
+	t.Logf("%v -> %v, addr: %p -> %p", mar.Type, mar2.Type, mar, &mar2)
 }

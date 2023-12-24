@@ -48,7 +48,7 @@ func (e *Exchange) Init() {
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
-	utils.SetFieldBy(&e.MarketInverse, e.Options, OptMarketInverse, false)
+	utils.SetFieldBy(&e.ContractType, e.Options, OptContractType, "")
 	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
@@ -257,7 +257,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 		if mar.Spot && e.IsContract("") {
 			// 当前是合约模式，返回合约的Market
 			settle := mar.Quote
-			if e.MarketInverse {
+			if e.MarketType == MarketInverse {
 				settle = mar.Base
 			}
 			futureSymbol := symbol + ":" + settle
@@ -300,28 +300,13 @@ func (e *Exchange) GetMarketById(marketId, marketType string) *Market {
 		if marketType == "" {
 			marketType = e.MarketType
 		}
-		isLinear := marketType == MarketLinear
-		isInverse := marketType == MarketInverse
 		for _, mar := range mars {
 			if mar.Type == marketType {
 				return mar
-			} else if isLinear && mar.Linear {
-				return mar
-			} else if isInverse && mar.Inverse {
-				return mar
-			}
-		}
-		baseType := e.StdMarketType(marketType, false)
-		if baseType != marketType {
-			// 直接从marketType未找到时，将swap/future转为linear/inverse尝试找
-			isLinear = baseType == MarketLinear
-			isInverse = baseType == MarketInverse
-			for _, mar := range mars {
-				if isLinear && mar.Linear {
-					return mar
-				} else if isInverse && mar.Inverse {
-					return mar
-				}
+			} else if mar.Margin && marketType == MarketMargin {
+				mar2 := *mar
+				mar2.Type = MarketMargin
+				return &mar2
 			}
 		}
 	}
@@ -388,6 +373,10 @@ func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *ma
 }
 
 func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error) {
+	return nil, ErrNotImplement
+}
+
+func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, error) {
 	return nil, ErrNotImplement
 }
 
@@ -463,23 +452,6 @@ func (e *Exchange) PriceOnePip(symbol string) (float64, error) {
 		return prec, nil
 	}
 	return 1 / math.Pow(10.0, prec), nil
-}
-
-/*
-StdMarketType
-对市场类型返回大类
-
-	future/swap -> linear/inverse
-	spot,margin,option 不变
-*/
-func (e *Exchange) StdMarketType(marType string, inverse bool) string {
-	if marType == MarketFuture || marType == MarketSwap {
-		if inverse {
-			return MarketInverse
-		}
-		return MarketLinear
-	}
-	return marType
 }
 
 /*
@@ -619,26 +591,20 @@ func (e *Exchange) GetTimeFrame(timeframe string) string {
 	return timeframe
 }
 
-func (e *Exchange) GetArgsMarketType(args map[string]interface{}, symbol string) (string, bool) {
+func (e *Exchange) GetArgsMarketType(args map[string]interface{}, symbol string) (string, string) {
 	marketType := utils.PopMapVal(args, "market", "")
-	marketInverse := utils.PopMapVal(args, "inverse", false)
+	contractType := utils.GetMapVal(args, "contract", "")
 	if marketType == "" {
 		marketType = e.MarketType
-		marketInverse = e.MarketInverse
+		contractType = e.ContractType
 		if symbol != "" {
 			market, err := e.GetMarket(symbol)
 			if err == nil {
 				marketType = market.Type
-				marketInverse = market.Inverse
 			}
 		}
 	}
-	if marketType == MarketInverse {
-		marketInverse = true
-	} else if marketType == MarketLinear {
-		marketInverse = false
-	}
-	return marketType, marketInverse
+	return marketType, contractType
 }
 
 /*
@@ -647,17 +613,40 @@ GetArgsMarket
 */
 func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*Market, error) {
 	marketType := utils.GetMapVal(args, "market", "")
-	marketInverse := utils.GetMapVal(args, "inverse", false)
-	backType, backInverse := "", false
+	contractType := utils.GetMapVal(args, "contract", "")
+	backType, backContrType := "", ""
 	if marketType != "" {
-		backType, backInverse = e.MarketType, e.MarketInverse
-		e.MarketType, e.MarketInverse = marketType, marketInverse
+		backType, backContrType = e.MarketType, e.ContractType
+		e.MarketType, e.ContractType = marketType, contractType
 	}
 	market, err := e.GetMarket(symbol)
 	if marketType != "" {
-		e.MarketType, e.MarketInverse = backType, backInverse
+		e.MarketType, e.ContractType = backType, backContrType
+		if marketType == MarketMargin {
+			//market.Type无法区分margin，这里复制并设置为margin
+			market2 := *market
+			market2.Type = MarketMargin
+			return &market2, err
+		}
 	}
 	return market, err
+}
+
+/*
+LoadArgsMarket
+LoadMarkets && GetArgsMarket
+*/
+func (e *Exchange) LoadArgsMarket(symbol string, params *map[string]interface{}) (map[string]interface{}, *Market, error) {
+	var args = utils.SafeParams(params)
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return args, nil, fmt.Errorf("load markets fail: %v", err)
+	}
+	market, err := e.GetArgsMarket(symbol, args)
+	if err != nil {
+		return args, nil, fmt.Errorf("get market fail: %v", err)
+	}
+	return args, market, err
 }
 
 func (e *Exchange) PrecAmount(m *Market, amount float64) (string, error) {

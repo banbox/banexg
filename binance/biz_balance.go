@@ -32,10 +32,9 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 		return nil, fmt.Errorf("load markets fail: %v", err)
 	}
 	var args = utils.SafeParams(params)
-	marketType, marketInverse := e.GetArgsMarketType(args, "")
-	marginMode := utils.PopMapVal(args, "marginMode", "")
+	marketType, _ := e.GetArgsMarketType(args, "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := "privateGetAccount"
-	marketType = e.StdMarketType(marketType, marketInverse)
 	if marketType == banexg.MarketLinear {
 		method = "fapiPrivateV2GetAccount"
 	} else if marketType == banexg.MarketInverse {

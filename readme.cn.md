@@ -41,9 +41,9 @@
 ### 常见参数命名调整
 **`ccxt.defaultType` -> `MarketType`**  
 当前交易所的默认市场类型。可在初始化时传入`OptMarketType`设置，也可随时设置交易所的`MarketType`属性。  
-有效值：`MarketSpot/MarketMargin/MarketSwap/MarketFuture/MarketOption`  
+有效值：`MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption`  
 ccxt中币安的defaultType命名和其他交易所不一致，banexg中进行了统一命名。  
 
-**`ccxt.defaultSubType` -> `MarketInverse`**  
-当前交易所市场结算类型，ccxt中可选值为`linear`和`inverse`。banexg中改为`bool`类型的`MarketInverse`，默认false。  
-可在初始化时传入`OptMarketInverse`设置，也可初始化后设置交易所的`MarketInverse`属性。  
+**`ContractType`**  
+当前交易所合约类型，可选值`swap`永续合约，`future`有到期日的合约。  
+可在初始化时传入`OptContractType`设置，也可初始化后设置交易所的`ContractType`属性。  

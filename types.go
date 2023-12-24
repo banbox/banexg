@@ -44,8 +44,8 @@ type Exchange struct {
 
 	PrecisionMode int
 	PrecPadZero   bool   // padding zero for precision
-	MarketType    string // MarketSpot/MarketMargin/MarketSwap/MarketFuture/MarketOption
-	MarketInverse bool   // true: coin-based contract
+	MarketType    string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
+	ContractType  string // MarketSwap/MarketFuture
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
 
@@ -181,7 +181,7 @@ type Market struct {
 	BaseID         string        `json:"baseId"`
 	QuoteID        string        `json:"quoteId"`
 	SettleID       string        `json:"settleId"`
-	Type           string        `json:"type"`
+	Type           string        `json:"type"` // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
 	Spot           bool          `json:"spot"`
 	Margin         bool          `json:"margin"`
 	Swap           bool          `json:"swap"`
@@ -201,7 +201,6 @@ type Market struct {
 	Precision      *Precision    `json:"precision"`
 	Limits         *MarketLimits `json:"limits"`
 	Created        int64         `json:"created"`
-	SubType        string        `json:"subType"`
 	FeeSide        string        `json:"feeSide"` // get/give/base/quote/other
 	Info           interface{}   `json:"info"`
 }

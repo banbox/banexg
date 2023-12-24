@@ -15,26 +15,20 @@ FetchOrders 获取自己的订单
 symbol: 必填，币种
 */
 func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, error) {
-	_, err := e.LoadMarkets(false, nil)
+	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
-	}
-	var args = utils.SafeParams(params)
-	marketType, marketInverse := e.GetArgsMarketType(args, symbol)
-	market, err := e.GetMarket(symbol)
-	if err != nil {
-		return nil, fmt.Errorf("get market fail: %v", err)
+		return nil, err
 	}
 	args["symbol"] = market.ID
-	marginMode := utils.PopMapVal(args, "marginMode", "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := "privateGetAllOrders"
-	if marketType == banexg.MarketOption {
+	if market.Option {
 		method = "eapiPrivateGetHistoryOrders"
-	} else if marketType == banexg.MarketFuture {
+	} else if market.Linear {
 		method = "fapiPrivateGetAllOrders"
-	} else if marketInverse {
+	} else if market.Inverse {
 		method = "dapiPrivateGetAllOrders"
-	} else if marketType == banexg.MarketMargin || marginMode != "" {
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = "sapiGetMarginAllOrders"
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
@@ -70,6 +64,66 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 		return parseOrders[*MarginOrder](market, rsp)
 	default:
 		return nil, fmt.Errorf("not support order method %s", method)
+	}
+}
+
+/*
+CancelOrder
+cancels an open order
+
+	:see: https://binance-docs.github.io/apidocs/spot/en/#cancel-order-trade
+	:see: https://binance-docs.github.io/apidocs/futures/en/#cancel-order-trade
+	:see: https://binance-docs.github.io/apidocs/delivery/en/#cancel-order-trade
+	:see: https://binance-docs.github.io/apidocs/voptions/en/#cancel-option-order-trade
+	:see: https://binance-docs.github.io/apidocs/spot/en/#margin-account-cancel-order-trade
+	:param str id: order id
+	:param str symbol: unified symbol of the market the order was made in
+	:param dict [params]: extra parameters specific to the exchange API endpoint
+	:returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+*/
+func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*banexg.Order, error) {
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
+	args["symbol"] = market.ID
+	if clientOrderId != "" {
+		if market.Option {
+			args["clientOrderId"] = clientOrderId
+		} else {
+			args["origClientOrderId"] = clientOrderId
+		}
+	} else {
+		args["orderId"] = id
+	}
+	method := "privateDeleteOrder"
+	if market.Option {
+		method = "eapiPrivateDeleteOrder"
+	} else if market.Linear {
+		method = "fapiPrivateDeleteOrder"
+	} else if market.Inverse {
+		method = "dapiPrivateDeleteOrder"
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
+		method = "sapiDeleteMarginOrder"
+		if marginMode == "isolated" {
+			args["isIsolated"] = true
+		}
+	}
+	rsp := e.RequestApi(context.Background(), method, &args)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	if method == "fapiPrivateDeleteOrder" {
+		return parseOrder[*FutureOrder](market, rsp)
+	} else if method == "dapiPrivateDeleteOrder" {
+		return parseOrder[*InverseOrder](market, rsp)
+	} else if method == "eapiPrivateDeleteOrder" {
+		return parseOrder[*OptionOrder](market, rsp)
+	} else {
+		// spot margin sor
+		return parseOrder[*SpotOrder](market, rsp)
 	}
 }
 

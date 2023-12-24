@@ -22,6 +22,8 @@ const (
 	ParamCallbackRate       = "callbackRate"  // 跟踪止损回调百分比
 	ParamRolling            = "rolling"
 	ParamTest               = "test"
+	ParamMarginMode         = "marginMode"
+	ParamPositionSide       = "positionSide"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -77,7 +79,7 @@ const (
 	OptCareMarkets   = "CareMarkets"
 	OptPrecisionMode = "PrecisionMode"
 	OptMarketType    = "MarketType"
-	OptMarketInverse = "MarketInverse"
+	OptContractType  = "ContractType"
 	OptTimeInForce   = "TimeInForce"
 )
 
@@ -100,14 +102,14 @@ const (
 )
 
 const (
-	MarketSpot   = "spot"   // 现货交易
-	MarketMargin = "margin" // 保证金杠杆现货交易 margin trade
-	MarketSwap   = "swap"   // 永续合约 for perpetual swap futures that don't have a delivery date
-	MarketFuture = "future" // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
-	MarketOption = "option" // 期权 for option contracts
-
+	MarketSpot    = "spot"   // 现货交易
+	MarketMargin  = "margin" // 保证金杠杆现货交易 margin trade
 	MarketLinear  = "linear"
 	MarketInverse = "inverse"
+	MarketOption  = "option" // 期权 for option contracts
+
+	MarketSwap   = "swap"   // 永续合约 for perpetual swap futures that don't have a delivery date
+	MarketFuture = "future" // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
 )
 
 const (
