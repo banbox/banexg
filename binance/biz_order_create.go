@@ -43,7 +43,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		return nil, fmt.Errorf("load markets fail: %v", err)
 	}
 	var args = utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarket(args)
+	marketType, _ := e.GetArgsMarketType(args, symbol)
 	market, err := e.GetMarket(symbol)
 	if err != nil {
 		return nil, fmt.Errorf("get market fail: %v", err)

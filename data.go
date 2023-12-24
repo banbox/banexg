@@ -20,6 +20,7 @@ const (
 	ParamCost               = "cost"
 	ParamClosePosition      = "closePosition" // 触发后全部平仓
 	ParamCallbackRate       = "callbackRate"  // 跟踪止损回调百分比
+	ParamRolling            = "rolling"
 	ParamTest               = "test"
 
 	UriEncodeSafe = utils.UriEncodeSafe

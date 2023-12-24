@@ -32,16 +32,14 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 		return nil, fmt.Errorf("load markets fail: %v", err)
 	}
 	var args = utils.SafeParams(params)
-	marketType, marketInverse := e.GetArgsMarket(args)
+	marketType, marketInverse := e.GetArgsMarketType(args, "")
 	marginMode := utils.PopMapVal(args, "marginMode", "")
 	method := "privateGetAccount"
-	isContract := marketType == banexg.MarketSwap || marketType == banexg.MarketFuture
-	if isContract {
-		if !marketInverse {
-			method = "fapiPrivateV2GetAccount"
-		} else {
-			method = "dapiPrivateGetAccount"
-		}
+	marketType = e.StdMarketType(marketType, marketInverse)
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivateV2GetAccount"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateGetAccount"
 	} else if marginMode == "isolated" {
 		method = "sapiGetMarginIsolatedAccount"
 		symbols := utils.GetMapVal(args, "symbols", []string{})

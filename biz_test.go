@@ -1,6 +1,8 @@
 package banexg
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestSetOptions(t *testing.T) {
 	FakeApiKey := "123"
@@ -33,7 +35,7 @@ func TestCalcFee(t *testing.T) {
 	symbol := "FOO/BAR"
 	exg := Exchange{
 		Markets: map[string]*Market{
-			symbol: &Market{
+			symbol: {
 				ID:     "foobar",
 				Symbol: symbol,
 				Base:   "FOO",

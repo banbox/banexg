@@ -225,6 +225,28 @@ type MarketMap = map[string]*Market
 
 type MarketArrMap = map[string][]*Market
 
+type Ticker struct {
+	Symbol        string      `json:"symbol"`
+	TimeStamp     int64       `json:"timestamp"`
+	Bid           float64     `json:"bid"`
+	BidVolume     float64     `json:"bidVolume"`
+	Ask           float64     `json:"ask"`
+	AskVolume     float64     `json:"askVolume"`
+	High          float64     `json:"high"`
+	Low           float64     `json:"low"`
+	Open          float64     `json:"open"`
+	Close         float64     `json:"close"`
+	Last          float64     `json:"last"`
+	Change        float64     `json:"change"`
+	Percentage    float64     `json:"percentage"`
+	Average       float64     `json:"average"`
+	Vwap          float64     `json:"vwap"`
+	BaseVolume    float64     `json:"baseVolume"`
+	QuoteVolume   float64     `json:"quoteVolume"`
+	PreviousClose float64     `json:"previousClose"`
+	Info          interface{} `json:"info"`
+}
+
 /*
 **************************   Business Types   **************************
  */

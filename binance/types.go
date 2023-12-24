@@ -448,3 +448,106 @@ type SpotFill struct {
 type IBnbOrder interface {
 	ToStdOrder(m *banexg.Market) *banexg.Order
 }
+
+/*
+*****************************   Tickers   ***********************************
+ */
+
+/*
+SpotTicker 现货: /ticker & /ticker/tradingDay
+*/
+type SpotTicker struct {
+	Symbol             string `json:"symbol"`             // 交易对
+	PriceChange        string `json:"priceChange"`        // 24小时价格变动
+	PriceChangePercent string `json:"priceChangePercent"` // 24小时价格变动百分比
+	WeightedAvgPrice   string `json:"weightedAvgPrice"`   // 加权平均价
+	LastPrice          string `json:"lastPrice"`          // 最近一次成交价
+	LastQty            string `json:"lastQty"`            // 最近一次成交额
+	OpenPrice          string `json:"openPrice"`          // 24小时内第一次成交的价格
+	HighPrice          string `json:"highPrice"`          // 24小时最高价
+	LowPrice           string `json:"lowPrice"`           // 24小时最低价
+	Volume             string `json:"volume"`             // 24小时成交量
+	QuoteVolume        string `json:"quoteVolume"`        // 24小时成交额
+	OpenTime           int64  `json:"openTime"`           // 24小时内，第一笔交易的发生时间
+	CloseTime          int64  `json:"closeTime"`          // 24小时内，最后一笔交易的发生时间
+	FirstId            int    `json:"firstId"`            // 首笔成交id
+	LastId             int    `json:"lastId"`             // 末笔成交id
+	Count              int    `json:"count"`              // 成交笔数
+}
+
+type LinearTicker struct {
+	SpotTicker
+	LastQty string `json:"lastQty"` // 最近一次成交额
+}
+
+type BookTicker struct {
+	Symbol   string `json:"symbol"`   // 交易对
+	AskPrice string `json:"askPrice"` // 卖价
+	AskQty   string `json:"askQty"`   // 卖单数量
+	BidPrice string `json:"bidPrice"` // 买价
+	BidQty   string `json:"bidQty"`   // 买单数量
+}
+
+type SpotPriceTicker struct {
+	Symbol string `json:"symbol"` // 交易对
+	Price  string `json:"price"`  // 最新价格
+}
+
+type SpotTicker24hr struct {
+	BookTicker
+	LinearTicker
+	PrevClosePrice string `json:"prevClosePrice"` // 前收盘价
+}
+
+type LinearBookTicker struct {
+	BookTicker
+	LastUpdateId int   `json:"lastUpdateId"`
+	Time         int64 `json:"time"`
+}
+
+type LinearPriceTicker struct {
+	SpotPriceTicker
+	Time int64 `json:"time"`
+}
+
+type InverseTicker24hr struct {
+	SpotTicker
+	BaseVolume string `json:"baseVolume"` // 24小时成交额
+	LastQty    string `json:"lastQty"`    // 最近一次成交额
+	Pair       string `json:"pair"`
+}
+
+type InverseBookTicker struct {
+	LinearBookTicker
+	Pair string `json:"pair"`
+}
+
+type InversePriceTicker struct {
+	LinearPriceTicker
+	PS string `json:"ps"` // 标的交易对
+}
+
+type OptionTicker struct {
+	Symbol             string  `json:"symbol"`
+	PriceChange        float64 `json:"priceChange,string"`        // 24小时价格变动
+	PriceChangePercent float64 `json:"priceChangePercent,string"` // 24小时价格变动百分比
+	LastPrice          float64 `json:"lastPrice,string"`          // 最近一次成交价
+	LastQty            float64 `json:"lastQty,string"`            // 最近一次成交额
+	Open               float64 `json:"open,string"`               // 24小时内第一次成交的价格
+	High               float64 `json:"high,string"`               // 24小时最高价
+	Low                float64 `json:"low,string"`                // 24小时最低价
+	Volume             float64 `json:"volume,string"`             // 成交额
+	Amount             float64 `json:"amount,string"`             // 成交量
+	BidPrice           float64 `json:"bidPrice,string"`           // 最优买价
+	AskPrice           float64 `json:"askPrice,string"`           // 最优卖价
+	OpenTime           int64   `json:"openTime"`                  // 24小时内，第一笔交易的发生时间
+	CloseTime          int64   `json:"closeTime"`                 // 24小时内，最后一笔交易的发生时间
+	FirstTradeID       int     `json:"firstTradeId"`              // 首笔成交ID
+	TradeCount         int     `json:"tradeCount"`                // 成交笔数
+	StrikePrice        float64 `json:"strikePrice,string"`        // 行权价
+	ExercisePrice      float64 `json:"exercisePrice,string"`      // 行权前半小时返回预估结算价，其他时刻返回指数价格
+}
+
+type IBnbTicker interface {
+	ToStdTicker(e *Binance, marketType string) *banexg.Ticker
+}

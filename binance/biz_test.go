@@ -7,6 +7,7 @@ import (
 	"github.com/anyongjin/banexg/utils"
 	"go.uber.org/zap"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -139,7 +140,7 @@ func compareMarkets(t *testing.T, markets, ccxtMarkets banexg.MarketMap) error {
 			sames = append(sames, k)
 		}
 	}
-	for k, _ := range ccxtMarkets {
+	for k := range ccxtMarkets {
 		if _, ok := markets[k]; !ok {
 			lacks = append(lacks, k)
 		}
@@ -210,7 +211,7 @@ func compareCurrs(t *testing.T, currs, ccxtCurrs banexg.CurrencyMap) error {
 			sames = append(sames, k)
 		}
 	}
-	for k, _ := range ccxtCurrs {
+	for k := range ccxtCurrs {
 		if _, ok := currs[k]; !ok {
 			lacks = append(lacks, k)
 		}
@@ -335,5 +336,111 @@ func TestFetchOrders(t *testing.T) {
 		}
 		resText, _ := sonic.MarshalString(res)
 		t.Logf("%s result: %s", text, resText)
+	}
+}
+
+func TestGetMarket(t *testing.T) {
+	exg := getBinance(nil)
+	markets, err := exg.LoadMarkets(false, nil)
+	if err != nil {
+		panic(err)
+	}
+	for symbol := range markets {
+		if !strings.HasPrefix(symbol, "BTC/") {
+			continue
+		}
+		mar, err := exg.GetMarket(symbol)
+		if err != nil {
+			panic(err)
+		}
+		if mar.Symbol != symbol {
+			t.Errorf("FAIL GetMarket, get: %v, expect %v", mar.Symbol, symbol)
+		} else {
+			t.Logf("PASS GetMarket: %v", mar.Symbol)
+		}
+	}
+
+	items := []struct {
+		Symbol string
+		Output string
+		Args   map[string]interface{}
+	}{
+		{"BTC/USDT", "BTC/USDT", nil},
+		{"BTC/USDT:USDT", "BTC/USDT:USDT", nil},
+		{"BTC/USDT", "BTC/USDT:USDT", map[string]interface{}{
+			"market": banexg.MarketLinear,
+		}},
+		{"BTC/USDT", "BTC/USDT:USDT", map[string]interface{}{
+			"market": banexg.MarketSwap,
+		}},
+	}
+	for _, item := range items {
+		mar, err := exg.GetArgsMarket(item.Symbol, item.Args)
+		if err != nil {
+			panic(err)
+		}
+		if mar.Symbol != item.Output {
+			t.Errorf("FAIL GetArgsMarket %v, exp: %v", mar.Symbol, item.Output)
+		}
+	}
+}
+
+func TestGetMarketType(t *testing.T) {
+	exg := getBinance(nil)
+	_, err := exg.LoadMarkets(false, nil)
+	if err != nil {
+		panic(err)
+	}
+	spotBtc := "BTC/USDT"
+	swapBtc := "BTC/USDT:USDT"
+	inverseBtc := "BTC/USD:BTC"
+	mtype, inverse := exg.GetArgsMarketType(nil, spotBtc)
+	if mtype != banexg.MarketSpot || inverse {
+		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: spot", mtype, inverse)
+	}
+
+	mtype, inverse = exg.GetArgsMarketType(nil, swapBtc)
+	if mtype != banexg.MarketSwap || inverse {
+		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: swap", mtype, inverse)
+	}
+
+	mtype, inverse = exg.GetArgsMarketType(nil, inverseBtc)
+	if mtype != banexg.MarketSwap || !inverse {
+		t.Errorf("FAIL GetArgsMarketType, get: %v %v, expect: inverse", mtype, inverse)
+	}
+}
+
+func TestGetMarketById(t *testing.T) {
+	exg := getBinance(nil)
+	_, err := exg.LoadMarkets(false, nil)
+	if err != nil {
+		panic(err)
+	}
+	btcSwap := "BTC/USDT:USDT"
+	btcFut := "BTC/USDT:USDT-242903"
+	btcFutMar := *exg.Markets[btcSwap]
+	btcFutMar.Symbol = btcFut
+	exg.MarketsById[btcFut] = []*banexg.Market{
+		&btcFutMar,
+	}
+	items := []struct {
+		symbol string
+		market string
+		output string
+	}{
+		{"BTCUSDT", "spot", "BTC/USDT"},
+		{"BTCUSDT", "linear", "BTC/USDT:USDT"},
+		{"BTCUSDT", "swap", btcSwap},
+		{"BTCUSDT", "future", btcSwap},
+	}
+	for _, it := range items {
+		mar := exg.GetMarketById(it.symbol, it.market)
+		if mar.Symbol != it.output {
+			t.Errorf("FAIL GetMarketById %v %v out: %v exp: %v", it.symbol, it.market, mar.Symbol, it.output)
+		}
+		mar = exg.SafeMarket(it.symbol, "", it.market)
+		if mar.Symbol != it.output {
+			t.Errorf("FAIL SafeMarket %v %v out: %v exp: %v", it.symbol, it.market, mar.Symbol, it.output)
+		}
 	}
 }

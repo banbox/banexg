@@ -20,17 +20,12 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 		return nil, fmt.Errorf("load markets fail: %v", err)
 	}
 	var args = utils.SafeParams(params)
-	marketType, marketInverse := e.GetArgsMarket(args)
+	marketType, marketInverse := e.GetArgsMarketType(args, symbol)
 	market, err := e.GetMarket(symbol)
 	if err != nil {
 		return nil, fmt.Errorf("get market fail: %v", err)
 	}
 	args["symbol"] = market.ID
-	if market.Option {
-		marketType = banexg.MarketOption
-	} else if market.Linear {
-		marketType = banexg.MarketFuture
-	}
 	marginMode := utils.PopMapVal(args, "marginMode", "")
 	method := "privateGetAllOrders"
 	if marketType == banexg.MarketOption {
