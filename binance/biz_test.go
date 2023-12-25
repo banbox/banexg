@@ -458,3 +458,12 @@ func TestMarketCopy(t *testing.T) {
 	mar2.Type = banexg.MarketMargin
 	t.Logf("%v -> %v, addr: %p -> %p", mar.Type, mar2.Type, mar, &mar2)
 }
+
+func TestSetLeverage(t *testing.T) {
+	exg := getBinance(nil)
+	res, err := exg.SetLeverage(8, "GAS/USDT:USDT", nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("set leverage: %v", res)
+}

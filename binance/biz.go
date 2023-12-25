@@ -559,3 +559,47 @@ func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, p
 		return parseBnbOhlcv(rsp, volIndex)
 	}
 }
+
+/*
+SetLeverage
+set the level of leverage for a market
+
+	:see: https://binance-docs.github.io/apidocs/futures/en/#change-initial-leverage-trade
+	:see: https://binance-docs.github.io/apidocs/delivery/en/#change-initial-leverage-trade
+	:param float leverage: the rate of leverage
+	:param str symbol: unified market symbol
+	:param dict [params]: extra parameters specific to the exchange API endpoint
+	:returns dict: response from the exchange
+*/
+func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, error) {
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required for %v.SetLeverage", e.Name)
+	}
+	if leverage < 1 || leverage > 125 {
+		return nil, fmt.Errorf("%v leverage should be between 1 and 125", e.Name)
+	}
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	var method string
+	if market.Linear {
+		method = "fapiPrivatePostLeverage"
+	} else if market.Inverse {
+		method = "dapiPrivatePostLeverage"
+	} else {
+		return nil, fmt.Errorf("%v SetLeverage supports linear and inverse contracts only", e.Name)
+	}
+	args["symbol"] = market.ID
+	args["leverage"] = leverage
+	rsp := e.RequestApi(context.Background(), method, &args)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var res = make(map[string]interface{})
+	err = sonic.UnmarshalString(rsp.Content, &res)
+	if err != nil {
+		return nil, fmt.Errorf("%s decode rsp fail: %v", e.Name, err)
+	}
+	return res, nil
+}
