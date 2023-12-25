@@ -330,3 +330,11 @@ type Fee struct {
 	Cost     float64 `json:"cost"`
 	Rate     float64 `json:"rate,omitempty"`
 }
+
+type OrderBook struct {
+	Symbol    string       `json:"symbol"`
+	TimeStamp int64        `json:"timestamp"`
+	Asks      [][2]float64 `json:"asks"`
+	Bids      [][2]float64 `json:"bids"`
+	Info      interface{}  `json:"info"`
+}

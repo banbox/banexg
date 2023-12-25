@@ -551,3 +551,40 @@ type OptionTicker struct {
 type IBnbTicker interface {
 	ToStdTicker(e *Binance, marketType string) *banexg.Ticker
 }
+
+/*
+*****************************   OrderBook   ***********************************
+ */
+
+type BaseOrderBook struct {
+	Bids [][]string `json:"bids"`
+	Asks [][]string `json:"asks"`
+}
+
+type OptionOrderBook struct {
+	BaseOrderBook
+	Time     int64 `json:"T"`
+	UpdateID int   `json:"u"`
+}
+
+type LinearOrderBook struct {
+	BaseOrderBook
+	Time     int64 `json:"T"`
+	MsgTime  int64 `json:"E"`
+	UpdateID int   `json:"lastUpdateId"`
+}
+
+type InverseOrderBook struct {
+	LinearOrderBook
+	Symbol string `json:"symbol"`
+	Pair   string `json:"pair"`
+}
+
+type SpotOrderBook struct {
+	BaseOrderBook
+	UpdateID int `json:"lastUpdateId"`
+}
+
+type IBnbOrderBook interface {
+	ToStdOrderBook(m *banexg.Market) *banexg.OrderBook
+}

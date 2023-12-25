@@ -372,11 +372,19 @@ func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *ma
 	return nil, ErrNotImplement
 }
 
+func (e *Exchange) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, error) {
+	return nil, ErrNotImplement
+}
+
 func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error) {
 	return nil, ErrNotImplement
 }
 
 func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, error) {
+	return nil, ErrNotImplement
+}
+
+func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, error) {
 	return nil, ErrNotImplement
 }
 
