@@ -271,14 +271,17 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
+	var mapSymbol = func(mid string) string {
+		return market.Symbol
+	}
 	if method == "fapiPrivatePostOrder" {
-		return parseOrder[*FutureOrder](market, rsp)
+		return parseOrder[*FutureOrder](mapSymbol, rsp)
 	} else if method == "dapiPrivatePostOrder" {
-		return parseOrder[*InverseOrder](market, rsp)
+		return parseOrder[*InverseOrder](mapSymbol, rsp)
 	} else if method == "eapiPrivatePostOrder" {
-		return parseOrder[*OptionOrder](market, rsp)
+		return parseOrder[*OptionOrder](mapSymbol, rsp)
 	} else {
 		// spot margin sor
-		return parseOrder[*SpotOrder](market, rsp)
+		return parseOrder[*SpotOrder](mapSymbol, rsp)
 	}
 }

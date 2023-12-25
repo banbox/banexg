@@ -446,7 +446,7 @@ type SpotFill struct {
 }
 
 type IBnbOrder interface {
-	ToStdOrder(m *banexg.Market) *banexg.Order
+	ToStdOrder(func(string) string) *banexg.Order
 }
 
 /*

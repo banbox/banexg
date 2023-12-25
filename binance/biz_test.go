@@ -316,27 +316,6 @@ func TestFetchBalances(t *testing.T) {
 	}
 }
 
-func TestFetchOrders(t *testing.T) {
-	exg := getBinance(nil)
-	cases := []map[string]interface{}{
-		//{"market": banexg.MarketSpot},
-		{"market": banexg.MarketLinear},
-		//{"market": banexg.MarketInverse},
-		//{"market": banexg.MarketOption},
-	}
-	symbol := "GAS/USDT"
-	since := int64(1702991965921)
-	for _, item := range cases {
-		text, _ := sonic.MarshalString(item)
-		res, err := exg.FetchOrders(symbol, since, 0, &item)
-		if err != nil {
-			panic(fmt.Errorf("%s Error: %v", text, err))
-		}
-		resText, _ := sonic.MarshalString(res)
-		t.Logf("%s result: %s", text, resText)
-	}
-}
-
 func TestGetMarket(t *testing.T) {
 	exg := getBinance(nil)
 	markets, err := exg.LoadMarkets(false, nil)

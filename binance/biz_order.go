@@ -48,20 +48,107 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
-	if !strings.HasPrefix(rsp.Content, "[") {
-		return nil, fmt.Errorf(rsp.Content)
+	var mapSymbol = func(mid string) string {
+		return market.Symbol
 	}
 	switch method {
 	case "privateGetAllOrders":
-		return parseOrders[*SpotOrder](market, rsp)
+		return parseOrders[*SpotOrder](mapSymbol, rsp)
 	case "eapiPrivateGetHistoryOrders":
-		return parseOrders[*OptionOrder](market, rsp)
+		return parseOrders[*OptionOrder](mapSymbol, rsp)
 	case "fapiPrivateGetAllOrders":
-		return parseOrders[*FutureOrder](market, rsp)
+		return parseOrders[*FutureOrder](mapSymbol, rsp)
 	case "dapiPrivateGetAllOrders":
-		return parseOrders[*InverseOrder](market, rsp)
+		return parseOrders[*InverseOrder](mapSymbol, rsp)
 	case "sapiGetMarginAllOrders":
-		return parseOrders[*MarginOrder](market, rsp)
+		return parseOrders[*MarginOrder](mapSymbol, rsp)
+	default:
+		return nil, fmt.Errorf("not support order method %s", method)
+	}
+}
+
+/*
+FetchOpenOrders
+
+:see: https://binance-docs.github.io/apidocs/spot/en/#cancel-an-existing-order-and-send-a-new-order-trade
+:see: https://binance-docs.github.io/apidocs/futures/en/#current-all-open-orders-user_data
+:see: https://binance-docs.github.io/apidocs/delivery/en/#current-all-open-orders-user_data
+:see: https://binance-docs.github.io/apidocs/voptions/en/#query-current-open-option-orders-user_data
+fetch all unfilled currently open orders
+:see: https://binance-docs.github.io/apidocs/spot/en/#current-open-orders-user_data
+:see: https://binance-docs.github.io/apidocs/futures/en/#current-all-open-orders-user_data
+:see: https://binance-docs.github.io/apidocs/delivery/en/#current-all-open-orders-user_data
+:see: https://binance-docs.github.io/apidocs/voptions/en/#query-current-open-option-orders-user_data
+:see: https://binance-docs.github.io/apidocs/spot/en/#query-margin-account-39-s-open-orders-user_data
+:param str symbol: unified market symbol
+:param int [since]: the earliest time in ms to fetch open orders for
+:param int [limit]: the maximum number of open orders structures to retrieve
+:param dict [params]: extra parameters specific to the exchange API endpoint
+:param str [params.marginMode]: 'cross' or 'isolated', for spot margin trading
+:returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+*/
+func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, error) {
+	var args map[string]interface{}
+	var marketType string
+	if symbol != "" {
+		argsIn, market, err := e.LoadArgsMarket(symbol, params)
+		if err != nil {
+			return nil, err
+		}
+		args = argsIn
+		args["symbol"] = market.ID
+		marketType = market.Type
+	} else {
+		args = utils.SafeParams(params)
+		marketType, _ = e.GetArgsMarketType(args, "")
+	}
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	method := "privateGetOpenOrders"
+	if marketType == banexg.MarketOption {
+		method = "eapiPrivateGetOpenOrders"
+		if since > 0 {
+			args["startTime"] = since
+		}
+		if limit > 0 {
+			args["limit"] = limit
+		}
+	} else if marketType == banexg.MarketLinear {
+		method = "fapiPrivateGetOpenOrders"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateGetOpenOrders"
+	} else if marketType == banexg.MarketMargin || marginMode != "" {
+		method = "sapiGetMarginOpenOrders"
+		if marginMode == banexg.MarginIsolated {
+			args["isIsolated"] = true
+			if symbol == "" {
+				return nil, fmt.Errorf("FetchOpenOrders requires a symbol for isolated markets")
+			}
+		}
+	}
+	rsp := e.RequestApi(context.Background(), method, &args)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var marketMap = make(map[string]*banexg.Market)
+	var mapSymbol = func(mid string) string {
+		if market, ok := marketMap[mid]; ok {
+			return market.Symbol
+		}
+		market := e.GetMarketById(mid, marketType)
+		marketMap[mid] = market
+		return market.Symbol
+	}
+	switch method {
+	case "privateGetOpenOrders":
+		return parseOrders[*SpotOrder](mapSymbol, rsp)
+	case "eapiPrivateGetOpenOrders":
+		return parseOrders[*OptionOrder](mapSymbol, rsp)
+	case "fapiPrivateGetOpenOrders":
+		return parseOrders[*FutureOrder](mapSymbol, rsp)
+	case "dapiPrivateGetOpenOrders":
+		return parseOrders[*InverseOrder](mapSymbol, rsp)
+	case "sapiGetMarginOpenOrders":
+		return parseOrders[*MarginOrder](mapSymbol, rsp)
 	default:
 		return nil, fmt.Errorf("not support order method %s", method)
 	}
@@ -115,19 +202,22 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
+	var mapSymbol = func(mid string) string {
+		return market.Symbol
+	}
 	if method == "fapiPrivateDeleteOrder" {
-		return parseOrder[*FutureOrder](market, rsp)
+		return parseOrder[*FutureOrder](mapSymbol, rsp)
 	} else if method == "dapiPrivateDeleteOrder" {
-		return parseOrder[*InverseOrder](market, rsp)
+		return parseOrder[*InverseOrder](mapSymbol, rsp)
 	} else if method == "eapiPrivateDeleteOrder" {
-		return parseOrder[*OptionOrder](market, rsp)
+		return parseOrder[*OptionOrder](mapSymbol, rsp)
 	} else {
 		// spot margin sor
-		return parseOrder[*SpotOrder](market, rsp)
+		return parseOrder[*SpotOrder](mapSymbol, rsp)
 	}
 }
 
-func parseOrders[T IBnbOrder](m *banexg.Market, rsp *banexg.HttpRes) ([]*banexg.Order, error) {
+func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
@@ -135,18 +225,18 @@ func parseOrders[T IBnbOrder](m *banexg.Market, rsp *banexg.HttpRes) ([]*banexg.
 	}
 	var result = make([]*banexg.Order, len(data))
 	for i, item := range data {
-		result[i] = item.ToStdOrder(m)
+		result[i] = item.ToStdOrder(mapSymbol)
 	}
 	return result, nil
 }
 
-func parseOrder[T IBnbOrder](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.Order, error) {
+func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, err
 	}
-	result := (*data).ToStdOrder(m)
+	result := (*data).ToStdOrder(mapSymbol)
 	return result, nil
 }
 
@@ -170,7 +260,7 @@ func mapOrderStatus(status string) string {
 	return status
 }
 
-func (o *OrderBase) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	status := mapOrderStatus(o.Status)
 	filled, _ := strconv.ParseFloat(o.ExecutedQty, 64)
 	lastTradeTimestamp := int64(0)
@@ -204,13 +294,13 @@ func (o *OrderBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 		Price:               price,
 		Filled:              filled,
 		Status:              status,
-		Symbol:              m.Symbol,
+		Symbol:              mapSymbol(o.Symbol),
 		Fee:                 &banexg.Fee{},
 		Trades:              make([]*banexg.Trade, 0),
 	}
 }
 
-func (o *SpotBase) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := int64(0)
 	if o.Time > 0 {
 		timeStamp = o.Time
@@ -222,7 +312,7 @@ func (o *SpotBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
 	cost, _ := strconv.ParseFloat(o.CummulativeQuoteQty, 64)
-	result := o.OrderBase.ToStdOrder(m)
+	result := o.OrderBase.ToStdOrder(mapSymbol)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.TriggerPrice = stopPrice
@@ -231,8 +321,8 @@ func (o *SpotBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	return result
 }
 
-func (o *SpotOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
-	result := o.SpotBase.ToStdOrder(m)
+func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	timeStamp := int64(0)
 	if o.Time > 0 {
@@ -249,19 +339,19 @@ func (o *SpotOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
 	return result
 }
 
-func (o *MarginOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
-	result := o.SpotBase.ToStdOrder(m)
+func (o *MarginOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	return result
 }
 
-func (o *OptionOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := o.CreateTime
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
 	}
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
-	result := o.OrderBase.ToStdOrder(m)
+	result := o.OrderBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
@@ -274,7 +364,7 @@ func (o *OptionOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
 	return result
 }
 
-func (o *FutureBase) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := o.Time
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
@@ -282,7 +372,7 @@ func (o *FutureBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
-	result := o.OrderBase.ToStdOrder(m)
+	result := o.OrderBase.ToStdOrder(mapSymbol)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.ReduceOnly = o.ReduceOnly
@@ -292,17 +382,17 @@ func (o *FutureBase) ToStdOrder(m *banexg.Market) *banexg.Order {
 	return result
 }
 
-func (o *FutureOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumQuote, 64)
-	result := o.FutureBase.ToStdOrder(m)
+	result := o.FutureBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	result.Cost = cost
 	return result
 }
 
-func (o *InverseOrder) ToStdOrder(m *banexg.Market) *banexg.Order {
+func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumBase, 64)
-	result := o.FutureBase.ToStdOrder(m)
+	result := o.FutureBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	result.Cost = cost
 	return result

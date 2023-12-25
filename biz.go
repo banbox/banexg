@@ -620,8 +620,8 @@ GetArgsMarket
 从symbol和args中的market+inverse得到对应的Market对象
 */
 func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*Market, error) {
-	marketType := utils.GetMapVal(args, "market", "")
-	contractType := utils.GetMapVal(args, "contract", "")
+	marketType := utils.PopMapVal(args, "market", "")
+	contractType := utils.PopMapVal(args, "contract", "")
 	backType, backContrType := "", ""
 	if marketType != "" {
 		backType, backContrType = e.MarketType, e.ContractType
