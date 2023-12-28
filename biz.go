@@ -27,6 +27,7 @@ func (e *Exchange) Init() {
 		if err != nil {
 			panic(err)
 		}
+		e.Proxy = proxy
 		e.HttpClient.Transport = &http.Transport{
 			Proxy: http.ProxyURL(proxy),
 		}
@@ -45,6 +46,11 @@ func (e *Exchange) Init() {
 	for k, v := range reqHeaders {
 		e.ReqHeaders[k] = v
 	}
+	e.WsIntvs = DefWsIntvs
+	wsIntvs := utils.GetMapVal(e.Options, OptWsIntvs, map[string]int{})
+	for k, v := range wsIntvs {
+		e.WsIntvs[k] = v
+	}
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
@@ -53,6 +59,8 @@ func (e *Exchange) Init() {
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
+	e.WSClients = map[string]*WsClient{}
+	e.WsOutChans = map[string]interface{}{}
 }
 
 /*
@@ -369,6 +377,10 @@ func (e *Exchange) FetchTickers(symbols []string, params *map[string]interface{}
 }
 
 func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error) {
+	return nil, ErrNotImplement
+}
+
+func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error) {
 	return nil, ErrNotImplement
 }
 

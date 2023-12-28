@@ -2,6 +2,9 @@ package utils
 
 import (
 	"fmt"
+	"github.com/anyongjin/banexg/log"
+	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 	"math/rand"
 	"net/url"
 	"reflect"
@@ -144,5 +147,25 @@ func IsNil(i interface{}) bool {
 		return reflect.ValueOf(i).IsNil()
 	default:
 		return false
+	}
+}
+
+/*
+ByteToStruct
+将[]byte类型的chan通道，转为指定类型通道
+*/
+func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
+	defer close(outChan)
+
+	for b := range byteChan {
+		// 初始化目标类型的值
+		var val T
+		// 解析数据
+		err := sonic.Unmarshal(b, &val)
+		if err != nil {
+			log.Error("Error unmarshalling chan", zap.Error(err))
+			continue // or handle the error as necessary
+		}
+		outChan <- val
 	}
 }

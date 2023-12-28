@@ -22,6 +22,7 @@ const (
 	HostDApiData      = "dapiData"
 	HostFApiData      = "fapiData"
 	HostPApi          = "papi"
+	WssApi            = "ws"
 )
 
 const (

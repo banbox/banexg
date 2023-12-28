@@ -8,6 +8,10 @@ type Binance struct {
 	*banexg.Exchange
 	RecvWindow       int
 	newOrderRespType map[string]string
+	streamBySubHash  map[string]string // subHash: stream
+	streamIndex      int
+	streamLimits     map[string]int // marketType: limit
+	wsRequestId      map[string]int // url: count
 }
 
 /*

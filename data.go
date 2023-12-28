@@ -24,6 +24,7 @@ const (
 	ParamTest               = "test"
 	ParamMarginMode         = "marginMode"
 	ParamPositionSide       = "positionSide"
+	ParamProxy              = "Proxy"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -50,6 +51,9 @@ var (
 		"XBT":   "BTC",
 		"BCC":   "BCH",
 		"BCHSV": "BSV",
+	}
+	DefWsIntvs = map[string]int{
+		"WatchOrderBook": 100,
 	}
 	IsUnitTest = false
 )
@@ -81,6 +85,7 @@ const (
 	OptMarketType    = "MarketType"
 	OptContractType  = "ContractType"
 	OptTimeInForce   = "TimeInForce"
+	OptWsIntvs       = "WsIntvs" // ws 订阅间隔
 )
 
 const (

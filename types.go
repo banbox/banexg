@@ -2,11 +2,16 @@ package banexg
 
 import (
 	"net/http"
+	"net/url"
 )
 
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, error)
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, error)
+
+type FuncOnWsMsg = func(wsUrl string, msg map[string]interface{})
+type FuncOnWsErr = func(wsUrl string, err error)
+type FuncOnWsClose = func(wsUrl string, err error)
 
 type Exchange struct {
 	ID        string   // 交易所ID
@@ -18,6 +23,7 @@ type Exchange struct {
 	Has       map[string]int   // 是否定义了某个API
 	Creds     *Credential
 	Options   map[string]interface{} // 用户传入的配置
+	Proxy     *url.URL
 
 	EnableRateLimit int   // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
 	RateLimit       int64 // 请求速率控制毫秒数，最小间隔单位
@@ -49,10 +55,18 @@ type Exchange struct {
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
 
+	WSClients  map[string]*WsClient   // url: websocket clients
+	WsIntvs    map[string]int         // milli secs interval for ws endpoints
+	WsOutChans map[string]interface{} // url+msgHash: chan Type
+
 	// for calling sub struct func in parent struct
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
+
+	OnWsMsg   FuncOnWsMsg
+	OnWsErr   FuncOnWsErr
+	OnWsClose FuncOnWsClose
 }
 
 type ExgHosts struct {
@@ -337,4 +351,20 @@ type OrderBook struct {
 	Asks      [][2]float64 `json:"asks"`
 	Bids      [][2]float64 `json:"bids"`
 	Info      interface{}  `json:"info"`
+}
+
+/*
+**************************   WebSockets   **************************
+ */
+
+type WsSubInfo struct {
+	ID         string
+	MsgHash    string
+	Name       string
+	Symbol     string
+	Symbols    []string
+	Method     FuncOnWsMsg
+	Limit      int
+	MarketType string
+	Params     map[string]interface{}
 }

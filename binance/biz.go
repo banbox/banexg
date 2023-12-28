@@ -34,6 +34,16 @@ func (e *Binance) Init() {
 	if e.CareMarkets == nil || len(e.CareMarkets) == 0 {
 		e.CareMarkets = DefCareMarkets
 	}
+	e.streamIndex = -1
+	e.streamLimits = map[string]int{
+		banexg.MarketSpot:    50,
+		banexg.MarketMargin:  50,
+		banexg.MarketLinear:  50,
+		banexg.MarketInverse: 50,
+		banexg.MarketOption:  50,
+	}
+	e.streamBySubHash = map[string]string{}
+	e.wsRequestId = map[string]int{}
 }
 
 func makeSign(e *Binance) banexg.FuncSign {
