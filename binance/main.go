@@ -918,6 +918,7 @@ func NewExchange(Options map[string]interface{}) *Binance {
 	exg.FetchCurrencies = makeFetchCurr(exg)
 	exg.FetchMarkets = makeFetchMarkets(exg)
 	exg.OnWsMsg = makeHandleWsMsg(exg)
+	exg.GetRetryWait = makeGetRetryWait(exg)
 	exg.Init()
 	return exg
 }

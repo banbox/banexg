@@ -1,17 +1,19 @@
 package banexg
 
 import (
+	"github.com/anyongjin/banexg/errs"
 	"net/http"
 	"net/url"
 )
 
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
-type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, error)
-type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, error)
+type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Error)
+type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, *errs.Error)
 
-type FuncOnWsMsg = func(wsUrl string, msg map[string]interface{})
-type FuncOnWsErr = func(wsUrl string, err error)
-type FuncOnWsClose = func(wsUrl string, err error)
+type FuncOnWsMsg = func(wsUrl string, msg map[string]string)
+type FuncOnWsMethod = func(wsUrl string, msg map[string]string, info *WsJobInfo)
+type FuncOnWsErr = func(wsUrl string, err *errs.Error)
+type FuncOnWsClose = func(wsUrl string, err *errs.Error)
 
 type Exchange struct {
 	ID        string   // 交易所ID
@@ -41,6 +43,8 @@ type Exchange struct {
 	IDs        []string
 	TimeFrames map[string]string // map timeframe from common to specific
 
+	Retries map[string]int // retry nums for methods
+
 	CurrenciesById   CurrencyMap       // CurrencyMap index by id
 	CurrenciesByCode CurrencyMap       // CurrencyMap index by code
 	CurrCodeMap      map[string]string // common code maps
@@ -55,6 +59,8 @@ type Exchange struct {
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
 
+	OrderBooks map[string]*OrderBook // symbol: OrderBook update by wss
+
 	WSClients  map[string]*WsClient   // url: websocket clients
 	WsIntvs    map[string]int         // milli secs interval for ws endpoints
 	WsOutChans map[string]interface{} // url+msgHash: chan Type
@@ -63,10 +69,13 @@ type Exchange struct {
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
+	GetRetryWait    func(e *errs.Error) int // 根据错误信息计算重试间隔秒数，<0表示无需重试
 
 	OnWsMsg   FuncOnWsMsg
 	OnWsErr   FuncOnWsErr
 	OnWsClose FuncOnWsClose
+
+	Flags map[string]string
 }
 
 type ExgHosts struct {
@@ -125,14 +134,14 @@ type HttpReq struct {
 	Method  string
 	Headers http.Header
 	Body    string
-	Error   error
+	Error   *errs.Error
 }
 
 type HttpRes struct {
 	Status  int
 	Headers http.Header
 	Content string
-	Error   error
+	Error   *errs.Error
 }
 
 /*
@@ -346,24 +355,40 @@ type Fee struct {
 }
 
 type OrderBook struct {
-	Symbol    string       `json:"symbol"`
-	TimeStamp int64        `json:"timestamp"`
-	Asks      [][2]float64 `json:"asks"`
-	Bids      [][2]float64 `json:"bids"`
-	Info      interface{}  `json:"info"`
+	Symbol    string         `json:"symbol"`
+	TimeStamp int64          `json:"timestamp"`
+	Asks      *OrderBookSide `json:"asks"`
+	Bids      *OrderBookSide `json:"bids"`
+	Nonce     int64          // latest update id
+	Cache     []map[string]string
+}
+
+/*
+OrderBookSide
+订单簿一侧。不需要加锁，因为只有一个goroutine可以修改
+*/
+type OrderBookSide struct {
+	IsBuy bool
+	Rows  [][2]float64
+	Index []float64
+	Depth int
 }
 
 /*
 **************************   WebSockets   **************************
  */
 
-type WsSubInfo struct {
+/*
+WsJobInfo
+调用websocket api时暂存的任务信息。用于返回结果时处理。
+*/
+type WsJobInfo struct {
 	ID         string
 	MsgHash    string
 	Name       string
 	Symbol     string
 	Symbols    []string
-	Method     FuncOnWsMsg
+	Method     func(wsUrl string, msg map[string]string, info *WsJobInfo)
 	Limit      int
 	MarketType string
 	Params     map[string]interface{}

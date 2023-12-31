@@ -2,6 +2,7 @@ package banexg
 
 import (
 	"fmt"
+	"github.com/anyongjin/banexg/errs"
 )
 
 func (h *ExgHosts) GetHost(key string) string {
@@ -18,7 +19,7 @@ func (h *ExgHosts) GetHost(key string) string {
 	return host
 }
 
-func (c *Credential) CheckFilled() error {
+func (c *Credential) CheckFilled() *errs.Error {
 	var requires []string
 	if c.ApiKey == "" && c.Keys["ApiKey"] {
 		requires = append(requires, "ApiKey")
@@ -33,7 +34,7 @@ func (c *Credential) CheckFilled() error {
 		requires = append(requires, "Password")
 	}
 	if len(requires) > 0 {
-		return fmt.Errorf("credential required %v", requires)
+		return errs.NewMsg(errs.CodeCredsRequired, "credential required %v", requires)
 	}
 	return nil
 }

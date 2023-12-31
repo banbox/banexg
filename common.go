@@ -2,7 +2,12 @@ package banexg
 
 import (
 	"fmt"
+	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
+	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -89,4 +94,81 @@ func (b *Balances) Init() *Balances {
 
 func (a *Asset) IsEmpty() bool {
 	return utils.EqualNearly(a.Used+a.Free, 0) && utils.EqualNearly(a.Debt, 0)
+}
+
+func (ob *OrderBook) SetSide(text string, isBuy bool) {
+	var arr = make([][2]string, 0)
+	err := sonic.UnmarshalString(text, &arr)
+	if err != nil {
+		log.Error("unmarshal od book side fail", zap.Error(err))
+		return
+	}
+	var valArr = make([][2]float64, len(arr))
+	for i, row := range arr {
+		val1, _ := strconv.ParseFloat(row[0], 64)
+		val2, _ := strconv.ParseFloat(row[1], 64)
+		valArr[i][0] = val1
+		valArr[i][1] = val2
+	}
+	if isBuy {
+		ob.Bids.Update(valArr)
+	} else {
+		ob.Asks.Update(valArr)
+	}
+}
+
+func NewOrderBookSide(isBuy bool, depth int, deltas [][2]float64) *OrderBookSide {
+	obs := &OrderBookSide{
+		IsBuy: isBuy,
+		Depth: depth,
+		Rows:  make([][2]float64, 0, len(deltas)),
+		Index: make([]float64, 0, len(deltas)),
+	}
+	obs.Update(deltas)
+	return obs
+}
+
+func (obs *OrderBookSide) Update(deltas [][2]float64) {
+	for _, delta := range deltas {
+		obs.StoreArray(delta)
+	}
+	obs.Limit()
+}
+
+func (obs *OrderBookSide) StoreArray(delta [2]float64) {
+	price := delta[0]
+	size := delta[1]
+	indexPrice := price
+	if obs.IsBuy {
+		indexPrice = -price
+	}
+
+	index := sort.SearchFloat64s(obs.Index, indexPrice)
+	if size > 0 {
+		if index < len(obs.Index) && obs.Index[index] == indexPrice {
+			obs.Rows[index][1] = size
+		} else {
+			obs.Index = append(obs.Index, 0)
+			copy(obs.Index[index+1:], obs.Index[index:])
+			obs.Index[index] = indexPrice
+
+			obs.Rows = append(obs.Rows, [2]float64{})
+			copy(obs.Rows[index+1:], obs.Rows[index:])
+			obs.Rows[index] = delta
+		}
+	} else if index < len(obs.Index) && obs.Index[index] == indexPrice {
+		obs.Index = append(obs.Index[:index], obs.Index[index+1:]...)
+		obs.Rows = append(obs.Rows[:index], obs.Rows[index+1:]...)
+	}
+}
+
+func (obs *OrderBookSide) Store(price, size float64) {
+	obs.StoreArray([2]float64{price, size})
+}
+
+func (obs *OrderBookSide) Limit() {
+	for len(obs.Rows) > obs.Depth {
+		obs.Rows = obs.Rows[:len(obs.Rows)-1]
+		obs.Index = obs.Index[:len(obs.Index)-1]
+	}
 }

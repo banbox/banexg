@@ -2,8 +2,8 @@ package binance
 
 import (
 	"context"
-	"fmt"
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
 	"strconv"
@@ -26,10 +26,10 @@ query for balance and get the amount of funds available for trading or funds loc
 :param str[]|None [params.symbols]: unified market symbols, only used in isolated margin mode
 :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
 */
-func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances, error) {
+func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances, *errs.Error) {
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
+		return nil, err
 	}
 	var args = utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
@@ -48,7 +48,7 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 			for _, s := range symbols {
 				mid, err := e.GetMarketID(s)
 				if err != nil {
-					return nil, fmt.Errorf("symbol invalid %s", s)
+					return nil, err
 				}
 				if notFirst {
 					b.WriteString(",")
@@ -63,7 +63,8 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	} else if marketType == "funding" {
 		method = "sapiPostAssetGetFundingAsset"
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchBalance")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -81,14 +82,14 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	case "sapiPostAssetGetFundingAsset":
 		return parseFundingBalances(e, rsp)
 	default:
-		return nil, fmt.Errorf("unsupport parse balance method: %s", method)
+		return nil, errs.NewMsg(errs.CodeNotSupport, "unsupport parse balance method: %s", method)
 	}
 }
 
-func unmarshalBalance(content string, data interface{}) (*banexg.Balances, error) {
+func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {
 	err := sonic.UnmarshalString(content, data)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal fail: %v", err)
+		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "unmarshal fail: %v", err)
 	}
 	var result = banexg.Balances{
 		Info:   data,
@@ -97,7 +98,7 @@ func unmarshalBalance(content string, data interface{}) (*banexg.Balances, error
 	return &result, nil
 }
 
-func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = SpotAccount{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -114,7 +115,7 @@ func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error
 	return result.Init(), nil
 }
 
-func parseMarginCrossBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseMarginCrossBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = MarginCrossBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -130,7 +131,7 @@ func parseMarginCrossBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances
 	return result.Init(), nil
 }
 
-func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = IsolatedBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -158,7 +159,7 @@ func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balan
 	return result.Init(), nil
 }
 
-func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = SwapBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -174,7 +175,7 @@ func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error
 	return result.Init(), nil
 }
 
-func parseInverseBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseInverseBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = InverseBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -190,7 +191,7 @@ func parseInverseBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, er
 	return result.Init(), nil
 }
 
-func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, error) {
+func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = make([]*FundingAsset, 0)
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {

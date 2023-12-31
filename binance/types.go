@@ -332,7 +332,7 @@ type FundingAsset struct {
 }
 
 /*
-*****************************   Private Orders   ***********************************
+*****************************   Private Rows   ***********************************
  */
 type OrderBase struct {
 	Symbol        string `json:"symbol"`

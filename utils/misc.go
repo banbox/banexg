@@ -115,6 +115,44 @@ func PopMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 	return defVal
 }
 
+/*
+SafeMapVal
+从字典中读取给定键的值，并自动转换为需要的类型，如果出错则返回默认值
+*/
+func SafeMapVal[T any](items map[string]string, key string, defVal T) (result T, err error) {
+	if text, ok := items[key]; ok {
+		var err error
+		valType := reflect.TypeOf(defVal)
+		switch valType.Kind() {
+		case reflect.Int:
+			var val int
+			val, err = strconv.Atoi(text)
+			result = any(val).(T)
+		case reflect.Int64:
+			var val int64
+			val, err = strconv.ParseInt(text, 10, 64)
+			result = any(val).(T)
+		case reflect.Float64:
+			var val float64
+			val, err = strconv.ParseFloat(text, 64)
+			result = any(val).(T)
+		case reflect.Bool:
+			var val bool
+			val, err = strconv.ParseBool(text)
+			result = any(val).(T)
+		case reflect.String:
+			result = any(text).(T)
+		default:
+			err = sonic.UnmarshalString(text, &result)
+		}
+		if err != nil {
+			return defVal, err
+		}
+		return result, nil
+	}
+	return defVal, nil
+}
+
 func SetFieldBy[T any](field *T, items map[string]interface{}, key string, defVal T) {
 	if field == nil {
 		panic(fmt.Sprintf("field can not be nil for key: %s", key))
@@ -131,6 +169,34 @@ func OmitMapKeys(items map[string]interface{}, keys ...string) {
 			delete(items, k)
 		}
 	}
+}
+
+func MapValStr(input map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+
+	for key, value := range input {
+		switch v := value.(type) {
+		case nil:
+			result[key] = ""
+		case bool:
+			result[key] = fmt.Sprintf("%v", v)
+		case int:
+			result[key] = strconv.Itoa(v)
+		case int64:
+			result[key] = strconv.FormatInt(v, 10)
+		case float32:
+			result[key] = fmt.Sprintf("%f", v)
+		case float64:
+			result[key] = strconv.FormatFloat(v, 'f', -1, 64)
+		case string:
+			result[key] = v
+		default:
+			data, _ := sonic.MarshalString(v)
+			result[key] = data
+		}
+	}
+
+	return result
 }
 
 /*

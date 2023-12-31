@@ -69,7 +69,7 @@ func InitLoggerWithWriteSyncer(cfg *Config, output zapcore.WriteSyncer, opts ...
 	level := zap.NewAtomicLevel()
 	err := level.UnmarshalText([]byte(cfg.Level))
 	if err != nil {
-		return nil, nil, fmt.Errorf("initLoggerWithWriteSyncer UnmarshalText cfg.Level err:%w", err)
+		return nil, nil, fmt.Errorf("initLoggerWithWriteSyncer UnmarshalText cfg.Level errs:%w", err)
 	}
 	core := NewTextCore(newZapTextEncoder(cfg), output, level)
 	opts = append(cfg.buildOptions(output), opts...)

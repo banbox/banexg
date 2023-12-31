@@ -3,7 +3,7 @@ package banexg
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/shopspring/decimal"
@@ -12,7 +12,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,6 +50,11 @@ func (e *Exchange) Init() {
 	for k, v := range wsIntvs {
 		e.WsIntvs[k] = v
 	}
+	e.Retries = DefRetries
+	retries := utils.GetMapVal(e.Options, OptRetries, map[string]int{})
+	for k, v := range retries {
+		e.Retries[k] = v
+	}
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
@@ -61,6 +65,7 @@ func (e *Exchange) Init() {
 	e.CurrenciesByCode = map[string]*Currency{}
 	e.WSClients = map[string]*WsClient{}
 	e.WsOutChans = map[string]interface{}{}
+	e.OrderBooks = map[string]*OrderBook{}
 }
 
 /*
@@ -90,7 +95,7 @@ func (e *Exchange) SafeCurrencyCode(currId string) string {
 
 func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 	var currencies CurrencyMap
-	var err error
+	var err *errs.Error
 	if e.HasApi("fetchCurrencies") {
 		currencies, err = e.FetchCurrencies(params)
 		if err != nil {
@@ -212,7 +217,7 @@ func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 	e.MarketsWait <- markets
 }
 
-func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, error) {
+func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, *errs.Error) {
 	if reload || e.Markets == nil {
 		if e.MarketsWait == nil {
 			e.MarketsWait = make(chan interface{})
@@ -223,10 +228,10 @@ func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (Mar
 		if mars := result.(MarketMap); mars != nil {
 			return mars, nil
 		}
-		if err := result.(error); err != nil {
+		if err := result.(*errs.Error); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("unknown markets type: %t", result)
+		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "unknown markets type: %t", result)
 	}
 	return e.Markets, nil
 }
@@ -235,7 +240,7 @@ func (e *Exchange) PrecisionCost(symbol string, cost float64) float64 {
 	return cost
 }
 
-func (e *Exchange) GetPriceOnePip(pair string) (float64, error) {
+func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 	markets, err := e.LoadMarkets(false, nil)
 	if err != nil {
 		return 0, err
@@ -248,7 +253,7 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, error) {
 			return 1 / math.Pow(10, float64(precision)), nil
 		}
 	}
-	return 0, ErrNoMarketForPair
+	return 0, errs.NoMarketForPair
 }
 
 /*
@@ -257,9 +262,9 @@ GetMarket 获取市场信息
 	symbol ccxt的symbol、交易所的ID，必须严格正确，如果可能错误，
 	根据当前的MarketType和MarketInverse过滤匹配
 */
-func (e *Exchange) GetMarket(symbol string) (*Market, error) {
+func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 	if e.Markets == nil || len(e.Markets) == 0 {
-		return nil, ErrMarketNotLoad
+		return nil, errs.MarketNotLoad
 	}
 	if mar, ok := e.Markets[symbol]; ok {
 		if mar.Spot && e.IsContract("") {
@@ -272,7 +277,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 			if mar, ok = e.Markets[futureSymbol]; ok {
 				return mar, nil
 			}
-			return nil, ErrNoMarketForPair
+			return nil, errs.NoMarketForPair
 		}
 		return mar, nil
 	} else {
@@ -281,7 +286,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, error) {
 			return market, nil
 		}
 	}
-	return nil, ErrNoMarketForPair
+	return nil, errs.NoMarketForPair
 }
 
 /*
@@ -289,7 +294,7 @@ GetMarketID
 
 	从CCXT的symbol得到交易所ID
 */
-func (e *Exchange) GetMarketID(symbol string) (string, error) {
+func (e *Exchange) GetMarketID(symbol string) (string, *errs.Error) {
 	market, err := e.GetMarket(symbol)
 	if err != nil {
 		return "", err
@@ -360,54 +365,54 @@ func (e *Exchange) SafeSymbol(marketId, delimiter, marketType string) string {
 	return e.SafeMarket(marketId, delimiter, marketType).Symbol
 }
 
-func (e *Exchange) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchBalance(params *map[string]interface{}) (*Balances, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
-func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, error) {
-	return nil, ErrNotImplement
+func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
-	params *map[string]interface{}) (*Fee, error) {
+	params *map[string]interface{}) (*Fee, *errs.Error) {
 	if odType == OdTypeMarket && isMaker {
-		return nil, fmt.Errorf("maker only is invalid for market order")
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "maker only is invalid for market order")
 	}
 	market, err := e.GetMarket(symbol)
 	if err != nil {
-		return nil, fmt.Errorf("get market fail: %v", err)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "get market fail: %v", err)
 	}
 	feeSide := market.FeeSide
 	if feeSide == "" {
@@ -507,28 +512,11 @@ func (e *Exchange) setReqHeaders(head *http.Header) {
 	}
 }
 
-var testCacheApis = map[string]bool{
-	"dapiPublicGetExchangeInfo":  true,
-	"fapiPublicGetExchangeInfo":  true,
-	"publicGetExchangeInfo":      true,
-	"sapiGetCapitalConfigGetall": true,
-}
-
 func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[string]interface{}) *HttpRes {
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
-		return &HttpRes{Error: ErrApiNotSupport}
-	}
-	if IsUnitTest && testCacheApis[endpoint] {
-		path := filepath.Join("testdata", endpoint+".json")
-		var res = HttpRes{}
-		err := utils.ReadJsonFile(path, &res)
-		if err == nil {
-			return &res
-		} else {
-			log.Error("read test data fail", zap.String("path", path), zap.Error(err))
-		}
+		return &HttpRes{Error: errs.ApiNotSupport}
 	}
 	if e.EnableRateLimit == BoolTrue {
 		elapsed := e.MilliSeconds() - e.lastRequestMS
@@ -552,7 +540,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		req, err = http.NewRequest(sign.Method, sign.Url, nil)
 	}
 	if err != nil {
-		return &HttpRes{Error: err}
+		return &HttpRes{Error: errs.New(errs.CodeInvalidRequest, err)}
 	}
 	req = req.WithContext(ctx)
 	req.Header = sign.Headers
@@ -562,19 +550,20 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
 	rsp, err := e.HttpClient.Do(req)
 	if err != nil {
-		return &HttpRes{Error: err}
+		return &HttpRes{Error: errs.New(errs.CodeNetFail, err)}
 	}
 	var result = HttpRes{Status: rsp.StatusCode, Headers: rsp.Header}
 	rspData, err := io.ReadAll(rsp.Body)
 	if err != nil {
-		result.Error = err
+		result.Error = errs.New(errs.CodeNetFail, err)
 		return &result
 	}
 	result.Content = string(rspData)
+	bodyShort := zap.String("body", result.Content[:3000])
 	log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
-		zap.String("content", result.Content))
+		zap.Int("len", len(result.Content)), bodyShort)
 	if result.Status >= 400 {
-		result.Error = fmt.Errorf(result.Content)
+		result.Error = errs.NewMsg(result.Status, result.Content)
 	}
 	defer func() {
 		cerr := rsp.Body.Close()
@@ -584,14 +573,35 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 			err = cerr
 		}
 	}()
-	if IsUnitTest && testCacheApis[endpoint] {
-		path := filepath.Join("testdata", endpoint+".json")
-		err := utils.WriteJsonFile(path, result)
-		if err != nil {
-			log.Error("write test data fail", zap.String("path", path), zap.Error(err))
-		}
-	}
 	return &result
+}
+
+func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params *map[string]interface{}, retryNum int) *HttpRes {
+	tryNum := retryNum + 1
+	var rsp *HttpRes
+	var sleep = 0
+	for i := 0; i < tryNum; i++ {
+		if sleep > 0 {
+			time.Sleep(time.Second * time.Duration(sleep))
+			sleep = 0
+		}
+		rsp = e.RequestApi(ctx, endpoint, params)
+		if rsp.Error != nil {
+			if rsp.Error.Code == errs.CodeNetFail {
+				// 网络错误等待3s重试
+				sleep = 3
+				continue
+			} else if e.GetRetryWait != nil {
+				// 子交易所根据错误信息返回睡眠时间
+				sleep = e.GetRetryWait(rsp.Error)
+				if sleep >= 0 {
+					continue
+				}
+			}
+		}
+		break
+	}
+	return rsp
 }
 
 func (e *Exchange) HasApi(key string) bool {
@@ -631,7 +641,7 @@ func (e *Exchange) GetArgsMarketType(args map[string]interface{}, symbol string)
 GetArgsMarket
 从symbol和args中的market+inverse得到对应的Market对象
 */
-func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*Market, error) {
+func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*Market, *errs.Error) {
 	marketType := utils.PopMapVal(args, "market", "")
 	contractType := utils.PopMapVal(args, "contract", "")
 	backType, backContrType := "", ""
@@ -656,15 +666,15 @@ func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*M
 LoadArgsMarket
 LoadMarkets && GetArgsMarket
 */
-func (e *Exchange) LoadArgsMarket(symbol string, params *map[string]interface{}) (map[string]interface{}, *Market, error) {
+func (e *Exchange) LoadArgsMarket(symbol string, params *map[string]interface{}) (map[string]interface{}, *Market, *errs.Error) {
 	var args = utils.SafeParams(params)
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
-		return args, nil, fmt.Errorf("load markets fail: %v", err)
+		return args, nil, err
 	}
 	market, err := e.GetArgsMarket(symbol, args)
 	if err != nil {
-		return args, nil, fmt.Errorf("get market fail: %v", err)
+		return args, nil, err
 	}
 	return args, market, err
 }
@@ -691,4 +701,13 @@ func (e *Exchange) PrecCost(m *Market, cost float64) (string, error) {
 
 func (e *Exchange) PrecFee(m *Market, fee float64) (string, error) {
 	return e.precPriceCost(m, fee, true)
+}
+
+/*
+GetRetryNum
+返回失败时重试次数，未设置时默认0
+*/
+func (e *Exchange) GetRetryNum(key string) int {
+	retryNum, _ := e.Retries[key]
+	return retryNum
 }

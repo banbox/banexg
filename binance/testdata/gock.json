@@ -1,0 +1,18 @@
+[
+  {
+    "url": "https://dapi.binance.com/dapi/v1/exchangeInfo",
+    "rsp_path": "dapiPublicGetExchangeInfo.json"
+  },
+  {
+    "url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+    "rsp_path": "fapiPublicGetExchangeInfo.json"
+  },
+  {
+    "url": "https://api.binance.com/api/v3/exchangeInfo",
+    "rsp_path": "publicGetExchangeInfo.json"
+  },
+  {
+    "url": "https://api.binance.com/sapi/v1/capital/config/getall",
+    "rsp_path": "sapiGetCapitalConfigGetall.json"
+  }
+]

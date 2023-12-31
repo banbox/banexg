@@ -2,8 +2,8 @@ package binance
 
 import (
 	"context"
-	"fmt"
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/utils"
 	"strings"
 )
@@ -37,7 +37,7 @@ CreateOrder 提交订单到交易所
 	:param boolean [params.test]: *spot only* whether to use the test endpoint or not, default is False
 	:returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*banexg.Order, error) {
+func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -49,9 +49,9 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	timeInForce := utils.GetMapVal(args, banexg.ParamTimeInForce, "")
 	if postOnly || timeInForce == banexg.TimeInForcePO || odType == banexg.OdTypeLimitMaker {
 		if timeInForce == banexg.TimeInForceIOC || timeInForce == banexg.TimeInForceFOK {
-			return nil, fmt.Errorf("postOnly orders cannot have timeInForce: %s", timeInForce)
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "postOnly orders cannot have timeInForce: %s", timeInForce)
 		} else if odType == banexg.OdTypeMarket {
-			return nil, fmt.Errorf("market orders cannot be postOnly")
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "market orders cannot be postOnly")
 		}
 		postOnly = true
 	}
@@ -127,10 +127,10 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	args["newOrderRespType"] = odRspType
 	if market.Option {
 		if odType == banexg.OdTypeMarket {
-			return nil, fmt.Errorf("market order is invalid for option")
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "market order is invalid for option")
 		}
 	} else if !isBnbOrderType(market, exgOdType) {
-		return nil, fmt.Errorf("invalid order type %s for %s market", exgOdType, market.Type)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "invalid order type %s for %s market", exgOdType, market.Type)
 	}
 	args["type"] = exgOdType
 	timeInForceRequired, priceRequired, stopPriceRequired, quantityRequired := false, false, false, false
@@ -164,7 +164,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			if cost != 0 {
 				precRes, err := e.PrecCost(market, cost)
 				if err != nil {
-					return nil, fmt.Errorf("precision cost fail: %v", err)
+					return nil, errs.NewMsg(errs.CodeParamInvalid, "precision cost fail: %v", err)
 				}
 				args["quoteOrderQty"] = precRes
 			}
@@ -201,23 +201,23 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		quantityRequired = true
 		callBackRate := utils.GetMapVal(args, banexg.ParamCallbackRate, 0.0)
 		if callBackRate == 0 {
-			return nil, fmt.Errorf("createOrder require callbackRate for %s order", odType)
+			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require callbackRate for %s order", odType)
 		}
 	}
 	if quantityRequired {
 		amtStr, err := e.PrecAmount(market, amount)
 		if err != nil {
-			return nil, fmt.Errorf("precision for amount fail: %v", err)
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "precision for amount fail: %v", err)
 		}
 		args["quantity"] = amtStr
 	}
 	if priceRequired {
 		if price == 0 {
-			return nil, fmt.Errorf("createOrder require price for %s order", odType)
+			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require price for %s order", odType)
 		}
 		priceStr, err := e.PrecPrice(market, price)
 		if err != nil {
-			return nil, fmt.Errorf("precision for price fail: %v", err)
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "precision for price fail: %v", err)
 		}
 		args["price"] = priceStr
 	}
@@ -233,15 +233,15 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if stopPriceRequired {
 		if market.Contract {
 			if stopPrice == 0 {
-				return nil, fmt.Errorf("createOrder require stopPrice for %s order", odType)
+				return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require stopPrice for %s order", odType)
 			}
 		} else if trailingDelta == 0 && stopPrice == 0 {
-			return nil, fmt.Errorf("createOrder require stopPrice/trailingDelta for %s order", odType)
+			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require stopPrice/trailingDelta for %s order", odType)
 		}
 		if stopPrice != 0 {
 			stopPriceStr, err := e.PrecPrice(market, stopPrice)
 			if err != nil {
-				return nil, fmt.Errorf("stopPrice prec fail: %v", err)
+				return nil, errs.NewMsg(errs.CodeParamInvalid, "stopPrice prec fail: %v", err)
 			}
 			args["stopPrice"] = stopPriceStr
 		}
@@ -267,7 +267,8 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			method += "Test"
 		}
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("CreateOrder")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

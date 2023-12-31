@@ -1,28 +1,68 @@
 package banexg
 
 import (
-	"fmt"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
 type WsClient struct {
-	Conn      *websocket.Conn
-	URL       string
-	Proxy     *url.URL
-	Send      chan []byte
-	control   chan int              // 用于内部同步控制命令
-	SubInfos  map[string]*WsSubInfo // request id: Sub Data
-	ChanCaps  map[string]int        // msgHash: cap size of cache msg
-	OnMessage FuncOnWsMsg
-	OnError   FuncOnWsErr
-	OnClose   FuncOnWsClose
+	Conn       WsConn
+	URL        string
+	MarketType string
+	Send       chan []byte
+	control    chan int              // 用于内部同步控制命令
+	JobInfos   map[string]*WsJobInfo // request id: Sub Data
+	ChanCaps   map[string]int        // msgHash: cap size of cache msg
+	OnMessage  FuncOnWsMsg
+	OnError    FuncOnWsErr
+	OnClose    FuncOnWsClose
+}
+
+type WebSocket struct {
+	Conn *websocket.Conn
+}
+
+func (ws *WebSocket) Close() error {
+	return ws.Conn.Close()
+}
+func (ws *WebSocket) WriteClose() error {
+	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+	return ws.Conn.WriteMessage(websocket.CloseMessage, exitData)
+}
+func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
+	return ws.Conn.NextWriter(websocket.TextMessage)
+}
+func (ws *WebSocket) ReadMsg() ([]byte, error) {
+	for {
+		msgType, msgRaw, err := ws.Conn.ReadMessage()
+		if err != nil || msgType == websocket.TextMessage {
+			return msgRaw, err
+		}
+	}
+}
+
+func newWebSocket(reqUrl string, args map[string]interface{}) (*WebSocket, error) {
+	var dialer websocket.Dialer
+	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
+	var defProxy *url.URL
+	var proxy = utils.GetMapVal(args, ParamProxy, defProxy)
+	if proxy != nil {
+		dialer.Proxy = http.ProxyURL(proxy)
+	}
+	conn, _, err := dialer.Dial(reqUrl, http.Header{})
+	if err != nil {
+		return nil, errs.New(errs.CodeConnectFail, err)
+	}
+	return &WebSocket{Conn: conn}, nil
 }
 
 var (
@@ -43,32 +83,30 @@ var (
 )
 
 func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose,
-	params *map[string]interface{}) (*WsClient, error) {
+	params *map[string]interface{}) (*WsClient, *errs.Error) {
 	var result = &WsClient{
 		URL:       reqUrl,
 		Send:      make(chan []byte, 1024),
-		SubInfos:  make(map[string]*WsSubInfo),
+		JobInfos:  make(map[string]*WsJobInfo),
 		OnMessage: onMsg,
 		OnError:   onErr,
 		OnClose:   onClose,
+		control:   make(chan int, 1),
 	}
-	var dialer websocket.Dialer
 	args := utils.SafeParams(params)
-	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
-	var defProxy *url.URL
-	var proxy = utils.GetMapVal(args, ParamProxy, defProxy)
-	if proxy != nil {
-		dialer.Proxy = http.ProxyURL(proxy)
-		result.Proxy = proxy
-	}
 	result.ChanCaps = DefChanCaps
 	chanCaps := utils.GetMapVal(args, ParamChanCaps, map[string]int{})
 	for k, v := range chanCaps {
 		result.ChanCaps[k] = v
 	}
-	conn, _, err := dialer.Dial(reqUrl, http.Header{})
-	if err != nil {
-		return nil, err
+	var conn WsConn
+	conn = utils.GetMapVal(args, OptWsConn, conn)
+	if conn == nil {
+		var err error
+		conn, err = newWebSocket(reqUrl, args)
+		if err != nil {
+			return nil, errs.New(errs.CodeConnectFail, err)
+		}
 	}
 	result.Conn = conn
 	go result.read()
@@ -76,7 +114,7 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 	return result, nil
 }
 
-func (e *Exchange) GetClient(wsUrl string) (*WsClient, error) {
+func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.Error) {
 	if client, ok := e.WSClients[wsUrl]; ok && client.Conn != nil {
 		return client, nil
 	}
@@ -84,37 +122,36 @@ func (e *Exchange) GetClient(wsUrl string) (*WsClient, error) {
 	if e.Proxy != nil {
 		params[ParamProxy] = e.Proxy
 	}
+	if conn, ok := e.Options[OptWsConn]; ok {
+		params[OptWsConn] = conn
+	}
 	if e.OnWsMsg == nil {
-		return nil, fmt.Errorf("OnWsMsg is required for ws client")
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "OnWsMsg is required for ws client")
 	}
 	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, e.OnWsClose, &params)
 	if err != nil {
 		return nil, err
 	}
+	client.MarketType = marketType
 	e.WSClients[wsUrl] = client
 	return client, nil
 }
 
 /*
-Watch
-发送消息到ws服务器，并设置订阅
-subID: ws服务器返回的任务ID
-subInfo: 处理服务器返回时需要的订阅信息
+Write
+发送消息到ws服务器，可设置处理任务结果需要的信息
+jobID: 此次消息的任务ID，唯一标识此次请求
+jobInfo: 此次任务的主要信息，在收到任务结果时使用
 */
-func (e *Exchange) Watch(wsUrl string, msg []byte, subID string, subInfo *WsSubInfo) error {
-	client, err := e.GetClient(wsUrl)
-	if err != nil {
-		return err
+func (c *WsClient) Write(msg interface{}, jobID string, jobInfo *WsJobInfo) *errs.Error {
+	data, err2 := sonic.Marshal(msg)
+	if err2 != nil {
+		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
-	if msg != nil {
-		client.Send <- msg
-	}
-	if subID != "" {
-		if _, ok := client.SubInfos[subID]; !ok {
-			if subInfo == nil {
-				subInfo = &WsSubInfo{}
-			}
-			client.SubInfos[subID] = subInfo
+	c.Send <- data
+	if jobID != "" && jobInfo != nil {
+		if _, ok := c.JobInfos[jobID]; !ok {
+			c.JobInfos[jobID] = jobInfo
 		}
 	}
 	return nil
@@ -135,11 +172,11 @@ func (c *WsClient) write() {
 		close(c.control)
 		c.Conn = nil // 置为nil表示连接已关闭
 	}()
-	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 	for {
 		select {
 		case ctrlType, ok := <-c.control:
 			if !ok {
+				log.Error("read control fail", zap.Int("flag", ctrlType))
 				continue
 			}
 			if ctrlType == ctrlClosed {
@@ -148,7 +185,7 @@ func (c *WsClient) write() {
 			} else if ctrlType == ctrlDoClose {
 				// Cleanly close the connection by sending a close message and then
 				// waiting (with timeout) for the server to close the connection.
-				err := c.Conn.WriteMessage(websocket.CloseMessage, exitData)
+				err := c.Conn.WriteClose()
 				if err != nil {
 					log.Error("write ws close error", zapUrl, zap.Error(err))
 					return
@@ -158,7 +195,7 @@ func (c *WsClient) write() {
 			}
 		case msg, ok := <-c.Send:
 			if !ok {
-				err := c.Conn.WriteMessage(websocket.CloseMessage, exitData)
+				err := c.Conn.WriteClose()
 				if err != nil {
 					log.Error("write ws close error", zapUrl, zap.Error(err))
 					return
@@ -166,7 +203,7 @@ func (c *WsClient) write() {
 				log.Info("WsClient.Send closed", zapUrl)
 				return
 			}
-			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			w, err := c.Conn.NextWriter()
 			if err != nil {
 				log.Error("failed to create Ws.Writer", zapUrl, zap.Error(err))
 				return
@@ -195,39 +232,65 @@ func (c *WsClient) read() {
 		c.control <- ctrlClosed
 	}()
 	for {
-		msgType, msgRaw, err := c.Conn.ReadMessage()
+		msgRaw, err := c.Conn.ReadMsg()
 		if err != nil {
 			if c.OnClose != nil {
-				c.OnClose(c.URL, err)
+				c.OnClose(c.URL, errs.New(errs.CodeWsReadFail, err))
 			}
 			log.Error("ws closed", zap.String("url", c.URL), zap.Error(err))
 			return
 		}
-		if msgType != websocket.TextMessage {
-			continue
-		}
-		var msg = make(map[string]interface{})
-		err = sonic.Unmarshal(msgRaw, &msg)
-		if err != nil {
-			fmt.Printf("unmarshal msg err\n")
-			if c.OnError != nil {
-				c.OnError(c.URL, err)
-			}
-			msgStr := string(msgRaw)
-			log.Error("invalid ws msg", zap.String("msg", msgStr), zap.Error(err))
-			continue
-		}
-		msgId, ok := msg["id"]
-		if ok {
-			id := fmt.Sprintf("%v", msgId)
-			if sub, ok := c.SubInfos[id]; ok && sub.Method != nil {
-				// 订阅信息中提供了处理函数，则调用处理函数
-				sub.Method(c.URL, msg)
-				delete(c.SubInfos, id)
-				continue
-			}
-		}
-		// 未匹配则调用通用消息处理
-		c.OnMessage(c.URL, msg)
+		// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误
+		c.handleRawMsg(msgRaw)
 	}
+}
+
+func (c *WsClient) handleRawMsg(msgRaw []byte) {
+	msgText := string(msgRaw)
+	var err *errs.Error
+	var err_ error
+	var id string
+	if strings.HasPrefix(msgText, "{") {
+		var msg = make(map[string]interface{})
+		err_ = sonic.UnmarshalString(msgText, &msg)
+		if err_ == nil {
+			id = c.handleMsg(utils.MapValStr(msg))
+		}
+	} else if strings.HasPrefix(msgText, "[") {
+		var msgs = make([]map[string]interface{}, 0)
+		err_ = sonic.UnmarshalString(msgText, &msgs)
+		if err_ == nil && len(msgs) > 0 {
+			for _, it := range msgs {
+				id = c.handleMsg(utils.MapValStr(it))
+			}
+		}
+	} else {
+		err = errs.NewMsg(errs.CodeWsInvalidMsg, "invalid ws msg, not dict or list")
+	}
+	if err_ != nil {
+		err = errs.New(errs.CodeUnmarshalFail, err_)
+	}
+	if err != nil {
+		if c.OnError != nil {
+			c.OnError(c.URL, err)
+		}
+		log.Error("invalid ws msg", zap.String("msg", msgText), zap.Error(err))
+	} else if id != "" {
+		delete(c.JobInfos, id)
+	}
+}
+
+func (c *WsClient) handleMsg(msg map[string]string) string {
+	id, ok := msg["id"]
+	if ok {
+		if sub, ok := c.JobInfos[id]; ok && sub.Method != nil {
+			// 订阅信息中提供了处理函数，则调用处理函数
+			sub.Method(c.URL, msg, sub)
+			delete(c.JobInfos, id)
+			return id
+		}
+	}
+	// 未匹配则调用通用消息处理
+	c.OnMessage(c.URL, msg)
+	return ""
 }

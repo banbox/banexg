@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"github.com/anyongjin/banexg/errs"
 	"regexp"
 	"strconv"
 )
@@ -35,18 +36,18 @@ func SafeParams(params *map[string]interface{}) map[string]interface{} {
 	return *params
 }
 
-func ParseTimeFrame(timeframe string) (int, error) {
+func ParseTimeFrame(timeframe string) (int, *errs.Error) {
 	if val, ok := tfSecsCache[timeframe]; ok {
 		return val, nil
 	}
 	length := len(timeframe)
 	if length <= 1 {
-		return 0, ErrInvalidTimeFrame
+		return 0, errs.InvalidTimeFrame
 	}
 
 	amount, err := strconv.Atoi(timeframe[:length-1])
 	if err != nil {
-		return 0, ErrInvalidTimeFrame
+		return 0, errs.InvalidTimeFrame
 	}
 
 	unit := timeframe[length-1]
@@ -68,7 +69,7 @@ func ParseTimeFrame(timeframe string) (int, error) {
 	case 's', 'S':
 		scale = 1
 	default:
-		return 0, ErrInvalidTimeFrame
+		return 0, errs.InvalidTimeFrame
 	}
 
 	res := amount * scale

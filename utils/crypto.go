@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/log"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
@@ -32,14 +33,14 @@ method: rsa, eddsa, hmac
 		hmac:sha256/sha384/sha512
 	digest: hmac: base64/hex
 */
-func Signature(data string, secret string, method string, hashName string, digest string) (string, error) {
+func Signature(data string, secret string, method string, hashName string, digest string) (string, *errs.Error) {
 	secretBytes, err := EncodeToLatin1(secret)
 	if err != nil {
-		return "", err
+		return "", errs.New(errs.CodeSignFail, err)
 	}
 	dataBytes, err := EncodeToLatin1(data)
 	if err != nil {
-		return "", err
+		return "", errs.New(errs.CodeSignFail, err)
 	}
 	algoMap := map[string]crypto.Hash{
 		"sha256": crypto.SHA256,
@@ -50,27 +51,28 @@ func Signature(data string, secret string, method string, hashName string, diges
 	var sign string
 	if method == "rsa" {
 		if !ok {
-			return "", errors.New("unsupport hash type:" + hashName)
+			return "", errs.NewMsg(errs.CodeSignFail, "unsupport hash type:"+hashName)
 		}
 		secretKey, err := loadPrivateKey(secretBytes)
 		if err != nil {
-			return "", err
+			return "", errs.New(errs.CodeSignFail, err)
 		}
 		sign, err = rsaSign(dataBytes, secretKey, hashType)
 	} else if method == "eddsa" {
 		sign, err = Eddsa(dataBytes, secretBytes)
 	} else if method == "hmac" {
 		if !ok {
-			return "", errors.New("unsupport hash type:" + hashName)
+			return "", errs.NewMsg(errs.CodeSignFail, "unsupport hash type:"+hashName)
 		}
 		sign = HMAC(dataBytes, secretBytes, hashType.New, digest)
 		return sign, nil
 	} else {
-		log.Panic("unsupport sign method: " + method)
-		return "", ErrUnSupportSign
+		msgText := "unsupport sign method: " + method
+		log.Panic(msgText)
+		return "", errs.NewMsg(errs.CodeSignFail, msgText)
 	}
 	if err != nil {
-		return "", err
+		return "", errs.New(errs.CodeSignFail, err)
 	}
 	sign = EncodeURIComponent(sign, UriEncodeSafe)
 	return sign, nil

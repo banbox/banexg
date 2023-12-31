@@ -12,6 +12,5 @@ func TestFetchOrderBook(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	res.Info = nil
 	fmt.Printf("fetch order book %v", res)
 }

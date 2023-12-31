@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
@@ -63,14 +64,14 @@ func makeSign(e *Binance) banexg.FuncSign {
 		if path == "historicalTrades" {
 			if e.Creds.ApiKey == "" {
 				log.Panic("historicalTrades requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: banexg.ErrMissingApiKey}
+				return &banexg.HttpReq{Error: errs.MissingApiKey}
 			}
 			headers.Add("X-MBX-APIKEY", e.Creds.ApiKey)
 		} else if path == "userDataStream" || path == "listenKey" {
 			//v1 special case for userDataStream
 			if e.Creds.ApiKey == "" {
 				log.Panic("userDataStream requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: banexg.ErrMissingApiKey}
+				return &banexg.HttpReq{Error: errs.MissingApiKey}
 			}
 			headers.Add("X-MBX-APIKEY", e.Creds.ApiKey)
 			headers.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -144,28 +145,29 @@ fetches all available currencies on an exchange
 :returns dict: an associative dictionary of currencies
 */
 func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
-	return func(params *map[string]interface{}) (banexg.CurrencyMap, error) {
+	return func(params *map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
 		if !e.HasApi("fetchCurrencies") {
-			return nil, banexg.ErrApiNotSupport
+			return nil, errs.ApiNotSupport
 		}
 		if err := e.Creds.CheckFilled(); err != nil {
-			return nil, banexg.ErrCredsRequired
+			return nil, errs.CredsRequired
 		}
 		if e.Hosts.TestNet {
 			//sandbox/testnet does not support sapi endpoints
-			return nil, banexg.ErrSandboxApiNotSupport
+			return nil, errs.SandboxApiNotSupport
 		}
-		res := e.RequestApi(context.Background(), "sapiGetCapitalConfigGetall", params)
+		tryNum := e.GetRetryNum("FetchCurr")
+		res := e.RequestApiRetry(context.Background(), "sapiGetCapitalConfigGetall", params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error
 		}
 		if !strings.HasPrefix(res.Content, "[") {
-			return nil, fmt.Errorf("FetchCurrencies api fail: %s", res.Content)
+			return nil, errs.NewMsg(errs.CodeInvalidResponse, "FetchCurrencies api fail: %s", res.Content)
 		}
 		var currList []*BnbCurrency
 		err := sonic.UnmarshalString(res.Content, &currList)
 		if err != nil {
-			return nil, err
+			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
 		var result = make(banexg.CurrencyMap)
 		for _, item := range currList {
@@ -220,6 +222,29 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			result[item.Coin] = &curr
 		}
 		return result, nil
+	}
+}
+
+func makeGetRetryWait(e *Binance) func(e *errs.Error) int {
+	return func(err *errs.Error) int {
+		//https://binance-docs.github.io/apidocs/futures/cn/#rest
+		if err == nil || err.Code <= 500 {
+			// 无需重试
+			return -1
+		}
+		msg := err.Msg
+		if err.Code/100 == 5 && strings.Contains(msg, "Request occur unknown error") {
+			return 2
+		}
+		if err.Code == 503 {
+			if strings.Contains(msg, "Service Unavailable") {
+				return 3
+			} else if strings.Contains(msg, "Please try again") {
+				// 立即重试
+				return 0
+			}
+		}
+		return -1
 	}
 }
 
@@ -368,17 +393,18 @@ retrieves data on all markets for binance
 :returns dict[]: an array of objects representing market data
 */
 func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
-	return func(params *map[string]interface{}) (banexg.MarketMap, error) {
+	return func(params *map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 		var ctx = context.Background()
 		var ch = make(chan *banexg.HttpRes)
 		doReq := func(key string) {
 			apiKey, ok := marketApiMap[key]
 			if !ok {
 				log.Error("unsupported market type", zap.String("key", key))
-				ch <- &banexg.HttpRes{Error: banexg.ErrUnsupportMarket}
+				ch <- &banexg.HttpRes{Error: errs.UnsupportMarket}
 				return
 			}
-			ch <- e.RequestApi(ctx, apiKey, params)
+			tryNum := e.GetRetryNum("FetchMarkets")
+			ch <- e.RequestApiRetry(ctx, apiKey, params, tryNum)
 		}
 		watNum := 0
 		for _, marketType := range e.CareMarkets {
@@ -415,11 +441,11 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 	}
 }
 
-func parseOptionOhlcv(rsp *banexg.HttpRes) ([]*banexg.Kline, error) {
+func parseOptionOhlcv(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
 	err := sonic.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
-		return nil, fmt.Errorf("decode option kline fail %v", err)
+		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "decode option kline fail %v", err)
 	}
 	var res = make([]*banexg.Kline, len(klines))
 	for i, bar := range klines {
@@ -440,14 +466,14 @@ func parseOptionOhlcv(rsp *banexg.HttpRes) ([]*banexg.Kline, error) {
 	return res, nil
 }
 
-func parseBnbOhlcv(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, error) {
+func parseBnbOhlcv(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
 	dc := decoder.NewDecoder(rsp.Content)
 	dc.UseInt64()
 	err := dc.Decode(&klines)
-	//err := sonic.UnmarshalString(rsp.Content, &klines)
+	//errs := sonic.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
-		return nil, fmt.Errorf("parse bnb ohlcv fail: %v", err)
+		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "parse bnb ohlcv fail: %v", err)
 	}
 	var res = make([]*banexg.Kline, len(klines))
 	v := reflect.TypeOf(klines[0][0])
@@ -497,7 +523,7 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, error) {
+func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -526,7 +552,7 @@ func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, p
 		if market.Inverse {
 			secs, err := utils.ParseTimeFrame(timeframe)
 			if err != nil {
-				return nil, fmt.Errorf("parse timeframe fail: %v", err)
+				return nil, err
 			}
 			endTime := since + int64(limit*secs*1000) - 1
 			args["endTime"] = min(e.MilliSeconds(), endTime)
@@ -555,9 +581,10 @@ func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, p
 	} else if market.Inverse {
 		method = "dapiPublicGetKlines"
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchOhlcv")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
-		return nil, fmt.Errorf("api fail %v", rsp.Error)
+		return nil, rsp.Error
 	}
 	if market.Option {
 		return parseOptionOhlcv(rsp)
@@ -581,12 +608,12 @@ set the level of leverage for a market
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: response from the exchange
 */
-func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, error) {
+func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for %v.SetLeverage", e.Name)
+		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for %v.SetLeverage", e.Name)
 	}
 	if leverage < 1 || leverage > 125 {
-		return nil, fmt.Errorf("%v leverage should be between 1 and 125", e.Name)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "%v leverage should be between 1 and 125", e.Name)
 	}
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
@@ -598,18 +625,19 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	} else if market.Inverse {
 		method = "dapiPrivatePostLeverage"
 	} else {
-		return nil, fmt.Errorf("%v SetLeverage supports linear and inverse contracts only", e.Name)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "%v SetLeverage supports linear and inverse contracts only", e.Name)
 	}
 	args["symbol"] = market.ID
 	args["leverage"] = leverage
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("SetLeverage")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
 	var res = make(map[string]interface{})
-	err = sonic.UnmarshalString(rsp.Content, &res)
-	if err != nil {
-		return nil, fmt.Errorf("%s decode rsp fail: %v", e.Name, err)
+	err2 := sonic.UnmarshalString(rsp.Content, &res)
+	if err2 != nil {
+		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "%s decode rsp fail: %v", e.Name, err2)
 	}
 	return res, nil
 }

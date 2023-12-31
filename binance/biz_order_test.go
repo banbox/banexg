@@ -57,9 +57,9 @@ func printCreateOrder(symbol string, odType string, side string, amount float64,
 	if err != nil {
 		panic(err)
 	}
-	resStr, err := sonic.MarshalString(res)
-	if err != nil {
-		panic(err)
+	resStr, err2 := sonic.MarshalString(res)
+	if err2 != nil {
+		panic(err2)
 	}
 	fmt.Printf(resStr)
 	fmt.Printf("\n")

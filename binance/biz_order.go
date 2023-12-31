@@ -2,8 +2,8 @@ package binance
 
 import (
 	"context"
-	"fmt"
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
 	"strconv"
@@ -14,7 +14,7 @@ import (
 FetchOrders 获取自己的订单
 symbol: 必填，币种
 */
-func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, error) {
+func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,8 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 	if limit > 0 {
 		args["limit"] = limit
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchOrders")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -63,7 +64,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 	case "sapiGetMarginAllOrders":
 		return parseOrders[*MarginOrder](mapSymbol, rsp)
 	default:
-		return nil, fmt.Errorf("not support order method %s", method)
+		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
 	}
 }
 
@@ -87,7 +88,7 @@ fetch all unfilled currently open orders
 :param str [params.marginMode]: 'cross' or 'isolated', for spot margin trading
 :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, error) {
+func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	var args map[string]interface{}
 	var marketType string
 	if symbol != "" {
@@ -121,11 +122,12 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		if marginMode == banexg.MarginIsolated {
 			args["isIsolated"] = true
 			if symbol == "" {
-				return nil, fmt.Errorf("FetchOpenOrders requires a symbol for isolated markets")
+				return nil, errs.NewMsg(errs.CodeParamRequired, "FetchOpenOrders requires a symbol for isolated markets")
 			}
 		}
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchOpenOrders")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -150,7 +152,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	case "sapiGetMarginOpenOrders":
 		return parseOrders[*MarginOrder](mapSymbol, rsp)
 	default:
-		return nil, fmt.Errorf("not support order method %s", method)
+		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
 	}
 }
 
@@ -168,7 +170,7 @@ cancels an open order
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*banexg.Order, error) {
+func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -198,7 +200,8 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 			args["isIsolated"] = true
 		}
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("CancelOrder")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -217,11 +220,11 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 	}
 }
 
-func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, error) {
+func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
-		return nil, err
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = make([]*banexg.Order, len(data))
 	for i, item := range data {
@@ -230,11 +233,11 @@ func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes
 	return result, nil
 }
 
-func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, error) {
+func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, *errs.Error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
-		return nil, err
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	result := (*data).ToStdOrder(mapSymbol)
 	return result, nil

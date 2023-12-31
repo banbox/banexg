@@ -2,8 +2,8 @@ package binance
 
 import (
 	"context"
-	"fmt"
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
 	"strconv"
@@ -21,14 +21,14 @@ fetches price tickers for multiple markets, statistical information calculated o
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
 */
-func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*banexg.Ticker, error) {
+func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
 	firstSymbol := ""
 	if len(symbols) > 0 {
 		firstSymbol = symbols[0]
 	}
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
-		return nil, fmt.Errorf("load markets fail: %v", err)
+		return nil, err
 	}
 	var args = utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, firstSymbol)
@@ -43,7 +43,8 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 	default:
 		method = "publicGetTicker24hr"
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchTickers")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -59,7 +60,7 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 	}
 }
 
-func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*banexg.Ticker, error) {
+func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*banexg.Ticker, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,8 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 			method = "publicGetTicker24hr"
 		}
 	}
-	rsp := e.RequestApi(context.Background(), method, &args)
+	tryNum := e.GetRetryNum("FetchTicker")
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -103,15 +105,15 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 	} else if method == "publicGetTicker24hr" {
 		return parseTicker[*SpotTicker24hr](rsp, e, market.Type)
 	} else {
-		return nil, fmt.Errorf("unsupport method: %v", method)
+		return nil, errs.NewMsg(errs.CodeNotSupport, "unsupport method: %v", method)
 	}
 }
 
-func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, error) {
+func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
-		return nil, err
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = make([]*banexg.Ticker, len(data))
 	for i, item := range data {
@@ -120,11 +122,11 @@ func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType stri
 	return result, nil
 }
 
-func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) (*banexg.Ticker, error) {
+func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) (*banexg.Ticker, *errs.Error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
-		return nil, err
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	result := (*data).ToStdTicker(e, marketType)
 	return result, nil

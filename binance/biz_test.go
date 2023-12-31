@@ -19,13 +19,13 @@ func TestSign(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	text, err := sonic.MarshalString(res)
-	if err != nil {
-		panic(err)
+	text, err_ := sonic.MarshalString(res)
+	if err_ != nil {
+		panic(err_)
 	}
-	err = os.WriteFile("curr.json", []byte(text), 0644)
-	if err != nil {
-		panic(err)
+	err_ = os.WriteFile("curr.json", []byte(text), 0644)
+	if err_ != nil {
+		panic(err_)
 	}
 	fmt.Print(len(text))
 }

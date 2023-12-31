@@ -1,7 +1,6 @@
 package banexg
 
 import (
-	"errors"
 	"github.com/anyongjin/banexg/utils"
 )
 
@@ -30,18 +29,6 @@ const (
 )
 
 var (
-	ErrMissingApiKey        = errors.New("ApiKey missing")
-	ErrCredsRequired        = errors.New("credential fields missing")
-	ErrUnSupportSign        = utils.ErrUnSupportSign
-	ErrApiNotSupport        = errors.New("api not support")
-	ErrSandboxApiNotSupport = errors.New("sandbox api not support")
-	ErrUnsupportMarket      = errors.New("unsupported market type")
-	ErrNoMarketForPair      = errors.New("no market found for pair")
-	ErrMarketNotLoad        = errors.New("markets not loaded")
-	ErrNotImplement         = errors.New("function not implement")
-)
-
-var (
 	DefReqHeaders = map[string]string{
 		"User-Agent": "Go-http-client/1.1",
 		"Connection": "keep-alive",
@@ -53,7 +40,10 @@ var (
 		"BCHSV": "BSV",
 	}
 	DefWsIntvs = map[string]int{
-		"WatchOrderBook": 100,
+		"WatchOrderBooks": 100,
+	}
+	DefRetries = map[string]int{
+		"FetchOrderBook": 2,
 	}
 	IsUnitTest = false
 )
@@ -86,6 +76,8 @@ const (
 	OptContractType  = "ContractType"
 	OptTimeInForce   = "TimeInForce"
 	OptWsIntvs       = "WsIntvs" // ws 订阅间隔
+	OptRetries       = "Retries"
+	OptWsConn        = "WsConn"
 )
 
 const (

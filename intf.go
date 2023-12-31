@@ -1,17 +1,29 @@
 package banexg
 
+import (
+	"github.com/anyongjin/banexg/errs"
+	"io"
+)
+
 type BanExchange interface {
-	LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, error)
-	FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, error)
-	FetchBalance(params *map[string]interface{}) (*Balances, error)
-	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error)
-	FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, error)
-	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, error)
-	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, error)
-	FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, error)
-	CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, error)
-	CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, error)
-	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params *map[string]interface{}) (*Fee, error)
-	SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, error)
-	PriceOnePip(symbol string) (float64, error)
+	LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, *errs.Error)
+	FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error)
+	FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error)
+	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
+	FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
+	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error)
+	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error)
+	FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, *errs.Error)
+	CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, *errs.Error)
+	CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, *errs.Error)
+	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params *map[string]interface{}) (*Fee, *errs.Error)
+	SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error)
+	PriceOnePip(symbol string) (float64, *errs.Error)
+}
+
+type WsConn interface {
+	Close() error
+	WriteClose() error
+	NextWriter() (io.WriteCloser, error)
+	ReadMsg() ([]byte, error)
 }
