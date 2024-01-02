@@ -11,5 +11,8 @@ func New(code int, err error) *Error {
 }
 
 func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
 	return fmt.Sprintf("[%d] %s", e.Code, e.Msg)
 }

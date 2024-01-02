@@ -59,15 +59,12 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		#
 		# default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	*/
-	if len(symbols) == 0 {
-		return nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required for WatchOrderBooks")
-	}
-	args, market, err := e.LoadArgsMarket(symbols[0], params)
+	client, msgHash, requestId, args, err := e.prepareBookArgs(symbols, params)
 	if err != nil {
 		return nil, err
 	}
 	if limit != 0 {
-		if market.Contract {
+		if e.IsContract(client.MarketType) {
 			if !utils.ArrContains(contOdBookLimits, limit) {
 				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be 0,5,10,20,50,100,500,1000")
 			}
@@ -106,47 +103,24 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		# 8. If the quantity is 0, remove the price level.
 		# 9. Receiving an event that removes a price level that is not in your local order book can happen and is normal.
 	*/
-	name := "depth"
-	// 所有symbol使用相同的msgHash，确保输出到同一个chan
-	var msgHash = market.Type + "@" + name
-	wsUrl, requestId, err := e.GetWsInfo(market.Type, msgHash)
-	if err != nil {
-		return nil, err
-	}
-
-	watchRate, ok := e.WsIntvs["WatchOrderBooks"]
-	if !ok {
-		watchRate = 100
-	}
 	args["method"] = "SUBSCRIBE"
-	args["id"] = requestId
-	exgParams, err := e.getExgWsParams(symbols, fmt.Sprintf("%s@%dms", name, watchRate))
-	if err != nil {
-		return nil, err
-	}
-	args["params"] = exgParams
-	outRaw, oldChan := e.getWsOutChan(wsUrl, msgHash, args)
-	out := outRaw.(chan banexg.OrderBook)
-	reqIdStr := strconv.Itoa(requestId)
+	chanKey := client.URL + "#" + msgHash
+	create := func(cap int) chan banexg.OrderBook { return make(chan banexg.OrderBook, cap) }
+	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	e.AddWsChanRefs(chanKey, symbols...)
 	jobInfo := &banexg.WsJobInfo{
-		ID:         reqIdStr,
+		ID:         strconv.Itoa(requestId),
 		MsgHash:    msgHash,
-		Name:       name,
+		Name:       "depth",
 		Symbols:    symbols,
-		Method:     e.HandleOrderBookSub(out),
+		Method:     e.HandleOrderBookSub,
 		Limit:      limit,
-		MarketType: market.Type,
+		MarketType: client.MarketType,
 		Params:     args,
 	}
-	client, err := e.GetClient(wsUrl, market.Type)
-	if err == nil {
-		err = client.Write(args, reqIdStr, jobInfo)
-	}
+	err = client.Write(args, jobInfo)
 	if err != nil {
-		if !oldChan {
-			close(out)
-			e.delWsChan(wsUrl, msgHash)
-		}
+		e.DelWsChanRefs(chanKey, symbols...)
 		return nil, err
 	}
 	return out, nil
@@ -164,112 +138,43 @@ func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *er
 	}
 	return exgParams, nil
 }
-
-func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error {
+func (e *Binance) prepareBookArgs(symbols []string, params *map[string]interface{}) (*banexg.WsClient, string, int, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
-		return errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
+		return nil, "", 0, nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
 	}
 	args, market, err := e.LoadArgsMarket(symbols[0], params)
 	if err != nil {
-		return err
+		return nil, "", 0, nil, err
 	}
-	name := "depth"
-	var msgHash = market.Type + "@" + name
+	var msgHash = market.Type + "@depth"
 	wsUrl, requestId, err := e.GetWsInfo(market.Type, msgHash)
 	if err != nil {
-		return err
+		return nil, "", 0, nil, err
+	}
+	client, err := e.GetClient(wsUrl, market.Type)
+	if err != nil {
+		return nil, "", 0, nil, err
 	}
 	watchRate, ok := e.WsIntvs["WatchOrderBooks"]
 	if !ok {
 		watchRate = 100
 	}
-	args["method"] = "UNSUBSCRIBE"
-	args["id"] = requestId
-	exgParams, err := e.getExgWsParams(symbols, fmt.Sprintf("%s@%dms", name, watchRate))
+	exgParams, err := e.getExgWsParams(symbols, fmt.Sprintf("depth@%dms", watchRate))
 	if err != nil {
-		return err
+		return nil, "", 0, nil, err
 	}
 	args["params"] = exgParams
-	client, err := e.GetClient(wsUrl, market.Type)
+	args["id"] = requestId
+	return client, msgHash, requestId, args, nil
+}
+
+func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error {
+	client, _, _, args, err := e.prepareBookArgs(symbols, params)
 	if err != nil {
 		return err
 	}
-	return client.Write(args, "", nil)
-}
-
-/*
-delWsChan
-
-	将ws的输出chan移除。
-	注意：通道仍未关闭，需要手动close
-*/
-func (e *Binance) delWsChan(wsUrl, msgHash string) {
-	chanKey := wsUrl + "#" + msgHash
-	delete(e.WsOutChans, chanKey)
-}
-
-/*
-getWsOutChan
-获取指定msgHash的输出通道
-如果不存在则创建新的并存储
-*/
-func (e *Binance) getWsOutChan(wsUrl, msgHash string, args map[string]interface{}) (interface{}, bool) {
-	chanCap := utils.PopMapVal(args, banexg.ParamChanCap, 0)
-	chanKey := wsUrl + "#" + msgHash
-	if out, ok := e.WsOutChans[chanKey]; ok {
-		return out, ok
-	}
-	out := make(chan banexg.OrderBook, chanCap)
-	e.WsOutChans[chanKey] = out
-	return out, false
-}
-
-func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
-	return func(wsUrl string, msg map[string]string) {
-		event, ok := msg["e"]
-		if !ok {
-			msgText, _ := sonic.MarshalString(msg)
-			log.Error("no event ws msg", zap.String("msg", msgText))
-			return
-		}
-		client, ok := e.WSClients[wsUrl]
-		if !ok {
-			log.Error("no ws client found for ", zap.String("url", wsUrl))
-		}
-		switch event {
-		case "depthUpdate":
-			e.handleOrderBook(client, msg)
-		case "trade":
-			e.handleTrade(client, msg)
-		case "aggTrade":
-			e.handleTrade(client, msg)
-		case "kline":
-			e.handleOhlcv(client, msg)
-		case "markPrice_kline":
-			e.handleOhlcv(client, msg)
-		case "indexPrice_kline":
-			e.handleOhlcv(client, msg)
-		case "24hrTicker":
-			e.handleTicker(client, msg)
-		case "24hrMiniTicker":
-			e.handleTicker(client, msg)
-		case "bookTicker":
-			e.handleTicker(client, msg)
-		case "outboundAccountPosition":
-			e.handleBalance(client, msg)
-		case "balanceUpdate":
-			e.handleBalance(client, msg)
-		case "ACCOUNT_UPDATE":
-			e.handleAccountUpdate(client, msg)
-		case "executionReport":
-			e.handleOrderUpdate(client, msg)
-		case "ORDER_TRADE_UPDATE":
-			e.handleOrderUpdate(client, msg)
-		default:
-			msgText, _ := sonic.MarshalString(msg)
-			log.Warn("unhandle ws msg", zap.String("msg", msgText))
-		}
-	}
+	args["method"] = "UNSUBSCRIBE"
+	return client.Write(args, nil)
 }
 
 func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string) {
@@ -308,14 +213,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 		log.Info("book nonce empty, cache")
 		return
 	}
-	var msgHash = fmt.Sprintf("%s#%s@depth", client.URL, client.MarketType)
-	outRaw, outOk := e.WsOutChans[msgHash]
-	var out chan banexg.OrderBook
-	if outOk {
-		out = outRaw.(chan banexg.OrderBook)
-	} else {
-		log.Error("ws od book chan closed", zap.String("k", msgHash))
-	}
+	var chanKey = fmt.Sprintf("%s#%s@depth", client.URL, client.MarketType)
 	var zero = int64(0)
 	U, _ := utils.SafeMapVal(msg, "U", zero)
 	u, _ := utils.SafeMapVal(msg, "u", zero)
@@ -336,8 +234,8 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			}
 			if valid {
 				e.handleOrderBookMsg(msg, book)
-				if nonce < book.Nonce && outOk {
-					out <- *book
+				if nonce < book.Nonce {
+					banexg.WriteOutChan(e.Exchange, chanKey, *book)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -353,8 +251,8 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			// 6. While listening to the stream, each new event's pu should be equal to the previous event's u, otherwise initialize the process from step 3
 			if U <= nonce || pu == nonce {
 				e.handleOrderBookMsg(msg, book)
-				if nonce < book.Nonce && outOk {
-					out <- *book
+				if nonce < book.Nonce {
+					banexg.WriteOutChan(e.Exchange, chanKey, *book)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -391,63 +289,40 @@ func (e *Binance) handleOrderBookMsg(msg map[string]string, book *banexg.OrderBo
 	}
 }
 
-func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
-
-}
-
-func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
-
-}
-
-func (e *Binance) handleTicker(client *banexg.WsClient, msg map[string]string) {
-
-}
-func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) {
-
-}
-func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]string) {
-
-}
-func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]string) {
-
-}
-func (e *Binance) HandleOrderBookSub(out chan banexg.OrderBook) banexg.FuncOnWsMethod {
-	return func(wsUrl string, msg map[string]string, info *banexg.WsJobInfo) {
-		err := e.checkWsError(msg)
-		urlZap := zap.String("url", wsUrl)
+func (e *Binance) HandleOrderBookSub(wsUrl string, msg map[string]string, info *banexg.WsJobInfo) {
+	err := banexg.CheckWsError(msg)
+	urlZap := zap.String("url", wsUrl)
+	chanKey := wsUrl + "#" + info.MsgHash
+	if err != nil {
+		e.DelWsChanRefs(chanKey, info.Symbols...)
+		log.Error("sub order error", urlZap, zap.Error(err))
+		return
+	}
+	client, ok := e.WSClients[wsUrl]
+	if !ok {
+		e.DelWsChanRefs(chanKey, info.Symbols...)
+		log.Error("no ws client for", urlZap)
+		return
+	}
+	symbols := info.Symbols
+	var failSymbols []string
+	for _, symbol := range symbols {
+		delete(e.OrderBooks, symbol)
+		e.OrderBooks[symbol] = &banexg.OrderBook{
+			Symbol: symbol,
+			Cache:  make([]map[string]string, 0),
+		}
+		err = e.fetchOrderBookSnapshot(client, symbol, info)
 		if err != nil {
-			close(out)
-			log.Error("sub order error", urlZap, zap.Error(err))
-			return
+			failSymbols = append(failSymbols, symbol)
 		}
-		client, ok := e.WSClients[wsUrl]
-		if !ok {
-			close(out)
-			log.Error("no ws client for", urlZap)
-			return
-		}
-		symbols := info.Symbols
-		if len(symbols) == 0 {
-			symbols = append(symbols, info.Symbol)
-		}
-		var failSymbols []string
-		for _, symbol := range symbols {
-			delete(e.OrderBooks, symbol)
-			e.OrderBooks[symbol] = &banexg.OrderBook{
-				Symbol: symbol,
-				Cache:  make([]map[string]string, 0),
-			}
-			err = e.fetchOrderBookSnapshot(client, symbol, info)
-			if err != nil {
-				failSymbols = append(failSymbols, symbol)
-			}
-		}
-		if len(failSymbols) > 0 {
-			log.Error("sub ws od books fail", zap.Strings("symbols", failSymbols))
-			err = e.UnWatchOrderBooks(failSymbols, nil)
-			if err != nil {
-				log.Error("unwatch ws order book fail", zap.Strings("symbols", failSymbols), zap.Error(err))
-			}
+	}
+	if len(failSymbols) > 0 {
+		e.DelWsChanRefs(chanKey, failSymbols...)
+		log.Error("sub ws od books fail", zap.Strings("symbols", failSymbols))
+		err = e.UnWatchOrderBooks(failSymbols, nil)
+		if err != nil {
+			log.Error("unwatch ws order book fail", zap.Strings("symbols", failSymbols), zap.Error(err))
 		}
 	}
 }
@@ -497,30 +372,6 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 	if ok {
 		out := outRaw.(chan banexg.OrderBook)
 		out <- *book
-	}
-	return nil
-}
-
-/*
-checkWsError
-从websocket返回的消息结果中，检查是否有错误信息
-*/
-func (e *Binance) checkWsError(msg map[string]string) *errs.Error {
-	errRaw, ok := msg["error"]
-	if ok {
-		var err = &errs.Error{}
-		errData, _ := sonic.Marshal(errRaw)
-		_ = sonic.Unmarshal(errData, err)
-		return err
-	}
-	status, ok := msg["status"]
-	if ok && status != "200" {
-		statusVal, e := strconv.Atoi(status)
-		if e != nil {
-			return nil
-		}
-		msgStr, _ := sonic.MarshalString(msg)
-		return errs.NewMsg(statusVal, msgStr)
 	}
 	return nil
 }

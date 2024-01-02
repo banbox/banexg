@@ -61,9 +61,10 @@ type Exchange struct {
 
 	OrderBooks map[string]*OrderBook // symbol: OrderBook update by wss
 
-	WSClients  map[string]*WsClient   // url: websocket clients
-	WsIntvs    map[string]int         // milli secs interval for ws endpoints
-	WsOutChans map[string]interface{} // url+msgHash: chan Type
+	WSClients  map[string]*WsClient           // url: websocket clients
+	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
+	WsOutChans map[string]interface{}         // url+msgHash: chan Type
+	WsChanRefs map[string]map[string]struct{} // url+msgHash: symbols use this chan
 
 	// for calling sub struct func in parent struct
 	Sign            FuncSign
@@ -284,6 +285,11 @@ type Kline struct {
 	Volume float64
 }
 
+type SymbolKline struct {
+	Kline
+	Symbol string
+}
+
 type Balances struct {
 	TimeStamp      int64
 	Free           map[string]float64
@@ -386,7 +392,6 @@ type WsJobInfo struct {
 	ID         string
 	MsgHash    string
 	Name       string
-	Symbol     string
 	Symbols    []string
 	Method     func(wsUrl string, msg map[string]string, info *WsJobInfo)
 	Limit      int

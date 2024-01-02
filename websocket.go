@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -115,7 +117,8 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 }
 
 func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.Error) {
-	if client, ok := e.WSClients[wsUrl]; ok && client.Conn != nil {
+	client, ok := e.WSClients[wsUrl]
+	if ok && client.Conn != nil {
 		return client, nil
 	}
 	params := map[string]interface{}{}
@@ -128,7 +131,14 @@ func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.
 	if e.OnWsMsg == nil {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "OnWsMsg is required for ws client")
 	}
-	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, e.OnWsClose, &params)
+	onClosed := func(wsUrl string, err *errs.Error) {
+		if e.OnWsClose != nil {
+			e.OnWsClose(wsUrl, err)
+		}
+		num := e.handleWsClientClosed(client)
+		log.Info("closed out chan for ws client", zap.Int("num", num))
+	}
+	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, &params)
 	if err != nil {
 		return nil, err
 	}
@@ -138,22 +148,132 @@ func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.
 }
 
 /*
+GetWsOutChan
+获取指定msgHash的输出通道
+如果不存在则创建新的并存储
+*/
+func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args map[string]interface{}) T {
+	outRaw, oldChan := e.WsOutChans[chanKey]
+	if oldChan {
+		res := outRaw.(T)
+		return res
+	} else {
+		chanCap := utils.PopMapVal(args, ParamChanCap, 0)
+		res := create(chanCap)
+		e.WsOutChans[chanKey] = res
+		return res
+	}
+}
+
+func WriteOutChan[T any](e *Exchange, chanKey string, msg T) bool {
+	outRaw, outOk := e.WsOutChans[chanKey]
+	var out chan T
+	if outOk {
+		out = outRaw.(chan T)
+		out <- msg
+	} else {
+		log.Error("write ws out chan fail", zap.String("k", chanKey))
+	}
+	return outOk
+}
+
+func (e *Exchange) AddWsChanRefs(chanKey string, keys ...string) {
+	data, ok := e.WsChanRefs[chanKey]
+	if !ok {
+		data = make(map[string]struct{})
+		e.WsChanRefs[chanKey] = data
+	}
+	for _, k := range keys {
+		data[k] = struct{}{}
+	}
+}
+
+func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
+	data, ok := e.WsChanRefs[chanKey]
+	if !ok {
+		return -1
+	}
+	for _, k := range keys {
+		delete(data, k)
+	}
+	hasNum := len(data)
+	if hasNum == 0 {
+		if out, ok := e.WsOutChans[chanKey]; ok {
+			val := reflect.ValueOf(out)
+			if val.Kind() == reflect.Chan {
+				val.Close()
+			}
+			delete(e.WsOutChans, chanKey)
+			log.Info("remove chan", zap.String("key", chanKey))
+		}
+	}
+	return hasNum
+}
+
+func (e *Exchange) handleWsClientClosed(client *WsClient) int {
+	prefix := client.URL + "#"
+	removeNum := 0
+	for key, _ := range e.WsChanRefs {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		delete(e.WsChanRefs, key)
+		if out, ok := e.WsOutChans[key]; ok {
+			val := reflect.ValueOf(out)
+			if val.Kind() == reflect.Chan {
+				val.Close()
+			}
+			delete(e.WsOutChans, key)
+			removeNum += 1
+		}
+	}
+	return removeNum
+}
+
+/*
+CheckWsError
+从websocket返回的消息结果中，检查是否有错误信息
+*/
+func CheckWsError(msg map[string]string) *errs.Error {
+	errRaw, ok := msg["error"]
+	if ok {
+		var err = &errs.Error{}
+		errData, _ := sonic.Marshal(errRaw)
+		_ = sonic.Unmarshal(errData, err)
+		return err
+	}
+	status, ok := msg["status"]
+	if ok && status != "200" {
+		statusVal, e := strconv.Atoi(status)
+		if e != nil {
+			return nil
+		}
+		msgStr, _ := sonic.MarshalString(msg)
+		return errs.NewMsg(statusVal, msgStr)
+	}
+	return nil
+}
+
+/*
 Write
 发送消息到ws服务器，可设置处理任务结果需要的信息
 jobID: 此次消息的任务ID，唯一标识此次请求
 jobInfo: 此次任务的主要信息，在收到任务结果时使用
 */
-func (c *WsClient) Write(msg interface{}, jobID string, jobInfo *WsJobInfo) *errs.Error {
+func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
 	data, err2 := sonic.Marshal(msg)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
-	c.Send <- data
-	if jobID != "" && jobInfo != nil {
-		if _, ok := c.JobInfos[jobID]; !ok {
-			c.JobInfos[jobID] = jobInfo
+	if info != nil {
+		if info.ID == "" {
+			return errs.NewMsg(errs.CodeParamRequired, "WsJobInfo.ID is required")
+		}
+		if _, ok := c.JobInfos[info.ID]; !ok {
+			c.JobInfos[info.ID] = info
 		}
 	}
+	c.Send <- data
 	return nil
 }
 
@@ -180,7 +300,6 @@ func (c *WsClient) write() {
 				continue
 			}
 			if ctrlType == ctrlClosed {
-				log.Debug("conn closed")
 				return
 			} else if ctrlType == ctrlDoClose {
 				// Cleanly close the connection by sending a close message and then
@@ -237,7 +356,7 @@ func (c *WsClient) read() {
 			if c.OnClose != nil {
 				c.OnClose(c.URL, errs.New(errs.CodeWsReadFail, err))
 			}
-			log.Error("ws closed", zap.String("url", c.URL), zap.Error(err))
+			log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Error(err))
 			return
 		}
 		// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误

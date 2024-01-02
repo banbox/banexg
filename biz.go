@@ -65,6 +65,7 @@ func (e *Exchange) Init() {
 	e.CurrenciesByCode = map[string]*Currency{}
 	e.WSClients = map[string]*WsClient{}
 	e.WsOutChans = map[string]interface{}{}
+	e.WsChanRefs = map[string]map[string]struct{}{}
 	e.OrderBooks = map[string]*OrderBook{}
 }
 

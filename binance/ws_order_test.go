@@ -160,16 +160,16 @@ func TestWatchOrderBookOut(t *testing.T) {
 	}
 	expect := strings.Replace(string(data), "\r\n", "\n", -1)
 	writer := buffer.Buffer{}
-	timeout := 3 * time.Second
 	var book *banexg.OrderBook
 mainFor:
 	for {
 		select {
-		case tmp := <-out:
+		case tmp, ok := <-out:
+			if !ok {
+				log.Info("read out chan fail, break")
+				break mainFor
+			}
 			book = &tmp
-			timeout = 3 * time.Second
-		case <-time.After(timeout):
-			break mainFor
 		}
 	}
 	if book == nil {

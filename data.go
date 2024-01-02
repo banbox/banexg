@@ -23,7 +23,8 @@ const (
 	ParamTest               = "test"
 	ParamMarginMode         = "marginMode"
 	ParamPositionSide       = "positionSide"
-	ParamProxy              = "Proxy"
+	ParamProxy              = "proxy"
+	ParamName               = "name"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -45,7 +46,6 @@ var (
 	DefRetries = map[string]int{
 		"FetchOrderBook": 2,
 	}
-	IsUnitTest = false
 )
 
 const (
