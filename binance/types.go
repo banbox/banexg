@@ -232,31 +232,31 @@ type IsolatedCurrAsset struct {
 }
 
 /*
-SwapBalances 永续合约账户余额
+LinearBalances U本位合约账户余额
 */
-type SwapBalances struct {
-	FeeTier                     int64           `json:"feeTier"`     // 手续费等级
-	CanTrade                    bool            `json:"canTrade"`    // 是否可以交易
-	CanDeposit                  bool            `json:"canDeposit"`  // 是否可以入金
-	CanWithdraw                 bool            `json:"canWithdraw"` // 是否可以出金
-	UpdateTime                  int64           `json:"updateTime"`  // 保留字段，请忽略
-	MultiAssetsMargin           bool            `json:"multiAssetsMargin"`
-	TradeGroupId                int64           `json:"tradeGroupId"`
-	TotalInitialMargin          string          `json:"totalInitialMargin"`          // 当前所需起始保证金总额(存在逐仓请忽略), 仅计算usdt资产
-	TotalMaintMargin            string          `json:"totalMaintMargin"`            // 维持保证金总额, 仅计算usdt资产
-	TotalWalletBalance          string          `json:"totalWalletBalance"`          // 账户总余额, 仅计算usdt资产
-	TotalUnrealizedProfit       string          `json:"totalUnrealizedProfit"`       // 持仓未实现盈亏总额, 仅计算usdt资产
-	TotalMarginBalance          string          `json:"totalMarginBalance"`          // 保证金总余额, 仅计算usdt资产
-	TotalPositionInitialMargin  string          `json:"totalPositionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格), 仅计算usdt资产
-	TotalOpenOrderInitialMargin string          `json:"totalOpenOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格), 仅计算usdt资产
-	TotalCrossWalletBalance     string          `json:"totalCrossWalletBalance"`     // 全仓账户余额, 仅计算usdt资产
-	TotalCrossUnPnl             string          `json:"totalCrossUnPnl"`             // 全仓持仓未实现盈亏总额, 仅计算usdt资产
-	AvailableBalance            string          `json:"availableBalance"`            // 可用余额, 仅计算usdt资产
-	MaxWithdrawAmount           string          `json:"maxWithdrawAmount"`           // 最大可转出余额, 仅计算usdt资产
-	Assets                      []*SwapAsset    `json:"assets"`
-	Positions                   []*SwapPosition `json:"positions"`
+type LinearBalances struct {
+	FeeTier                     int64             `json:"feeTier"`     // 手续费等级
+	CanTrade                    bool              `json:"canTrade"`    // 是否可以交易
+	CanDeposit                  bool              `json:"canDeposit"`  // 是否可以入金
+	CanWithdraw                 bool              `json:"canWithdraw"` // 是否可以出金
+	UpdateTime                  int64             `json:"updateTime"`  // 保留字段，请忽略
+	MultiAssetsMargin           bool              `json:"multiAssetsMargin"`
+	TradeGroupId                int64             `json:"tradeGroupId"`
+	TotalInitialMargin          string            `json:"totalInitialMargin"`          // 当前所需起始保证金总额(存在逐仓请忽略), 仅计算usdt资产
+	TotalMaintMargin            string            `json:"totalMaintMargin"`            // 维持保证金总额, 仅计算usdt资产
+	TotalWalletBalance          string            `json:"totalWalletBalance"`          // 账户总余额, 仅计算usdt资产
+	TotalUnrealizedProfit       string            `json:"totalUnrealizedProfit"`       // 持仓未实现盈亏总额, 仅计算usdt资产
+	TotalMarginBalance          string            `json:"totalMarginBalance"`          // 保证金总余额, 仅计算usdt资产
+	TotalPositionInitialMargin  string            `json:"totalPositionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格), 仅计算usdt资产
+	TotalOpenOrderInitialMargin string            `json:"totalOpenOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格), 仅计算usdt资产
+	TotalCrossWalletBalance     string            `json:"totalCrossWalletBalance"`     // 全仓账户余额, 仅计算usdt资产
+	TotalCrossUnPnl             string            `json:"totalCrossUnPnl"`             // 全仓持仓未实现盈亏总额, 仅计算usdt资产
+	AvailableBalance            string            `json:"availableBalance"`            // 可用余额, 仅计算usdt资产
+	MaxWithdrawAmount           string            `json:"maxWithdrawAmount"`           // 最大可转出余额, 仅计算usdt资产
+	Assets                      []*LinearAsset    `json:"assets"`
+	Positions                   []*LinearPosition `json:"positions"`
 }
-type SwapAsset struct {
+type LinearAsset struct {
 	FutureAsset
 	MarginAvailable bool `json:"marginAvailable"` // 是否可用作联合保证金
 }
@@ -275,7 +275,7 @@ type FuturePosition struct {
 	PositionAmt            string `json:"positionAmt"`            // 持仓数量
 	UpdateTime             int64  `json:"updateTime"`             // 更新时间
 }
-type SwapPosition struct {
+type LinearPosition struct {
 	FuturePosition
 	MaxNotional string `json:"maxNotional"` // 当前杠杆下用户可用的最大名义价值
 	BidNotional string `json:"bidNotional"` // 买单净值，忽略

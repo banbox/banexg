@@ -68,17 +68,20 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
+	getCurrCode := func(currId string) string {
+		return e.SafeCurrencyCode(currId)
+	}
 	switch method {
 	case "privateGetAccount":
-		return parseSpotBalances(e, rsp)
+		return parseSpotBalances(getCurrCode, rsp)
 	case "sapiGetMarginAccount":
-		return parseMarginCrossBalances(e, rsp)
+		return parseMarginCrossBalances(getCurrCode, rsp)
 	case "sapiGetMarginIsolatedAccount":
 		return parseMarginIsolatedBalances(e, rsp)
 	case "fapiPrivateV2GetAccount":
-		return parseSwapBalances(e, rsp)
+		return parseLinearBalances(getCurrCode, rsp)
 	case "dapiPrivateGetAccount":
-		return parseInverseBalances(e, rsp)
+		return parseInverseBalances(getCurrCode, rsp)
 	case "sapiPostAssetGetFundingAsset":
 		return parseFundingBalances(e, rsp)
 	default:
@@ -98,7 +101,7 @@ func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs
 	return &result, nil
 }
 
-func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
+func parseSpotBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = SpotAccount{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -106,7 +109,7 @@ func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs
 	}
 	result.TimeStamp = data.UpdateTime
 	for _, item := range data.Balances {
-		asset := item.ToStdAsset(e.Exchange)
+		asset := item.ToStdAsset(getCurrCode)
 		if asset.IsEmpty() {
 			continue
 		}
@@ -115,14 +118,14 @@ func parseSpotBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs
 	return result.Init(), nil
 }
 
-func parseMarginCrossBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
+func parseMarginCrossBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = MarginCrossBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range data.UserAssets {
-		asset := item.ToStdAsset(e.Exchange)
+		asset := item.ToStdAsset(getCurrCode)
 		if asset.IsEmpty() {
 			continue
 		}
@@ -137,18 +140,21 @@ func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balan
 	if err != nil {
 		return nil, err
 	}
+	getCurrCode := func(currId string) string {
+		return e.SafeCurrencyCode(currId)
+	}
 	for _, item := range data.Assets {
 		symbol := e.SafeSymbol(item.Symbol, "", banexg.MarketMargin)
 		itemRes := make(map[string]*banexg.Asset)
 		if item.BaseAsset != nil {
-			asset := item.BaseAsset.ToStdAsset(e.Exchange)
+			asset := item.BaseAsset.ToStdAsset(getCurrCode)
 			if asset.IsEmpty() {
 				continue
 			}
 			itemRes[asset.Code] = asset
 		}
 		if item.QuoteAsset != nil {
-			asset := item.QuoteAsset.ToStdAsset(e.Exchange)
+			asset := item.QuoteAsset.ToStdAsset(getCurrCode)
 			if asset.IsEmpty() {
 				continue
 			}
@@ -159,14 +165,14 @@ func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balan
 	return result.Init(), nil
 }
 
-func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
-	var data = SwapBalances{}
+func parseLinearBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
+	var data = LinearBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range data.Assets {
-		asset := item.ToStdAsset(e.Exchange)
+		asset := item.ToStdAsset(getCurrCode)
 		if asset.IsEmpty() {
 			continue
 		}
@@ -175,14 +181,14 @@ func parseSwapBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs
 	return result.Init(), nil
 }
 
-func parseInverseBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
+func parseInverseBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = InverseBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range data.Assets {
-		asset := item.ToStdAsset(e.Exchange)
+		asset := item.ToStdAsset(getCurrCode)
 		if asset.IsEmpty() {
 			continue
 		}
@@ -216,12 +222,12 @@ func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *e
 	return result.Init(), nil
 }
 
-func (a BnbAsset) ToStdAsset(e *banexg.Exchange) *banexg.Asset {
+func (a BnbAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
 	free, _ := strconv.ParseFloat(a.Free, 64)
 	lock, _ := strconv.ParseFloat(a.Locked, 64)
 	borr, _ := strconv.ParseFloat(a.Borrowed, 64)
 	inst, _ := strconv.ParseFloat(a.Interest, 64)
-	code := e.SafeCurrencyCode(a.Asset)
+	code := getCurrCode(a.Asset)
 	return &banexg.Asset{
 		Code:  code,
 		Free:  free,
@@ -231,8 +237,8 @@ func (a BnbAsset) ToStdAsset(e *banexg.Exchange) *banexg.Asset {
 	}
 }
 
-func (a *FutureAsset) ToStdAsset(e *banexg.Exchange) *banexg.Asset {
-	code := e.SafeCurrencyCode(a.Asset)
+func (a *FutureAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
+	code := getCurrCode(a.Asset)
 	free, _ := strconv.ParseFloat(a.AvailableBalance, 64)
 	used, _ := strconv.ParseFloat(a.InitialMargin, 64)
 	total, _ := strconv.ParseFloat(a.MarginBalance, 64)
