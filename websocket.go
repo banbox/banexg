@@ -158,19 +158,32 @@ func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args m
 		res := outRaw.(T)
 		return res
 	} else {
-		chanCap := utils.PopMapVal(args, ParamChanCap, 0)
+		chanCap := utils.PopMapVal(args, ParamChanCap, 100)
 		res := create(chanCap)
 		e.WsOutChans[chanKey] = res
 		return res
 	}
 }
 
-func WriteOutChan[T any](e *Exchange, chanKey string, msg T) bool {
+func WriteOutChan[T any](e *Exchange, chanKey string, msg T, popIfNeed bool) bool {
 	outRaw, outOk := e.WsOutChans[chanKey]
-	var out chan T
 	if outOk {
-		out = outRaw.(chan T)
-		out <- msg
+		out, ok := outRaw.(chan T)
+		if !ok {
+			log.Error("out chan type error", zap.String("k", chanKey))
+			return false
+		}
+		select {
+		case out <- msg:
+		default:
+			if !popIfNeed {
+				log.Error("out chan full", zap.String("k", chanKey))
+				return false
+			}
+			// chan通道满了，弹出最早的消息，重新发送
+			<-out
+			out <- msg
+		}
 	} else {
 		log.Error("write ws out chan fail", zap.String("k", chanKey))
 	}

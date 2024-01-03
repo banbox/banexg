@@ -1,9 +1,12 @@
 package binance
 
 import (
+	"fmt"
 	"github.com/anyongjin/banexg/log"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +50,33 @@ mainFor:
 				zap.Float64("c", k.Close),
 				zap.Float64("v", k.Volume),
 			)
+		}
+	}
+}
+
+func TestWatchBalance(t *testing.T) {
+	exg := getBinance(nil)
+	//exg.MarketType = banexg.MarketLinear
+	out, err := exg.WatchBalance(nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("start watching balances")
+mainFor:
+	for {
+		select {
+		case b, ok := <-out:
+			if !ok {
+				log.Info("read out chan fail, break")
+				break mainFor
+			}
+			builder := strings.Builder{}
+			builder.WriteString("time:" + strconv.FormatInt(b.TimeStamp, 10) + "\n")
+			for _, item := range b.Assets {
+				builder.WriteString(item.Code + "\t\t")
+				builder.WriteString(fmt.Sprintf("free: %f total: %f\n", item.Free, item.Total))
+			}
+			fmt.Print(builder.String())
 		}
 	}
 }

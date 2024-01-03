@@ -9,6 +9,7 @@ import (
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Error)
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, *errs.Error)
+type FuncAuth = func(params *map[string]interface{}) *errs.Error
 
 type FuncOnWsMsg = func(wsUrl string, msg map[string]string)
 type FuncOnWsMethod = func(wsUrl string, msg map[string]string, info *WsJobInfo)
@@ -59,7 +60,8 @@ type Exchange struct {
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
 
-	OrderBooks map[string]*OrderBook // symbol: OrderBook update by wss
+	OrderBooks  map[string]*OrderBook // symbol: OrderBook update by wss
+	MarBalances map[string]*Balances  // marketType: Balances
 
 	WSClients  map[string]*WsClient           // url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
@@ -70,6 +72,7 @@ type Exchange struct {
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
+	Authenticate    FuncAuth
 	GetRetryWait    func(e *errs.Error) int // 根据错误信息计算重试间隔秒数，<0表示无需重试
 
 	OnWsMsg   FuncOnWsMsg
@@ -77,6 +80,7 @@ type Exchange struct {
 	OnWsClose FuncOnWsClose
 
 	Flags map[string]string
+	Data  map[string]interface{} // common saves
 }
 
 type ExgHosts struct {
@@ -389,12 +393,11 @@ WsJobInfo
 调用websocket api时暂存的任务信息。用于返回结果时处理。
 */
 type WsJobInfo struct {
-	ID         string
-	MsgHash    string
-	Name       string
-	Symbols    []string
-	Method     func(wsUrl string, msg map[string]string, info *WsJobInfo)
-	Limit      int
-	MarketType string
-	Params     map[string]interface{}
+	ID      string
+	MsgHash string
+	Name    string
+	Symbols []string
+	Method  func(wsUrl string, msg map[string]string, info *WsJobInfo)
+	Limit   int
+	Params  map[string]interface{}
 }

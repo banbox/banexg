@@ -67,6 +67,11 @@ func (e *Exchange) Init() {
 	e.WsOutChans = map[string]interface{}{}
 	e.WsChanRefs = map[string]map[string]struct{}{}
 	e.OrderBooks = map[string]*OrderBook{}
+	e.MarBalances = map[string]*Balances{}
+	e.Data = map[string]interface{}{}
+	if val, ok := e.Options[OptAuthRefreshSecs]; ok {
+		e.Data[OptAuthRefreshSecs] = val
+	}
 }
 
 /*
@@ -301,6 +306,17 @@ func (e *Exchange) GetMarketID(symbol string) (string, *errs.Error) {
 		return "", err
 	}
 	return market.ID, nil
+}
+
+func (e *Exchange) GetMarketIDByArgs(args map[string]interface{}, required bool) (string, *errs.Error) {
+	symbol := utils.PopMapVal(args, ParamSymbol, "")
+	if symbol == "" {
+		if required {
+			return "", errs.NewMsg(errs.CodeParamRequired, "symbol required")
+		}
+		return "", nil
+	}
+	return e.GetMarketID(symbol)
 }
 
 func (e *Exchange) GetMarketById(marketId, marketType string) *Market {
@@ -560,7 +576,8 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		return &result
 	}
 	result.Content = string(rspData)
-	bodyShort := zap.String("body", result.Content[:3000])
+	cutLen := min(len(result.Content), 3000)
+	bodyShort := zap.String("body", result.Content[:cutLen])
 	log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
 		zap.Int("len", len(result.Content)), bodyShort)
 	if result.Status >= 400 {

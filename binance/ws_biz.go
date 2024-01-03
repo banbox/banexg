@@ -1,6 +1,7 @@
 package binance
 
 import (
+	"context"
 	"fmt"
 	"github.com/anyongjin/banexg"
 	"github.com/anyongjin/banexg/errs"
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
@@ -68,6 +70,144 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 			log.Warn("unhandle ws msg", zap.String("msg", msgText))
 		}
 	}
+}
+
+type AuthRes struct {
+	ListenKey string `json:"listenKey"`
+}
+
+func makeAuthenticate(e *Binance) banexg.FuncAuth {
+	return func(params *map[string]interface{}) *errs.Error {
+		zeroVal := int64(0)
+		args := utils.SafeParams(params)
+		marketType, _ := e.GetArgsMarketType(args, "")
+		lastTimeKey := marketType + "lastAuthTime"
+		authField := marketType + banexg.MidListenKey
+		lastAuthTime := utils.GetMapVal(e.Data, lastTimeKey, zeroVal)
+		authRefreshSecs := utils.GetMapVal(e.Data, banexg.OptAuthRefreshSecs, 1200)
+		refreshDuration := int64(authRefreshSecs * 1000)
+		curTime := e.MilliSeconds()
+		if curTime-lastAuthTime <= refreshDuration {
+			return nil
+		}
+		marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+		method := "publicPostUserDataStream"
+		if marketType == banexg.MarketLinear {
+			method = "fapiPrivatePostListenKey"
+		} else if marketType == banexg.MarketInverse {
+			method = "dapiPrivatePostListenKey"
+		} else if marginMode == banexg.MarginIsolated {
+			method = "sapiPostUserDataStreamIsolated"
+			marketId, err := e.GetMarketIDByArgs(args, true)
+			if err != nil {
+				return err
+			}
+			args["symbol"] = marketId
+		} else if marketType == banexg.MarketMargin {
+			method = "sapiPostUserDataStream"
+		}
+		rsp := e.RequestApiRetry(context.Background(), method, &args, 1)
+		if rsp.Error != nil {
+			return rsp.Error
+		}
+		var res = AuthRes{}
+		err2 := sonic.UnmarshalString(rsp.Content, &res)
+		if err2 != nil {
+			return errs.New(errs.CodeUnmarshalFail, err2)
+		}
+		e.Data[lastTimeKey] = curTime
+		e.Data[authField] = res.ListenKey
+		refreshAfter := time.Duration(authRefreshSecs) * time.Second
+		time.AfterFunc(refreshAfter, func() {
+			e.keepAliveListenKey(params)
+		})
+		return nil
+	}
+}
+
+func (e *Binance) keepAliveListenKey(params *map[string]interface{}) {
+	args := utils.SafeParams(params)
+	marketType, _ := e.GetArgsMarketType(args, "")
+	lastTimeKey := marketType + "lastAuthTime"
+	authField := marketType + banexg.MidListenKey
+	listenKey := utils.GetMapVal(e.Data, authField, "")
+	if listenKey == "" {
+		return
+	}
+	var success = false
+	defer func() {
+		if success {
+			return
+		}
+		delete(e.Data, authField)
+		delete(e.Data, lastTimeKey)
+		wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
+		if client, ok := e.WSClients[wsUrl]; ok {
+			_ = client.Conn.WriteClose()
+			log.Warn("renew listenKey fail, close ws client", zap.String("url", wsUrl))
+		}
+	}()
+	method := "publicPutUserDataStream"
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivatePutListenKey"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivatePutListenKey"
+	} else {
+		args[banexg.MidListenKey] = listenKey
+		if marketType == banexg.MarketMargin {
+			method = "sapiPutUserDataStream"
+			marketId, err := e.GetMarketIDByArgs(args, true)
+			if err != nil {
+				log.Error("keepAliveListenKey fail", zap.Error(err))
+				return
+			}
+			args["symbol"] = marketId
+		}
+	}
+	rsp := e.RequestApiRetry(context.Background(), method, &args, 1)
+	if rsp.Error != nil {
+		log.Error("refresh listenKey fail", zap.Error(rsp.Error))
+		return
+	}
+	success = true
+	e.Data[lastTimeKey] = e.MilliSeconds()
+	authRefreshSecs := utils.GetMapVal(e.Data, banexg.OptAuthRefreshSecs, 1200)
+	refreshDuration := time.Duration(authRefreshSecs) * time.Second
+	time.AfterFunc(refreshDuration, func() {
+		e.keepAliveListenKey(params)
+	})
+}
+
+func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg.WsClient, *errs.Error) {
+	err := e.Authenticate(params)
+	if err != nil {
+		return "", nil, err
+	}
+	args := utils.SafeParams(params)
+	marketType, _ := e.GetArgsMarketType(args, "")
+	listenKey := utils.GetMapVal(e.Data, marketType+banexg.MidListenKey, "")
+	wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
+	client, err := e.GetClient(wsUrl, marketType)
+	return listenKey, client, err
+}
+
+func (e *Binance) WatchBalance(params *map[string]interface{}) (chan banexg.Balances, *errs.Error) {
+	_, client, err := e.getAuthClient(params)
+	if err != nil {
+		return nil, err
+	}
+	balances, err := e.FetchBalance(params)
+	if err != nil {
+		return nil, err
+	}
+	e.MarBalances[client.MarketType] = balances
+	args := utils.SafeParams(params)
+	chanKey := client.URL + "#balance"
+	create := func(cap int) chan banexg.Balances { return make(chan banexg.Balances, cap) }
+	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	e.AddWsChanRefs(chanKey, "account")
+	out <- *balances
+	return out, nil
 }
 
 func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
@@ -165,7 +305,7 @@ func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
 			Volume: v,
 		},
 	}
-	banexg.WriteOutChan(e.Exchange, chanKey, *kline)
+	banexg.WriteOutChan(e.Exchange, chanKey, *kline, true)
 }
 
 func (e *Binance) prepareOhlcvSub(jobs [][2]string, params *map[string]interface{}) (*banexg.WsClient, string, int, []string, []string, map[string]interface{}, *errs.Error) {
@@ -236,11 +376,138 @@ func (e *Binance) UnWatchOhlcvs(jobs [][2]string, params *map[string]interface{}
 func (e *Binance) handleTicker(client *banexg.WsClient, msg map[string]string) {
 
 }
+
+/*
+handleBalance
+处理现货余额变动更新消息
+*/
 func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) {
-
+	event, _ := utils.SafeMapVal(msg, "e", "")
+	balances, ok := e.MarBalances[client.MarketType]
+	if !ok {
+		balances = &banexg.Balances{
+			Assets: map[string]*banexg.Asset{},
+		}
+		e.MarBalances[client.MarketType] = balances
+	}
+	msgText, _ := sonic.MarshalString(msg)
+	log.Info("balance update", zap.String("msg", msgText))
+	evtTime, _ := utils.SafeMapVal(msg, "E", int64(0))
+	balances.TimeStamp = evtTime
+	if event == "balanceUpdate" {
+		// 现货：余额更新，提现充值划转触发
+		currencyId, _ := utils.SafeMapVal(msg, "a", "")
+		code := e.SafeCurrencyCode(currencyId)
+		delta, _ := utils.SafeMapVal(msg, "d", float64(0))
+		if asset, ok := balances.Assets[code]; ok {
+			asset.Free += delta
+		}
+	} else if event == "outboundAccountPosition" {
+		// 现货：余额变动
+		text, _ := utils.SafeMapVal(msg, "B", "")
+		items := make([]struct {
+			Asset string `json:"a"`
+			Free  string `json:"f"`
+			Lock  string `json:"l"`
+		}, 0)
+		err := sonic.UnmarshalString(text, &items)
+		if err != nil {
+			log.Error("unmarshal balance fail", zap.String("text", text), zap.Error(err))
+			return
+		}
+		for _, item := range items {
+			code := e.SafeCurrencyCode(item.Asset)
+			asset, ok := balances.Assets[code]
+			free, _ := strconv.ParseFloat(item.Free, 64)
+			lock, _ := strconv.ParseFloat(item.Lock, 64)
+			total := free + lock
+			if ok {
+				asset.Free = free
+				asset.Used = lock
+				asset.Total = total
+			} else {
+				asset = &banexg.Asset{Code: code, Free: free, Used: lock, Total: total}
+				balances.Assets[code] = asset
+			}
+		}
+	} else {
+		log.Error("invalid balance update", zap.String("event", event))
+	}
+	chanKey := client.URL + "#balance"
+	if outRaw, ok := e.WsOutChans[chanKey]; ok {
+		out := outRaw.(chan banexg.Balances)
+		out <- *balances
+	}
 }
-func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]string) {
 
+type ContractAsset struct {
+	Asset         string `json:"a"`
+	WalletBalance string `json:"wb"`
+	CrossWallet   string `json:"cw"`
+	BalanceChange string `json:"bc"`
+}
+
+type ContractPosition struct {
+	Symbol         string `json:"s"`
+	PosAmount      string `json:"pa"`
+	EntryPrice     string `json:"ep"`
+	BreakEvenPrice string `json:"bep"`
+	AccuRealized   string `json:"cr"`
+	UnrealizedPnl  string `json:"up"`
+	MarginType     string `json:"mt"`
+	IsolatedWallet string `json:"iw"`
+	PositionSide   string `json:"ps"`
+}
+
+/*
+处理U本位合约，币本位合约，期权账户更新消息
+*/
+func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]string) {
+	balances, ok := e.MarBalances[client.MarketType]
+	if !ok {
+		balances = &banexg.Balances{
+			Assets: map[string]*banexg.Asset{},
+		}
+		e.MarBalances[client.MarketType] = balances
+	}
+	evtTime, _ := utils.SafeMapVal(msg, "E", int64(0))
+	balances.TimeStamp = evtTime
+	if client.MarketType != banexg.MarketOption {
+		// linear/inverse
+		text, _ := msg["a"]
+		log.Info("account update", zap.String("msg", text))
+		var Data = struct {
+			Reason    string             `json:"m"`
+			Balances  []ContractAsset    `json:"B"`
+			Positions []ContractPosition `json:"P"`
+		}{}
+		err := sonic.UnmarshalString(text, &Data)
+		if err != nil {
+			log.Error("unmarshal account update fail", zap.Error(err), zap.String("text", text))
+			return
+		}
+		for _, item := range Data.Balances {
+			code := e.SafeCurrencyCode(item.Asset)
+			asset, ok := balances.Assets[code]
+			// 收到币安wb/cw值完全相同，bc始终是0，只能检测到总资产数量，无法获知可用余额变化
+			total, _ := strconv.ParseFloat(item.WalletBalance, 64)
+			change, _ := strconv.ParseFloat(item.BalanceChange, 64)
+			if ok {
+				asset.Free += change
+				asset.Total = total
+				asset.Used = total - asset.Free
+			} else {
+				asset = &banexg.Asset{Code: code, Free: total, Used: 0, Total: total}
+				balances.Assets[code] = asset
+			}
+		}
+		// TODO: update positions
+	}
+	chanKey := client.URL + "#balance"
+	if outRaw, ok := e.WsOutChans[chanKey]; ok {
+		out := outRaw.(chan banexg.Balances)
+		out <- *balances
+	}
 }
 func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]string) {
 

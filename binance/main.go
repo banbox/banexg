@@ -919,6 +919,7 @@ func NewExchange(Options map[string]interface{}) *Binance {
 	exg.FetchMarkets = makeFetchMarkets(exg)
 	exg.OnWsMsg = makeHandleWsMsg(exg)
 	exg.GetRetryWait = makeGetRetryWait(exg)
+	exg.Authenticate = makeAuthenticate(exg)
 	exg.Init()
 	return exg
 }

@@ -109,14 +109,13 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	jobInfo := &banexg.WsJobInfo{
-		ID:         strconv.Itoa(requestId),
-		MsgHash:    msgHash,
-		Name:       "depth",
-		Symbols:    symbols,
-		Method:     e.HandleOrderBookSub,
-		Limit:      limit,
-		MarketType: client.MarketType,
-		Params:     args,
+		ID:      strconv.Itoa(requestId),
+		MsgHash: msgHash,
+		Name:    "depth",
+		Symbols: symbols,
+		Method:  e.HandleOrderBookSub,
+		Limit:   limit,
+		Params:  args,
 	}
 	err = client.Write(args, jobInfo)
 	if err != nil {
@@ -235,7 +234,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			if valid {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book)
+					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -252,7 +251,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			if U <= nonce || pu == nonce {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book)
+					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -347,7 +346,7 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			u, _ := utils.SafeMapVal(msg, "u", zero)
 			pu, _ := utils.SafeMapVal(msg, "pu", zero)
 			nonce := book.Nonce
-			if e.IsContract(info.MarketType) {
+			if e.IsContract(client.MarketType) {
 				//4. Drop any event where u is < lastUpdateId in the snapshot
 				if u < nonce {
 					continue

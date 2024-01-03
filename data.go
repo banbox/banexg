@@ -22,6 +22,7 @@ const (
 	ParamRolling            = "rolling"
 	ParamTest               = "test"
 	ParamMarginMode         = "marginMode"
+	ParamSymbol             = "symbol"
 	ParamPositionSide       = "positionSide"
 	ParamProxy              = "proxy"
 	ParamName               = "name"
@@ -65,19 +66,20 @@ const (
 )
 
 const (
-	OptProxy         = "Proxy"
-	OptApiKey        = "ApiKey"
-	OptApiSecret     = "ApiSecret"
-	OptUserAgent     = "UserAgent"
-	OptReqHeaders    = "ReqHeaders"
-	OptCareMarkets   = "CareMarkets"
-	OptPrecisionMode = "PrecisionMode"
-	OptMarketType    = "MarketType"
-	OptContractType  = "ContractType"
-	OptTimeInForce   = "TimeInForce"
-	OptWsIntvs       = "WsIntvs" // ws 订阅间隔
-	OptRetries       = "Retries"
-	OptWsConn        = "WsConn"
+	OptProxy           = "Proxy"
+	OptApiKey          = "ApiKey"
+	OptApiSecret       = "ApiSecret"
+	OptUserAgent       = "UserAgent"
+	OptReqHeaders      = "ReqHeaders"
+	OptCareMarkets     = "CareMarkets"
+	OptPrecisionMode   = "PrecisionMode"
+	OptMarketType      = "MarketType"
+	OptContractType    = "ContractType"
+	OptTimeInForce     = "TimeInForce"
+	OptWsIntvs         = "WsIntvs" // ws 订阅间隔
+	OptRetries         = "Retries"
+	OptWsConn          = "WsConn"
+	OptAuthRefreshSecs = "AuthRefreshSecs"
 )
 
 const (
@@ -146,4 +148,8 @@ const (
 	TimeInForceGTX = "GTX" // Good Till Crossing 无法成为挂单方就取消
 	TimeInForceGTD = "GTD" // Good Till Date 在特定时间前有效，到期自动取消
 	TimeInForcePO  = "PO"  // Post Only
+)
+
+const (
+	MidListenKey = "listenKey"
 )

@@ -30,10 +30,13 @@ func PrecisionFromString(input string) int {
 }
 
 func SafeParams(params *map[string]interface{}) map[string]interface{} {
-	if params == nil {
-		return map[string]interface{}{}
+	result := map[string]interface{}{}
+	if params != nil {
+		for k, v := range *params {
+			result[k] = v
+		}
 	}
-	return *params
+	return result
 }
 
 func ParseTimeFrame(timeframe string) (int, *errs.Error) {
