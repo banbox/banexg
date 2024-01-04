@@ -45,7 +45,8 @@ var (
 		"WatchOrderBooks": 100,
 	}
 	DefRetries = map[string]int{
-		"FetchOrderBook": 2,
+		"FetchOrderBook":     1,
+		"FetchPositionsRisk": 1,
 	}
 )
 
@@ -139,6 +140,12 @@ const (
 const (
 	OdSideBuy  = "buy"
 	OdSideSell = "sell"
+)
+
+const (
+	PosSideLong  = "long"
+	PosSideShort = "short"
+	PosSideBoth  = "both"
 )
 
 const (

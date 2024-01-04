@@ -6,6 +6,7 @@ import (
 	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -63,7 +64,7 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	} else if marketType == "funding" {
 		method = "sapiPostAssetGetFundingAsset"
 	}
-	tryNum := e.GetRetryNum("FetchBalance")
+	tryNum := e.GetRetryNum("FetchBalance", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -87,6 +88,208 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "unsupport parse balance method: %s", method)
 	}
+}
+
+func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+	firstSymbol := ""
+	if len(symbols) > 0 {
+		firstSymbol = symbols[0]
+	}
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return nil, err
+	}
+	args := utils.SafeParams(params)
+	marketType, _ := e.GetArgsMarketType(args, firstSymbol)
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivateV2GetPositionRisk"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateGetPositionRisk"
+	} else {
+		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchPositionsRisk support linear/inverse contracts only")
+	}
+	err = e.LoadLeverageBrackets(false, params)
+	if err != nil {
+		return nil, err
+	}
+	retryNum := e.GetRetryNum("FetchPositionsRisk", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	if marketType == banexg.MarketLinear {
+		return parsePositionRisk[*LinearPositionRisk](e, rsp)
+	} else {
+		return parsePositionRisk[*InversePositionRisk](e, rsp)
+	}
+}
+
+func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
+	var data = make([]T, 0)
+	// fmt.Println(rsp.Content)
+	err := sonic.UnmarshalString(rsp.Content, &data)
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
+	var result = make([]*banexg.Position, 0)
+	for _, item := range data {
+		pos, err2 := item.ToStdPos(e)
+		if err2 != nil {
+			return nil, err2
+		}
+		if pos == nil {
+			continue
+		}
+		result = append(result, pos)
+	}
+	return result, nil
+}
+
+func (p *BaseContPosition) ToStdPos() *banexg.Position {
+	leverage, _ := strconv.Atoi(p.Leverage)
+	entryPrice, _ := strconv.ParseFloat(p.EntryPrice, 64)
+	posAmt, _ := strconv.ParseFloat(p.PositionAmt, 64)
+	if posAmt == 0 && entryPrice == 0 {
+		// 数量价格都为0，认为是无效的
+		return nil
+	}
+	unp, _ := strconv.ParseFloat(p.UnRealizedProfit, 64)
+	side := strings.ToLower(p.PositionSide)
+	if side != banexg.PosSideLong && side != banexg.PosSideShort {
+		if posAmt > 0 {
+			side = banexg.PosSideLong
+		} else if posAmt < 0 {
+			side = banexg.PosSideShort
+		}
+	}
+	var pos = banexg.Position{
+		TimeStamp:     p.UpdateTime,
+		Leverage:      leverage,
+		EntryPrice:    entryPrice,
+		Contracts:     posAmt,
+		UnrealizedPnl: unp,
+		Side:          side,
+	}
+	return &pos
+}
+
+func (p *ContPositionRisk) ToStdPos() *banexg.Position {
+	var res = p.BaseContPosition.ToStdPos()
+	if res == nil {
+		return nil
+	}
+	res.MarginMode = strings.ToLower(p.MarginType)
+	liqdPrice, _ := strconv.ParseFloat(p.LiquidationPrice, 64)
+	markPrice, _ := strconv.ParseFloat(p.MarkPrice, 64)
+	res.LiquidationPrice = liqdPrice
+	res.MarkPrice = markPrice
+	return res
+}
+
+func (p *LinearPositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error) {
+	var res = p.ContPositionRisk.ToStdPos()
+	if res == nil {
+		return nil, nil
+	}
+	res.TimeStamp = p.UpdateTime
+	// 名义价值
+	notional, _ := strconv.ParseFloat(p.Notional, 64)
+	res.Notional = notional
+	res.Info = p
+	market := e.GetMarketById(p.Symbol, banexg.MarketLinear)
+	if market == nil {
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
+	}
+	return calcPositionRisk(res, e, market, p.IsolatedMargin)
+}
+
+func (p *InversePositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error) {
+	var res = p.ContPositionRisk.ToStdPos()
+	if res == nil {
+		return nil, nil
+	}
+	res.TimeStamp = p.UpdateTime
+	// 名义价值
+	notional, _ := strconv.ParseFloat(p.NotionalValue, 64)
+	res.Notional = notional
+	res.Info = p
+	market := e.GetMarketById(p.Symbol, banexg.MarketInverse)
+	if market == nil {
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
+	}
+	return calcPositionRisk(res, e, market, p.IsolatedMargin)
+}
+
+func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, isolatedMarginStr string) (*banexg.Position, *errs.Error) {
+	res.Symbol = market.Symbol
+	res.ContractSize = market.ContractSize
+	contractsAbs := math.Abs(res.Contracts)
+	var collateral float64
+	// 名义价值
+	notional := math.Abs(res.Notional)
+	// 维持保证金比率
+	maintMarginPct := e.GetMaintMarginPct(res.Symbol, notional)
+	if res.MarginMode == banexg.MarginCross {
+		// 全仓模式，计算保证金
+		revMaintPct := float64(0)
+		entryPriceSign := res.EntryPrice
+		mmpSign := -1.0
+		if market.Type == banexg.MarketLinear {
+			mmpSign = 1.0
+		}
+		if res.Side == banexg.PosSideShort {
+			revMaintPct = 1.0 + maintMarginPct*mmpSign
+			entryPriceSign = -1 * entryPriceSign
+		} else {
+			revMaintPct = -1.0 + maintMarginPct*mmpSign
+		}
+		var prec int
+		if market.Type == banexg.MarketLinear {
+			// walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
+			leftSide := res.LiquidationPrice*revMaintPct + entryPriceSign
+			if market.Precision.Quote != 0 {
+				prec = market.Precision.Quote
+			} else {
+				prec = market.Precision.Price
+			}
+			collateral = leftSide * contractsAbs
+		} else {
+			entryPriceSign *= -1
+			// walletBalance = (contracts * contractSize) * (±1/entryPrice - (±1 - mmp) / liquidationPrice)
+			leftSide := contractsAbs * res.ContractSize
+			rightSide := (1.0 / entryPriceSign) - (revMaintPct / res.LiquidationPrice)
+			prec = market.Precision.Base
+			collateral = leftSide * rightSide
+		}
+		if prec != 0 {
+			var err error
+			collateral, err = utils.PrecFloat64(collateral, prec, false)
+			if err != nil {
+				return nil, errs.New(errs.CodePrecDecFail, err)
+			}
+		}
+	} else {
+		collateral, _ = strconv.ParseFloat(isolatedMarginStr, 64)
+	}
+	// 计算initMargin
+	initMarginStr := strconv.FormatFloat(notional/float64(res.Leverage), 'f', -1, 64)
+	initMarginStr, _ = utils.DecToPrec(initMarginStr, utils.PrecModeDecimalPlace, "8", true, false)
+	initMargin, _ := strconv.ParseFloat(initMarginStr, 64)
+	maintMargin, _ := utils.PrecFloat64(maintMarginPct*notional, 11, true)
+	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true)
+	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true)
+	res.Collateral = collateral
+	res.Contracts = contractsAbs
+	res.Hedged = res.Side != banexg.PosSideBoth
+	res.Notional = notional
+	res.InitialMargin = initMargin
+	res.InitialMarginPct = 1 / float64(res.Leverage)
+	res.MaintMarginPct = maintMarginPct
+	res.MaintMargin = maintMargin
+	res.MarginRatio = marginRatio
+	res.Percentage = percentage
+	return res, nil
 }
 
 func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {

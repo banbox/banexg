@@ -183,3 +183,17 @@ func adjusted(dec decimal.Decimal) int32 {
 	// 返回指数+调整后（小数点前的数字个数-1）
 	return adjustedExponent + exponent
 }
+
+/*
+PrecFloat64
+对给定浮点数取近似值，精确到指定位数
+*/
+func PrecFloat64(num float64, prec int, isRound bool) (float64, error) {
+	numStr := strconv.FormatFloat(num, 'f', -1, 64)
+	precStr := strconv.Itoa(prec)
+	resStr, err := DecToPrec(numStr, PrecModeDecimalPlace, precStr, isRound, false)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(resStr, 64)
+}

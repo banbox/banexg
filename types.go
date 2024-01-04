@@ -60,7 +60,10 @@ type Exchange struct {
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
 
+	LeverageBrackets map[string][][2]float64 // symbol: [floorValue, maintMarginPct] 按floorValue升序
+
 	OrderBooks  map[string]*OrderBook // symbol: OrderBook update by wss
+	Positions   map[string]*Position  // symbol: Position
 	MarBalances map[string]*Balances  // marketType: Balances
 
 	WSClients  map[string]*WsClient           // url: websocket clients
@@ -310,6 +313,32 @@ type Asset struct {
 	Used  float64
 	Total float64
 	Debt  float64
+}
+
+type Position struct {
+	ID               string      `json:"id"`
+	Symbol           string      `json:"symbol"`
+	TimeStamp        int64       `json:"timestamp"`
+	Isolated         bool        `json:"isolated"`                    // 隔离
+	Hedged           bool        `json:"hedged"`                      // 对冲
+	Side             string      `json:"side"`                        // long or short
+	Contracts        float64     `json:"contracts"`                   // 合约数量
+	ContractSize     float64     `json:"contractSize"`                // 单份合约价值
+	EntryPrice       float64     `json:"entryPrice"`                  // 入场价格
+	MarkPrice        float64     `json:"markPrice"`                   // 标记价格
+	Notional         float64     `json:"notional"`                    // 名义价值
+	Leverage         int         `json:"leverage"`                    // 杠杆倍数
+	Collateral       float64     `json:"collateral"`                  // 当前保证金：初始保证金+未实现盈亏
+	InitialMargin    float64     `json:"initialMargin"`               // 初始保证金额
+	MaintMargin      float64     `json:"maintenanceMargin"`           // 维持保证金额
+	InitialMarginPct float64     `json:"initialMarginPercentage"`     // 初始保证金率
+	MaintMarginPct   float64     `json:"maintenanceMarginPercentage"` // 维持保证金率
+	UnrealizedPnl    float64     `json:"unrealizedPnl"`               // 未实现盈亏
+	LiquidationPrice float64     `json:"liquidationPrice"`            // 清算价格
+	MarginMode       string      `json:"marginMode"`                  // cross/isolated
+	MarginRatio      float64     `json:"marginRatio"`
+	Percentage       float64     `json:"percentage"` // 未实现盈亏百分比
+	Info             interface{} `json:"info"`
 }
 
 type Order struct {

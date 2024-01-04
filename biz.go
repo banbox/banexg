@@ -231,10 +231,10 @@ func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (Mar
 		}
 		result := <-e.MarketsWait
 		e.MarketsWait = nil
-		if mars := result.(MarketMap); mars != nil {
+		if mars, ok := result.(MarketMap); ok && mars != nil {
 			return mars, nil
 		}
-		if err := result.(*errs.Error); err != nil {
+		if err, ok := result.(*errs.Error); ok && err != nil {
 			return nil, err
 		}
 		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "unknown markets type: %t", result)
@@ -420,6 +420,10 @@ func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]inte
 
 func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	return nil, errs.NotImplement
+}
+
+func (e *Exchange) LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error {
+	return errs.NotImplement
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
@@ -725,7 +729,9 @@ func (e *Exchange) PrecFee(m *Market, fee float64) (string, error) {
 GetRetryNum
 返回失败时重试次数，未设置时默认0
 */
-func (e *Exchange) GetRetryNum(key string) int {
-	retryNum, _ := e.Retries[key]
-	return retryNum
+func (e *Exchange) GetRetryNum(key string, defVal int) int {
+	if retryNum, ok := e.Retries[key]; ok {
+		return retryNum
+	}
+	return defVal
 }

@@ -156,7 +156,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			//sandbox/testnet does not support sapi endpoints
 			return nil, errs.SandboxApiNotSupport
 		}
-		tryNum := e.GetRetryNum("FetchCurr")
+		tryNum := e.GetRetryNum("FetchCurr", 1)
 		res := e.RequestApiRetry(context.Background(), "sapiGetCapitalConfigGetall", params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error
@@ -403,7 +403,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				ch <- &banexg.HttpRes{Error: errs.UnsupportMarket}
 				return
 			}
-			tryNum := e.GetRetryNum("FetchMarkets")
+			tryNum := e.GetRetryNum("FetchMarkets", 1)
 			ch <- e.RequestApiRetry(ctx, apiKey, params, tryNum)
 		}
 		watNum := 0
@@ -581,7 +581,7 @@ func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, p
 	} else if market.Inverse {
 		method = "dapiPublicGetKlines"
 	}
-	tryNum := e.GetRetryNum("FetchOhlcv")
+	tryNum := e.GetRetryNum("FetchOhlcv", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -629,7 +629,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	}
 	args["symbol"] = market.ID
 	args["leverage"] = leverage
-	tryNum := e.GetRetryNum("SetLeverage")
+	tryNum := e.GetRetryNum("SetLeverage", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -638,6 +638,82 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	err2 := sonic.UnmarshalString(rsp.Content, &res)
 	if err2 != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "%s decode rsp fail: %v", e.Name, err2)
+	}
+	return res, nil
+}
+
+func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error {
+	if len(e.LeverageBrackets) > 0 && !reload {
+		return nil
+	}
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return err
+	}
+	args := utils.SafeParams(params)
+	marketType, _ := e.GetArgsMarketType(args, "")
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivateGetLeverageBracket"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateV2GetLeverageBracket"
+	} else {
+		return errs.NewMsg(errs.CodeUnsupportMarket, "LoadLeverageBrackets support linear/inverse contracts only")
+	}
+	retryNum := e.GetRetryNum("LoadLeverageBrackets", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	if rsp.Error != nil {
+		return rsp.Error
+	}
+	var res = make([]LinearSymbolLvgBrackets, 0)
+	err2 := sonic.UnmarshalString(rsp.Content, &res)
+	if err2 != nil {
+		return errs.New(errs.CodeUnmarshalFail, err2)
+	}
+	mapSymbol := func(id string) string {
+		return e.SafeSymbol(id, "", marketType)
+	}
+	var brackets map[string][][2]float64
+	if marketType == banexg.MarketLinear {
+		brackets, err = parseLvgBrackets[*LinearSymbolLvgBrackets](mapSymbol, rsp)
+	} else {
+		brackets, err = parseLvgBrackets[*InversePairLvgBrackets](mapSymbol, rsp)
+	}
+	if err != nil {
+		return err
+	}
+	e.LeverageBrackets = brackets
+	return nil
+}
+
+/*
+GetMaintMarginPct
+获取指定名义价值的维持保证金比率
+*/
+func (e *Binance) GetMaintMarginPct(symbol string, notional float64) float64 {
+	brackets, ok := e.LeverageBrackets[symbol]
+	maintMarginPct := float64(0)
+	if ok && len(brackets) > 0 {
+		for _, row := range brackets {
+			if notional < row[0] {
+				break
+			}
+			maintMarginPct = row[1]
+		}
+	}
+	return maintMarginPct
+}
+
+func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *banexg.HttpRes) (map[string][][2]float64, *errs.Error) {
+	var data = make([]T, 0)
+	err := sonic.UnmarshalString(rsp.Content, &data)
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
+	var res = make(map[string][][2]float64)
+	for _, item := range data {
+		symbol := mapSymbol(item.GetSymbol())
+		res[symbol] = item.ToStdBracket()
 	}
 	return res, nil
 }

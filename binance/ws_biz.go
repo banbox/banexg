@@ -447,7 +447,7 @@ type ContractAsset struct {
 	BalanceChange string `json:"bc"`
 }
 
-type ContractPosition struct {
+type WSContractPosition struct {
 	Symbol         string `json:"s"`
 	PosAmount      string `json:"pa"`
 	EntryPrice     string `json:"ep"`
@@ -477,9 +477,9 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 		text, _ := msg["a"]
 		log.Info("account update", zap.String("msg", text))
 		var Data = struct {
-			Reason    string             `json:"m"`
-			Balances  []ContractAsset    `json:"B"`
-			Positions []ContractPosition `json:"P"`
+			Reason    string               `json:"m"`
+			Balances  []ContractAsset      `json:"B"`
+			Positions []WSContractPosition `json:"P"`
 		}{}
 		err := sonic.UnmarshalString(text, &Data)
 		if err != nil {

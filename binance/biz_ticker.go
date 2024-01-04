@@ -43,7 +43,7 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 	default:
 		method = "publicGetTicker24hr"
 	}
-	tryNum := e.GetRetryNum("FetchTickers")
+	tryNum := e.GetRetryNum("FetchTickers", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -81,7 +81,7 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 			method = "publicGetTicker24hr"
 		}
 	}
-	tryNum := e.GetRetryNum("FetchTicker")
+	tryNum := e.GetRetryNum("FetchTicker", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error

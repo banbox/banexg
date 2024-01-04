@@ -21,6 +21,7 @@ const (
 	CodeWsReadFail
 	CodeConnectFail
 	CodeInvalidTimeFrame
+	CodePrecDecFail
 )
 
 var (

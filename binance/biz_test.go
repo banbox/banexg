@@ -446,3 +446,73 @@ func TestSetLeverage(t *testing.T) {
 	}
 	fmt.Printf("set leverage: %v", res)
 }
+
+func TestLoadLeverageBrackets(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketLinear
+	err := exg.LoadLeverageBrackets(false, nil)
+	if err != nil {
+		panic(err)
+	}
+	text, err2 := sonic.MarshalString(exg.LeverageBrackets)
+	if err2 != nil {
+		panic(err2)
+	}
+	fmt.Println(text)
+}
+
+func TestParseLinearPositionRisk(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketLinear
+	_, _ = exg.LoadMarkets(false, nil)
+	exg.LeverageBrackets = map[string][][2]float64{
+		"BTC/USDT:USDT": {
+			{0, 0.004},
+			{50000, 0.005},
+			{500000, 0.01},
+			{10000000, 0.025},
+			{80000000, 0.05},
+			{150000000, 0.1},
+			{300000000, 0.125},
+			{450000000, 0.15},
+			{600000000, 0.25},
+			{800000000, 0.5},
+		},
+	}
+	var content = `[{"symbol":"BTCUSDT","positionAmt":"-0.003","entryPrice":"42976.6","breakEvenPrice":"42955.1117","markPrice":"42832.79591057","unRealizedProfit":"0.43141226","liquidationPrice":"48303.07832462","leverage":"20","maxNotionalValue":"80000000","marginType":"cross","isolatedMargin":"0.00000000","isAutoAddMargin":"false","positionSide":"SHORT","notional":"-128.49838773","isolatedWallet":"0","updateTime":1704362904896,"isolated":false,"adlQuantile":2}]`
+	var expectStr = `{"id":"","symbol":"BTC/USDT:USDT","timestamp":1704362904896,"isolated":false,"hedged":true,"side":"short","contracts":0.003,"contractSize":1,"entryPrice":42976.6,"markPrice":42832.79591057,"notional":128.49838773,"leverage":20,"collateral":16.55907191,"initialMargin":6.42491939,"maintenanceMargin":0.51399355092,"initialMarginPercentage":0.05,"maintenanceMarginPercentage":0.004,"unrealizedPnl":0.43141226,"liquidationPrice":48303.07832462,"marginMode":"cross","marginRatio":0.031,"percentage":6.71,"info":null}`
+	res := &banexg.HttpRes{Content: content}
+	posList, err := parsePositionRisk[*LinearPositionRisk](exg, res)
+	if err != nil {
+		panic(err)
+	}
+	var pos = posList[0]
+	pos.Info = nil
+	text, _ := sonic.MarshalString(pos)
+	var out = map[string]interface{}{}
+	_ = sonic.UnmarshalString(text, &out)
+	var expect = map[string]interface{}{}
+	_ = sonic.UnmarshalString(expectStr, &expect)
+	for k, v := range expect {
+		if outv, ok := out[k]; ok {
+			if outv != v {
+				t.Errorf("%s fail, expect %v , out: %v", k, v, outv)
+			}
+		}
+	}
+	fmt.Println(text)
+}
+
+func TestFetchPositionsRisk(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketInverse
+	posList, err := exg.FetchPositionsRisk(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	for _, p := range posList {
+		p.Info = nil
+	}
+	text, _ := sonic.MarshalString(posList)
+	fmt.Println(text)
+}

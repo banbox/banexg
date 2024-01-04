@@ -3,6 +3,7 @@ package binance
 import (
 	"github.com/anyongjin/banexg"
 	"github.com/anyongjin/banexg/utils"
+	"sort"
 	"strconv"
 )
 
@@ -68,4 +69,34 @@ func (mar *BnbMarket) GetMarketLimits() (*banexg.MarketLimits, int, int) {
 		res.Cost.Max = utils.GetMapFloat(flt, "maxNotional")
 	}
 	return &res, pricePrec, amountPrec
+}
+
+func (b *LinearSymbolLvgBrackets) ToStdBracket() [][2]float64 {
+	var res = make([][2]float64, 0, len(b.Brackets))
+	for _, item := range b.Brackets {
+		bracket := [2]float64{item.NotionalFloor, item.MaintMarginRatio}
+		res = append(res, bracket)
+	}
+	sort.SliceStable(res, func(i, j int) bool {
+		return res[i][0] <= res[j][0]
+	})
+	return res
+}
+func (b *LinearSymbolLvgBrackets) GetSymbol() string {
+	return b.Symbol
+}
+
+func (b *InversePairLvgBrackets) ToStdBracket() [][2]float64 {
+	var res = make([][2]float64, 0, len(b.Brackets))
+	for _, item := range b.Brackets {
+		bracket := [2]float64{item.QtylFloor, item.MaintMarginRatio}
+		res = append(res, bracket)
+	}
+	sort.SliceStable(res, func(i, j int) bool {
+		return res[i][0] <= res[j][0]
+	})
+	return res
+}
+func (b *InversePairLvgBrackets) GetSymbol() string {
+	return b.Symbol
 }

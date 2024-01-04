@@ -44,7 +44,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 	if limit > 0 {
 		args["limit"] = limit
 	}
-	tryNum := e.GetRetryNum("FetchOrders")
+	tryNum := e.GetRetryNum("FetchOrders", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -126,7 +126,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 			}
 		}
 	}
-	tryNum := e.GetRetryNum("FetchOpenOrders")
+	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
@@ -200,7 +200,7 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 			args["isIsolated"] = true
 		}
 	}
-	tryNum := e.GetRetryNum("CancelOrder")
+	tryNum := e.GetRetryNum("CancelOrder", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error

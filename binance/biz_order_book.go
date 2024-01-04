@@ -27,7 +27,7 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]in
 	} else {
 		method = "publicGetDepth"
 	}
-	tryNum := e.GetRetryNum("FetchOrderBook")
+	tryNum := e.GetRetryNum("FetchOrderBook", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error

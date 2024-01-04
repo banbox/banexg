@@ -18,6 +18,7 @@ type BanExchange interface {
 	CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, *errs.Error)
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params *map[string]interface{}) (*Fee, *errs.Error)
 	SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error)
+	LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error
 	PriceOnePip(symbol string) (float64, *errs.Error)
 }
 

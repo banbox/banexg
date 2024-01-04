@@ -2,6 +2,7 @@ package binance
 
 import (
 	"github.com/anyongjin/banexg"
+	"github.com/anyongjin/banexg/errs"
 )
 
 type Binance struct {
@@ -261,25 +262,56 @@ type LinearAsset struct {
 	MarginAvailable bool `json:"marginAvailable"` // 是否可用作联合保证金
 }
 
+type BaseContPosition struct {
+	Symbol           string `json:"symbol"`           // 交易对
+	PositionSide     string `json:"positionSide"`     // 持仓方向
+	PositionAmt      string `json:"positionAmt"`      // 持仓数量
+	Leverage         string `json:"leverage"`         // 杠杆倍率
+	EntryPrice       string `json:"entryPrice"`       // 持仓成本价
+	UnRealizedProfit string `json:"unRealizedProfit"` // 持仓未实现盈亏
+	UpdateTime       int64  `json:"updateTime"`       // 更新时间
+}
+
 type FuturePosition struct {
-	Symbol                 string `json:"symbol"`                 // 交易对
+	BaseContPosition
 	InitialMargin          string `json:"initialMargin"`          // 当前所需起始保证金(基于最新标记价格)
 	MaintMargin            string `json:"maintMargin"`            // 维持保证金
-	UnrealizedProfit       string `json:"unrealizedProfit"`       // 持仓未实现盈亏
 	PositionInitialMargin  string `json:"positionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格)
 	OpenOrderInitialMargin string `json:"openOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格)
-	Leverage               string `json:"leverage"`               // 杠杆倍率
 	Isolated               bool   `json:"isolated"`               // 是否是逐仓模式
-	EntryPrice             string `json:"entryPrice"`             // 持仓成本价
-	PositionSide           string `json:"positionSide"`           // 持仓方向
-	PositionAmt            string `json:"positionAmt"`            // 持仓数量
-	UpdateTime             int64  `json:"updateTime"`             // 更新时间
 }
 type LinearPosition struct {
 	FuturePosition
 	MaxNotional string `json:"maxNotional"` // 当前杠杆下用户可用的最大名义价值
 	BidNotional string `json:"bidNotional"` // 买单净值，忽略
 	AskNotional string `json:"askNotional"` // 卖单净值，忽略
+}
+
+type ContPositionRisk struct {
+	BaseContPosition
+	BreakEvenPrice   string `json:"breakEvenPrice"` // 盈亏平衡价
+	MarginType       string `json:"marginType"`     // 逐仓模式或全仓模式
+	IsAutoAddMargin  string `json:"isAutoAddMargin"`
+	IsolatedMargin   string `json:"isolatedMargin"`   // 逐仓保证金
+	LiquidationPrice string `json:"liquidationPrice"` // 参考强平价格
+	MarkPrice        string `json:"markPrice"`        // 当前标记价格
+}
+
+type LinearPositionRisk struct {
+	ContPositionRisk
+	Notional         string `json:"notional"`
+	MaxNotionalValue string `json:"maxNotionalValue"` // 当前杠杆倍数允许的名义价值上限
+	IsolatedWallet   string `json:"isolatedWallet"`
+}
+
+type InversePositionRisk struct {
+	ContPositionRisk
+	MaxQuantity   string `json:"maxQty"`        // 当前杠杆倍数允许的数量上限(标的数量)
+	NotionalValue string `json:"notionalValue"` // 当前名义价值
+}
+
+type IBnbPosRisk interface {
+	ToStdPos(*Binance) (*banexg.Position, *errs.Error)
 }
 
 /*
@@ -591,4 +623,47 @@ type SpotOrderBook struct {
 
 type IBnbOrderBook interface {
 	ToStdOrderBook(m *banexg.Market) *banexg.OrderBook
+}
+
+/*
+*****************************   Others   ***********************************
+ */
+
+type BaseLvgBracket struct {
+	Bracket          int     `json:"bracket"`          // 层级
+	InitialLeverage  int     `json:"initialLeverage"`  // 该层允许的最高初始杠杆倍数
+	MaintMarginRatio float64 `json:"maintMarginRatio"` // 该层对应的维持保证金率
+	Cum              float64 `json:"cum"`              // 速算数
+}
+
+/*
+合约的杠杆分层标准
+*/
+type LinearLvgBracket struct {
+	BaseLvgBracket
+	NotionalCap   float64 `json:"notionalCap"`   // 该层对应的名义价值上限
+	NotionalFloor float64 `json:"notionalFloor"` // 该层对应的名义价值下限
+}
+
+type LinearSymbolLvgBrackets struct {
+	Symbol       string              `json:"symbol"`
+	NotionalCoef float64             `json:"notionalCoef"` //用户bracket相对默认bracket的倍数，仅在和交易对默认不一样时显示
+	Brackets     []*LinearLvgBracket `json:"brackets"`
+}
+
+type InverseLvgBracket struct {
+	BaseLvgBracket
+	QtyCap    float64 `json:"qtyCap"`    //该层对应的数量上限
+	QtylFloor float64 `json:"qtylFloor"` // 该层对应的数量下限
+}
+
+type InversePairLvgBrackets struct {
+	Symbol       string               `json:"symbol"`
+	NotionalCoef float64              `json:"notionalCoef"` //用户bracket相对默认bracket的倍数，仅在和交易对默认不一样时显示
+	Brackets     []*InverseLvgBracket `json:"brackets"`
+}
+
+type ISymbolLvgBracket interface {
+	ToStdBracket() [][2]float64
+	GetSymbol() string
 }
