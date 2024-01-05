@@ -184,8 +184,6 @@ func WriteOutChan[T any](e *Exchange, chanKey string, msg T, popIfNeed bool) boo
 			<-out
 			out <- msg
 		}
-	} else {
-		log.Error("write ws out chan fail", zap.String("k", chanKey))
 	}
 	return outOk
 }

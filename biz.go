@@ -68,6 +68,7 @@ func (e *Exchange) Init() {
 	e.WsChanRefs = map[string]map[string]struct{}{}
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarBalances = map[string]*Balances{}
+	e.MarPositions = map[string][]*Position{}
 }
 
 /*

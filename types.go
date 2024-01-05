@@ -62,9 +62,9 @@ type Exchange struct {
 
 	LeverageBrackets map[string][][2]float64 // symbol: [floorValue, maintMarginPct] 按floorValue升序
 
-	OrderBooks  map[string]*OrderBook // symbol: OrderBook update by wss
-	Positions   map[string]*Position  // symbol: Position
-	MarBalances map[string]*Balances  // marketType: Balances
+	OrderBooks   map[string]*OrderBook  // symbol: OrderBook update by wss
+	MarPositions map[string][]*Position // marketType: Position List
+	MarBalances  map[string]*Balances   // marketType: Balances
 
 	WSClients  map[string]*WsClient           // url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
@@ -370,19 +370,28 @@ type Order struct {
 }
 
 type Trade struct {
-	Info         interface{} `json:"info"`
-	Amount       float64     `json:"amount"`
-	Datetime     string      `json:"datetime"`
-	ID           string      `json:"id"`
-	Order        string      `json:"order"`
-	Price        float64     `json:"price"`
-	Timestamp    int64       `json:"timestamp"`
-	Type         string      `json:"type"`
-	Side         string      `json:"side"`
-	Symbol       string      `json:"symbol"`
-	TakerOrMaker string      `json:"takerOrMaker"`
-	Cost         float64     `json:"cost"`
-	Fee          *Fee        `json:"fee"`
+	ID        string      `json:"id"`        // 交易ID
+	Symbol    string      `json:"symbol"`    // 币种ID
+	Side      string      `json:"side"`      // buy/sell
+	Type      string      `json:"type"`      //market/limit
+	Amount    float64     `json:"amount"`    // 数量
+	Price     float64     `json:"price"`     // 价格
+	Cost      float64     `json:"cost"`      // 总花费
+	Order     string      `json:"order"`     // 订单号
+	Timestamp int64       `json:"timestamp"` // 时间戳
+	Maker     bool        `json:"maker"`     // 是否maker
+	Fee       *Fee        `json:"fee"`       // 手续费
+	Info      interface{} `json:"info"`
+}
+
+type MyTrade struct {
+	Trade
+	Filled   float64     `json:"filled"`   // 累计成交量
+	ClientID string      `json:"clientID"` // 客户端订单ID
+	Average  float64     `json:"average"`  // 平均成交价格
+	State    string      `json:"state"`    // 状态
+	PosSide  string      `json:"posSide"`  // 持仓方向 long/short
+	Info     interface{} `json:"info"`
 }
 
 type Fee struct {

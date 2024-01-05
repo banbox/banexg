@@ -193,3 +193,32 @@ mainFor:
 		}
 	}
 }
+
+func TestWatchMyTrades(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketLinear
+	out, err := exg.WatchMyTrades(nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("start watching my trades")
+mainFor:
+	for {
+		select {
+		case trade, ok := <-out:
+			if !ok {
+				log.Info("read out chan fail, break")
+				break mainFor
+			}
+			builder := strings.Builder{}
+			builder.WriteString(trade.Symbol + ", ")
+			builder.WriteString(fmt.Sprintf("%v, ", trade.Amount))
+			builder.WriteString(fmt.Sprintf("%v, ", trade.Filled))
+			builder.WriteString(fmt.Sprintf("%v, ", trade.Price))
+			builder.WriteString(fmt.Sprintf("%v, ", trade.Average))
+			builder.WriteString(fmt.Sprintf("%v, ", trade.State))
+			builder.WriteString("\n")
+			fmt.Print(builder.String())
+		}
+	}
+}

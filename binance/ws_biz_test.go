@@ -2,6 +2,7 @@ package binance
 
 import (
 	"fmt"
+	"github.com/anyongjin/banexg"
 	"github.com/anyongjin/banexg/log"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
@@ -75,6 +76,35 @@ mainFor:
 			for _, item := range b.Assets {
 				builder.WriteString(item.Code + "\t\t")
 				builder.WriteString(fmt.Sprintf("free: %f total: %f\n", item.Free, item.Total))
+			}
+			fmt.Print(builder.String())
+		}
+	}
+}
+
+func TestWatchPositions(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketLinear
+	out, err := exg.WatchPositions(nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("start watching positions")
+mainFor:
+	for {
+		select {
+		case positions, ok := <-out:
+			if !ok {
+				log.Info("read out chan fail, break")
+				break mainFor
+			}
+			builder := strings.Builder{}
+			builder.WriteString("=============================\n")
+			for _, pos := range positions {
+				builder.WriteString(pos.Symbol + ", ")
+				builder.WriteString(fmt.Sprintf("%v, ", pos.Contracts))
+				builder.WriteString(fmt.Sprintf("%v, ", pos.UnrealizedPnl))
+				builder.WriteString("\n")
 			}
 			fmt.Print(builder.String())
 		}

@@ -91,10 +91,7 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 
 func (e *Binance) FetchPositions(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
-	method, _ := e.Options[banexg.OptPositionMethod]
-	if method == "" {
-		method = "positionRisk"
-	}
+	method := utils.GetMapVal(e.Options, banexg.OptPositionMethod, "positionRisk")
 	method = utils.PopMapVal(args, banexg.ParamMethod, method)
 	if method == "positionRisk" {
 		return e.FetchPositionsRisk(symbols, params)

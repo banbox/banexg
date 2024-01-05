@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -174,6 +175,30 @@ func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interfa
 	}
 	args["method"] = "UNSUBSCRIBE"
 	return client.Write(args, nil)
+}
+
+/*
+WatchMyTrades
+
+	watches information on multiple trades made by the user
+
+:param str symbol: unified market symbol of the market orders were made in
+:param int [since]: the earliest time in ms to fetch orders for
+:param int [limit]: the maximum number of  orde structures to retrieve
+:param dict [params]: extra parameters specific to the exchange API endpoint
+:returns dict[]: a list of [trade structures]{@link https://docs.ccxt.com/#/?id=trade-structure
+*/
+func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan banexg.MyTrade, *errs.Error) {
+	_, client, err := e.getAuthClient(params)
+	if err != nil {
+		return nil, err
+	}
+	args := utils.SafeParams(params)
+	chanKey := client.URL + "#mytrades"
+	create := func(cap int) chan banexg.MyTrade { return make(chan banexg.MyTrade, cap) }
+	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	e.AddWsChanRefs(chanKey, "account")
+	return out, nil
 }
 
 func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string) {
@@ -367,10 +392,67 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			}
 		}
 	}
-	outRaw, ok := e.WsOutChans[info.MsgHash]
-	if ok {
-		out := outRaw.(chan banexg.OrderBook)
-		out <- *book
-	}
+	banexg.WriteOutChan(e.Exchange, info.MsgHash, *book, true)
 	return nil
+}
+
+/*
+parseMyTrade
+将websocket收到的交易转为Trade，注意Symbol和fee.Currency未进行标准化
+
+	public trade
+	public agg trade
+	private spot trade
+	private contract trade
+*/
+func parseMyTrade(msg map[string]string) banexg.MyTrade {
+	var res = banexg.MyTrade{}
+	zeroFlt := float64(0)
+	// execType, _ := utils.SafeMapVal(msg, "x", "")
+	res.ID, _ = utils.SafeMapVal(msg, "t", "")
+	res.Price, _ = utils.SafeMapVal(msg, "L", zeroFlt)
+	res.Amount, _ = utils.SafeMapVal(msg, "l", zeroFlt)
+	res.Cost, _ = utils.SafeMapVal(msg, "Y", zeroFlt)
+	if res.Cost == 0 {
+		res.Cost = res.Price * res.Amount
+	}
+	res.Maker, _ = utils.SafeMapVal(msg, "m", false)
+	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
+	feeCurr, _ := utils.SafeMapVal(msg, "N", "")
+	res.Fee = &banexg.Fee{
+		IsMaker:  res.Maker,
+		Currency: feeCurr,
+		Cost:     feeCost,
+	}
+	odType, _ := utils.SafeMapVal(msg, "o", "")
+	res.Type = strings.ToLower(odType)
+	res.Filled, _ = utils.SafeMapVal(msg, "z", zeroFlt)
+	res.ClientID, _ = utils.SafeMapVal(msg, "c", "")
+	res.Average, _ = utils.SafeMapVal(msg, "ap", zeroFlt)
+	res.State, _ = utils.SafeMapVal(msg, "X", "")
+	posSide, _ := utils.SafeMapVal(msg, "ps", "")
+	res.PosSide = strings.ToLower(posSide)
+
+	res.Info = msg
+	res.Timestamp, _ = utils.SafeMapVal(msg, "T", int64(0))
+	res.Symbol, _ = utils.SafeMapVal(msg, "s", "")
+	side, _ := utils.SafeMapVal(msg, "S", "")
+	res.Side = strings.ToLower(side)
+	return res
+}
+
+func parsePubTrade(msg map[string]string) banexg.Trade {
+	var res = banexg.Trade{}
+	zeroFlt := float64(0)
+	res.ID, _ = utils.SafeMapVal(msg, "a", "")
+	res.Price, _ = utils.SafeMapVal(msg, "p", zeroFlt)
+	res.Amount, _ = utils.SafeMapVal(msg, "q", zeroFlt)
+	res.Cost = res.Price * res.Amount
+
+	res.Info = msg
+	res.Timestamp, _ = utils.SafeMapVal(msg, "T", int64(0))
+	res.Symbol, _ = utils.SafeMapVal(msg, "s", "")
+	side, _ := utils.SafeMapVal(msg, "S", "")
+	res.Side = strings.ToLower(side)
+	return res
 }
