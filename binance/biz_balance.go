@@ -28,12 +28,11 @@ query for balance and get the amount of funds available for trading or funds loc
 :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
 */
 func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances, *errs.Error) {
-	_, err := e.LoadMarkets(false, nil)
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args)
 	if err != nil {
 		return nil, err
 	}
-	var args = utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarketType(args, "")
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := "privateGetAccount"
 	if marketType == banexg.MarketLinear {
@@ -91,16 +90,11 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 }
 
 func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
-	firstSymbol := ""
-	if len(symbols) > 0 {
-		firstSymbol = symbols[0]
-	}
-	_, err := e.LoadMarkets(false, nil)
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
 		return nil, err
 	}
-	args := utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarketType(args, firstSymbol)
 	var method string
 	if marketType == banexg.MarketLinear {
 		method = "fapiPrivateV2GetPositionRisk"
@@ -123,6 +117,190 @@ func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interf
 	} else {
 		return parsePositionRisk[*InversePositionRisk](e, rsp)
 	}
+}
+
+/*
+FetchAccountPositions
+
+	:see: https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
+	:see: https://binance-docs.github.io/apidocs/delivery/en/#account-information-user_data
+	:param str[]|None symbols: list of unified market symbols
+	:param dict [params]: extra parameters specific to the exchange API endpoint
+	:returns dict: data on account positions
+*/
+func (e *Binance) FetchAccountPositions(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
+	if err != nil {
+		return nil, err
+	}
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivateV2GetAccount"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateGetAccount"
+	} else {
+		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchAccountPositions support linear/inverse contracts only")
+	}
+	err = e.LoadLeverageBrackets(false, params)
+	if err != nil {
+		return nil, err
+	}
+	retryNum := e.GetRetryNum("FetchAccountPositions", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	return parseAccPosition(e, rsp, marketType)
+}
+
+func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*banexg.Position, *errs.Error) {
+	assets := make(map[string]*FutureAsset)
+	var posList = make([]IAccPosition, 0)
+	if marketType == banexg.MarketLinear {
+		var res = LinearAccPositions{}
+		err := sonic.UnmarshalString(rsp.Content, &res)
+		if err != nil {
+			return nil, errs.New(errs.CodeUnmarshalFail, err)
+		}
+		for _, a := range res.Assets {
+			assets[e.SafeCurrencyCode(a.Asset)] = &a.FutureAsset
+		}
+		for _, p := range res.Positions {
+			posList = append(posList, p)
+		}
+	} else {
+		var res = InverseAccPositions{}
+		err := sonic.UnmarshalString(rsp.Content, &res)
+		if err != nil {
+			return nil, errs.New(errs.CodeUnmarshalFail, err)
+		}
+		for _, a := range res.Assets {
+			assets[e.SafeCurrencyCode(a.Asset)] = a
+		}
+		for _, p := range res.Positions {
+			posList = append(posList, p)
+		}
+	}
+	isLinear := marketType == banexg.MarketLinear
+	var result = make([]*banexg.Position, 0)
+	for _, p := range posList {
+		futPos := p.GetFutPosition()
+		market := e.GetMarketById(futPos.Symbol, marketType)
+		if market == nil {
+			continue
+		}
+		code := market.Quote
+		if !isLinear {
+			code = market.Base
+		}
+		asset, ok := assets[code]
+		if !ok {
+			continue
+		}
+		pos, err2 := parseAccountPosition(e, futPos, asset, market, p.GetNotional())
+		if err2 != nil {
+			return nil, err2
+		}
+		if pos == nil {
+			continue
+		}
+		pos.Info = p
+		result = append(result, pos)
+	}
+	return result, nil
+}
+
+func parseAccountPosition(e *Binance, p *FuturePosition, a *FutureAsset, market *banexg.Market, notional string) (*banexg.Position, *errs.Error) {
+	res := p.BaseContPosition.ToStdPos()
+	if res == nil {
+		return nil, nil
+	}
+	res.Symbol = market.Symbol
+	res.ContractSize = market.ContractSize
+	initMargin, _ := strconv.ParseFloat(p.InitialMargin, 64)
+	res.InitialMargin = initMargin
+	res.InitialMarginPct = 1 / float64(res.Leverage)
+	maintMargin, _ := strconv.ParseFloat(p.MaintMargin, 64)
+	res.MaintMargin = maintMargin
+	// 名义价值
+	notionalVal, _ := strconv.ParseFloat(notional, 64)
+	res.Notional = math.Abs(notionalVal)
+	// 维持保证金比率
+	maintMarginPct := e.GetMaintMarginPct(res.Symbol, res.Notional)
+	res.MaintMarginPct = maintMarginPct
+	// 计算当前保证金collateral
+	var marginMode string
+	var walletBalance float64
+	var collateral float64
+	if p.Isolated {
+		marginMode = banexg.MarginIsolated
+		walletBalance, _ = strconv.ParseFloat(p.IsolatedWallet, 64)
+		collateral = walletBalance + res.UnrealizedPnl
+	} else {
+		marginMode = banexg.MarginCross
+		walletBalance, _ = strconv.ParseFloat(a.CrossWalletBalance, 64)
+		unPnl, _ := strconv.ParseFloat(a.CrossUnPnl, 64)
+		collateral = walletBalance + unPnl
+	}
+	res.MarginMode = marginMode
+	res.Collateral = collateral
+	// 计算marginRatio
+	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true)
+	res.MarginRatio = marginRatio
+	// percentage
+	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true)
+	res.Percentage = percentage
+	// 计算强平价格
+	isShort := res.Side == banexg.PosSideShort
+	entryPriceSign := res.EntryPrice
+	revtMaintMarginPct := float64(0)
+	if market.Type == banexg.MarketLinear {
+		// liquidationPrice = (walletBalance / (contracts * (±1 + mmp))) + (±entryPrice / (±1 + mmp))
+		// mmp = maintenanceMarginPercentage
+		// where ± is negative for long and positive for short
+		if isShort {
+			revtMaintMarginPct = 1 + maintMarginPct
+		} else {
+			revtMaintMarginPct = -1 + maintMarginPct
+			entryPriceSign *= -1
+		}
+		leftSide := walletBalance / (res.Contracts * revtMaintMarginPct)
+		rightSide := entryPriceSign / revtMaintMarginPct
+		liquidationPrice, _ := utils.PrecFloat64(leftSide+rightSide, market.Precision.Price, true)
+		res.LiquidationPrice = liquidationPrice
+	} else {
+		// liquidationPrice = (contracts * contractSize(±1 - mmp)) / (±1/entryPrice * contracts * contractSize - walletBalance)
+		if isShort {
+			revtMaintMarginPct = 1 - maintMarginPct
+		} else {
+			revtMaintMarginPct = -1 - maintMarginPct
+			entryPriceSign *= -1
+		}
+		size := res.Contracts * res.ContractSize
+		leftSide := size * revtMaintMarginPct
+		rightSide := size/entryPriceSign - walletBalance
+		liquidationPrice, _ := utils.PrecFloat64(leftSide/rightSide, market.Precision.Price, true)
+		res.LiquidationPrice = liquidationPrice
+	}
+	res.Hedged = res.Side != banexg.PosSideBoth
+	return res, nil
+}
+
+func (p *LinearAccountPosition) GetFutPosition() *FuturePosition {
+	return &p.FuturePosition
+}
+
+func (p *LinearAccountPosition) GetNotional() string {
+	return p.Notional
+}
+
+func (p *InversePosition) GetFutPosition() *FuturePosition {
+	return &p.FuturePosition
+}
+
+func (p *InversePosition) GetNotional() string {
+	return p.NotionalValue
 }
 
 func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
@@ -167,7 +345,7 @@ func (p *BaseContPosition) ToStdPos() *banexg.Position {
 		TimeStamp:     p.UpdateTime,
 		Leverage:      leverage,
 		EntryPrice:    entryPrice,
-		Contracts:     posAmt,
+		Contracts:     math.Abs(posAmt),
 		UnrealizedPnl: unp,
 		Side:          side,
 	}
@@ -224,7 +402,7 @@ func (p *InversePositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Erro
 func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, isolatedMarginStr string) (*banexg.Position, *errs.Error) {
 	res.Symbol = market.Symbol
 	res.ContractSize = market.ContractSize
-	contractsAbs := math.Abs(res.Contracts)
+	// 当前保证金
 	var collateral float64
 	// 名义价值
 	notional := math.Abs(res.Notional)
@@ -253,11 +431,11 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 			} else {
 				prec = market.Precision.Price
 			}
-			collateral = leftSide * contractsAbs
+			collateral = leftSide * res.Contracts
 		} else {
 			entryPriceSign *= -1
 			// walletBalance = (contracts * contractSize) * (±1/entryPrice - (±1 - mmp) / liquidationPrice)
-			leftSide := contractsAbs * res.ContractSize
+			leftSide := res.Contracts * res.ContractSize
 			rightSide := (1.0 / entryPriceSign) - (revMaintPct / res.LiquidationPrice)
 			prec = market.Precision.Base
 			collateral = leftSide * rightSide
@@ -273,14 +451,11 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 		collateral, _ = strconv.ParseFloat(isolatedMarginStr, 64)
 	}
 	// 计算initMargin
-	initMarginStr := strconv.FormatFloat(notional/float64(res.Leverage), 'f', -1, 64)
-	initMarginStr, _ = utils.DecToPrec(initMarginStr, utils.PrecModeDecimalPlace, "8", true, false)
-	initMargin, _ := strconv.ParseFloat(initMarginStr, 64)
+	initMargin, _ := utils.PrecFloat64(notional/float64(res.Leverage), 8, true)
 	maintMargin, _ := utils.PrecFloat64(maintMarginPct*notional, 11, true)
 	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true)
 	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true)
 	res.Collateral = collateral
-	res.Contracts = contractsAbs
 	res.Hedged = res.Side != banexg.PosSideBoth
 	res.Notional = notional
 	res.InitialMargin = initMargin
@@ -425,7 +600,7 @@ func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *e
 	return result.Init(), nil
 }
 
-func (a BnbAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
+func (a SpotAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
 	free, _ := strconv.ParseFloat(a.Free, 64)
 	lock, _ := strconv.ParseFloat(a.Locked, 64)
 	borr, _ := strconv.ParseFloat(a.Borrowed, 64)

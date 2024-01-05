@@ -516,3 +516,17 @@ func TestFetchPositionsRisk(t *testing.T) {
 	text, _ := sonic.MarshalString(posList)
 	fmt.Println(text)
 }
+
+func TestFetchAccountPositions(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketInverse
+	posList, err := exg.FetchAccountPositions(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	for _, p := range posList {
+		p.Info = nil
+	}
+	text, _ := sonic.MarshalString(posList)
+	fmt.Println(text)
+}

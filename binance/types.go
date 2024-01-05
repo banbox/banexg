@@ -167,12 +167,12 @@ type SpotAccount struct {
 	PreventSor                 bool              `json:"preventSor"`
 	UpdateTime                 int64             `json:"updateTime"`
 	AccountType                string            `json:"accountType"`
-	Balances                   []*BnbAsset       `json:"balances"`
+	Balances                   []*SpotAsset      `json:"balances"`
 	Permissions                []string          `json:"permissions"`
 	Uid                        int               `json:"uid"`
 }
 
-type BnbAsset struct {
+type SpotAsset struct {
 	Asset    string `json:"asset"`
 	Free     string `json:"free"`
 	Locked   string `json:"locked"`
@@ -187,17 +187,17 @@ MarginCrossBalances
 	binance margin cross balance
 */
 type MarginCrossBalances struct {
-	BorrowEnabled              bool        `json:"borrowEnabled"`
-	MarginLevel                string      `json:"marginLevel"`
-	CollateralMarginLevel      string      `json:"CollateralMarginLevel"`
-	TotalAssetOfBtc            string      `json:"totalAssetOfBtc"`
-	TotalLiabilityOfBtc        string      `json:"totalLiabilityOfBtc"`
-	TotalNetAssetOfBtc         string      `json:"totalNetAssetOfBtc"`
-	TotalCollateralValueInUSDT string      `json:"TotalCollateralValueInUSDT"`
-	TradeEnabled               bool        `json:"tradeEnabled"`
-	TransferEnabled            bool        `json:"transferEnabled"`
-	AccountType                string      `json:"accountType"`
-	UserAssets                 []*BnbAsset `json:"userAssets"`
+	BorrowEnabled              bool         `json:"borrowEnabled"`
+	MarginLevel                string       `json:"marginLevel"`
+	CollateralMarginLevel      string       `json:"CollateralMarginLevel"`
+	TotalAssetOfBtc            string       `json:"totalAssetOfBtc"`
+	TotalLiabilityOfBtc        string       `json:"totalLiabilityOfBtc"`
+	TotalNetAssetOfBtc         string       `json:"totalNetAssetOfBtc"`
+	TotalCollateralValueInUSDT string       `json:"TotalCollateralValueInUSDT"`
+	TradeEnabled               bool         `json:"tradeEnabled"`
+	TransferEnabled            bool         `json:"transferEnabled"`
+	AccountType                string       `json:"accountType"`
+	UserAssets                 []*SpotAsset `json:"userAssets"`
 }
 
 /*
@@ -225,37 +225,45 @@ type IsolatedAsset struct {
 	TradeEnabled      bool               `json:"tradeEnabled"`
 }
 type IsolatedCurrAsset struct {
-	BnbAsset
+	SpotAsset
 	BorrowEnabled bool   `json:"borrowEnabled"`
 	NetAssetOfBtc string `json:"netAssetOfBtc"`
 	RepayEnabled  bool   `json:"repayEnabled"`
 	TotalAsset    string `json:"totalAsset"`
 }
 
+type BaseAccountTotal struct {
+	FeeTier     int64 `json:"feeTier"`     // 手续费等级
+	CanTrade    bool  `json:"canTrade"`    // 是否可以交易
+	CanDeposit  bool  `json:"canDeposit"`  // 是否可以入金
+	CanWithdraw bool  `json:"canWithdraw"` // 是否可以出金
+	UpdateTime  int64 `json:"updateTime"`  // 保留字段，请忽略
+}
+
+type AccountTotal struct {
+	BaseAccountTotal
+	MultiAssetsMargin           bool   `json:"multiAssetsMargin"`
+	TradeGroupId                int64  `json:"tradeGroupId"`
+	TotalInitialMargin          string `json:"totalInitialMargin"`          // 当前所需起始保证金总额(存在逐仓请忽略), 仅计算usdt资产
+	TotalMaintMargin            string `json:"totalMaintMargin"`            // 维持保证金总额, 仅计算usdt资产
+	TotalWalletBalance          string `json:"totalWalletBalance"`          // 账户总余额, 仅计算usdt资产
+	TotalUnrealizedProfit       string `json:"totalUnrealizedProfit"`       // 持仓未实现盈亏总额, 仅计算usdt资产
+	TotalMarginBalance          string `json:"totalMarginBalance"`          // 保证金总余额, 仅计算usdt资产
+	TotalPositionInitialMargin  string `json:"totalPositionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格), 仅计算usdt资产
+	TotalOpenOrderInitialMargin string `json:"totalOpenOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格), 仅计算usdt资产
+	TotalCrossWalletBalance     string `json:"totalCrossWalletBalance"`     // 全仓账户余额, 仅计算usdt资产
+	TotalCrossUnPnl             string `json:"totalCrossUnPnl"`             // 全仓持仓未实现盈亏总额, 仅计算usdt资产
+	AvailableBalance            string `json:"availableBalance"`            // 可用余额, 仅计算usdt资产
+	MaxWithdrawAmount           string `json:"maxWithdrawAmount"`           // 最大可转出余额, 仅计算usdt资产
+}
+
 /*
 LinearBalances U本位合约账户余额
 */
 type LinearBalances struct {
-	FeeTier                     int64             `json:"feeTier"`     // 手续费等级
-	CanTrade                    bool              `json:"canTrade"`    // 是否可以交易
-	CanDeposit                  bool              `json:"canDeposit"`  // 是否可以入金
-	CanWithdraw                 bool              `json:"canWithdraw"` // 是否可以出金
-	UpdateTime                  int64             `json:"updateTime"`  // 保留字段，请忽略
-	MultiAssetsMargin           bool              `json:"multiAssetsMargin"`
-	TradeGroupId                int64             `json:"tradeGroupId"`
-	TotalInitialMargin          string            `json:"totalInitialMargin"`          // 当前所需起始保证金总额(存在逐仓请忽略), 仅计算usdt资产
-	TotalMaintMargin            string            `json:"totalMaintMargin"`            // 维持保证金总额, 仅计算usdt资产
-	TotalWalletBalance          string            `json:"totalWalletBalance"`          // 账户总余额, 仅计算usdt资产
-	TotalUnrealizedProfit       string            `json:"totalUnrealizedProfit"`       // 持仓未实现盈亏总额, 仅计算usdt资产
-	TotalMarginBalance          string            `json:"totalMarginBalance"`          // 保证金总余额, 仅计算usdt资产
-	TotalPositionInitialMargin  string            `json:"totalPositionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格), 仅计算usdt资产
-	TotalOpenOrderInitialMargin string            `json:"totalOpenOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格), 仅计算usdt资产
-	TotalCrossWalletBalance     string            `json:"totalCrossWalletBalance"`     // 全仓账户余额, 仅计算usdt资产
-	TotalCrossUnPnl             string            `json:"totalCrossUnPnl"`             // 全仓持仓未实现盈亏总额, 仅计算usdt资产
-	AvailableBalance            string            `json:"availableBalance"`            // 可用余额, 仅计算usdt资产
-	MaxWithdrawAmount           string            `json:"maxWithdrawAmount"`           // 最大可转出余额, 仅计算usdt资产
-	Assets                      []*LinearAsset    `json:"assets"`
-	Positions                   []*LinearPosition `json:"positions"`
+	AccountTotal
+	Assets    []*LinearAsset    `json:"assets"`
+	Positions []*LinearPosition `json:"positions"`
 }
 type LinearAsset struct {
 	FutureAsset
@@ -279,6 +287,7 @@ type FuturePosition struct {
 	PositionInitialMargin  string `json:"positionInitialMargin"`  // 持仓所需起始保证金(基于最新标记价格)
 	OpenOrderInitialMargin string `json:"openOrderInitialMargin"` // 当前挂单所需起始保证金(基于最新标记价格)
 	Isolated               bool   `json:"isolated"`               // 是否是逐仓模式
+	IsolatedWallet         string `json:"isolatedWallet"`
 }
 type LinearPosition struct {
 	FuturePosition
@@ -287,6 +296,9 @@ type LinearPosition struct {
 	AskNotional string `json:"askNotional"` // 卖单净值，忽略
 }
 
+/*
+合约持仓风险
+*/
 type ContPositionRisk struct {
 	BaseContPosition
 	BreakEvenPrice   string `json:"breakEvenPrice"` // 盈亏平衡价
@@ -297,6 +309,9 @@ type ContPositionRisk struct {
 	MarkPrice        string `json:"markPrice"`        // 当前标记价格
 }
 
+/*
+U本位合约持仓风险
+*/
 type LinearPositionRisk struct {
 	ContPositionRisk
 	Notional         string `json:"notional"`
@@ -304,6 +319,9 @@ type LinearPositionRisk struct {
 	IsolatedWallet   string `json:"isolatedWallet"`
 }
 
+/*
+币本位合约持仓风险
+*/
 type InversePositionRisk struct {
 	ContPositionRisk
 	MaxQuantity   string `json:"maxQty"`        // 当前杠杆倍数允许的数量上限(标的数量)
@@ -312,6 +330,42 @@ type InversePositionRisk struct {
 
 type IBnbPosRisk interface {
 	ToStdPos(*Binance) (*banexg.Position, *errs.Error)
+}
+
+/*
+LinearAccPositions
+U本位合约的AccountPositions
+*/
+type LinearAccPositions struct {
+	AccountTotal
+	Assets    []*LinearAsset           `json:"assets"`
+	Positions []*LinearAccountPosition `json:"positions"`
+}
+
+/*
+InverseAccPositions
+币本位合约的AccountPositions
+*/
+type InverseAccPositions struct {
+	BaseAccountTotal
+	Assets    []*FutureAsset     `json:"assets"`
+	Positions []*InversePosition `json:"positions"`
+}
+
+/*
+LinearAccountPosition
+Account Position for Linear Contract
+*/
+type LinearAccountPosition struct {
+	LinearPosition
+	Notional       string `json:"notional"`
+	IsolatedWallet string `json:"isolatedWallet"`
+	BreakEvenPrice string `json:"breakEvenPrice"` // 盈亏平衡价
+}
+
+type IAccPosition interface {
+	GetFutPosition() *FuturePosition
+	GetNotional() string
 }
 
 /*
@@ -349,6 +403,7 @@ type InversePosition struct {
 	FuturePosition
 	BreakEvenPrice string `json:"breakEvenPrice"` // 盈亏平衡价
 	MaxQty         string `json:"maxQty"`         // 当前杠杆下最大可开仓数(标的数量)
+	NotionalValue  string `json:"notionalValue"`  // 当前名义价值
 }
 
 /*

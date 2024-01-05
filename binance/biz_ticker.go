@@ -22,16 +22,11 @@ fetches price tickers for multiple markets, statistical information calculated o
 	:returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
 */
 func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
-	firstSymbol := ""
-	if len(symbols) > 0 {
-		firstSymbol = symbols[0]
-	}
-	_, err := e.LoadMarkets(false, nil)
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
 		return nil, err
 	}
-	var args = utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarketType(args, firstSymbol)
 	var method string
 	switch marketType {
 	case banexg.MarketOption:

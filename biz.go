@@ -701,6 +701,19 @@ func (e *Exchange) LoadArgsMarket(symbol string, params *map[string]interface{})
 	return args, market, err
 }
 
+func (e *Exchange) LoadArgsMarketType(args map[string]interface{}, symbols ...string) (string, string, *errs.Error) {
+	firstSymbol := ""
+	if len(symbols) > 0 {
+		firstSymbol = symbols[0]
+	}
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return "", "", err
+	}
+	marketType, contractType := e.GetArgsMarketType(args, firstSymbol)
+	return marketType, contractType, nil
+}
+
 func (e *Exchange) PrecAmount(m *Market, amount float64) (string, error) {
 	precStr := strconv.Itoa(m.Precision.Amount)
 	amtStr := strconv.FormatFloat(amount, 'f', -1, 64)

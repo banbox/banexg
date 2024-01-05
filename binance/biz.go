@@ -646,12 +646,11 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 	if len(e.LeverageBrackets) > 0 && !reload {
 		return nil
 	}
-	_, err := e.LoadMarkets(false, nil)
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args)
 	if err != nil {
 		return err
 	}
-	args := utils.SafeParams(params)
-	marketType, _ := e.GetArgsMarketType(args, "")
 	var method string
 	if marketType == banexg.MarketLinear {
 		method = "fapiPrivateGetLeverageBracket"
