@@ -26,6 +26,7 @@ const (
 	ParamPositionSide       = "positionSide"
 	ParamProxy              = "proxy"
 	ParamName               = "name"
+	ParamMethod             = "method"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -81,6 +82,7 @@ const (
 	OptRetries         = "Retries"
 	OptWsConn          = "WsConn"
 	OptAuthRefreshSecs = "AuthRefreshSecs"
+	OptPositionMethod  = "PositionMethod"
 )
 
 const (

@@ -83,8 +83,8 @@ func makeAuthenticate(e *Binance) banexg.FuncAuth {
 		marketType, _ := e.GetArgsMarketType(args, "")
 		lastTimeKey := marketType + "lastAuthTime"
 		authField := marketType + banexg.MidListenKey
-		lastAuthTime := utils.GetMapVal(e.Data, lastTimeKey, zeroVal)
-		authRefreshSecs := utils.GetMapVal(e.Data, banexg.OptAuthRefreshSecs, 1200)
+		lastAuthTime := utils.GetMapVal(e.Options, lastTimeKey, zeroVal)
+		authRefreshSecs := utils.GetMapVal(e.Options, banexg.OptAuthRefreshSecs, 1200)
 		refreshDuration := int64(authRefreshSecs * 1000)
 		curTime := e.MilliSeconds()
 		if curTime-lastAuthTime <= refreshDuration {
@@ -115,8 +115,8 @@ func makeAuthenticate(e *Binance) banexg.FuncAuth {
 		if err2 != nil {
 			return errs.New(errs.CodeUnmarshalFail, err2)
 		}
-		e.Data[lastTimeKey] = curTime
-		e.Data[authField] = res.ListenKey
+		e.Options[lastTimeKey] = curTime
+		e.Options[authField] = res.ListenKey
 		refreshAfter := time.Duration(authRefreshSecs) * time.Second
 		time.AfterFunc(refreshAfter, func() {
 			e.keepAliveListenKey(params)
@@ -130,7 +130,7 @@ func (e *Binance) keepAliveListenKey(params *map[string]interface{}) {
 	marketType, _ := e.GetArgsMarketType(args, "")
 	lastTimeKey := marketType + "lastAuthTime"
 	authField := marketType + banexg.MidListenKey
-	listenKey := utils.GetMapVal(e.Data, authField, "")
+	listenKey := utils.GetMapVal(e.Options, authField, "")
 	if listenKey == "" {
 		return
 	}
@@ -139,8 +139,8 @@ func (e *Binance) keepAliveListenKey(params *map[string]interface{}) {
 		if success {
 			return
 		}
-		delete(e.Data, authField)
-		delete(e.Data, lastTimeKey)
+		delete(e.Options, authField)
+		delete(e.Options, lastTimeKey)
 		wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
 		if client, ok := e.WSClients[wsUrl]; ok {
 			_ = client.Conn.WriteClose()
@@ -170,8 +170,8 @@ func (e *Binance) keepAliveListenKey(params *map[string]interface{}) {
 		return
 	}
 	success = true
-	e.Data[lastTimeKey] = e.MilliSeconds()
-	authRefreshSecs := utils.GetMapVal(e.Data, banexg.OptAuthRefreshSecs, 1200)
+	e.Options[lastTimeKey] = e.MilliSeconds()
+	authRefreshSecs := utils.GetMapVal(e.Options, banexg.OptAuthRefreshSecs, 1200)
 	refreshDuration := time.Duration(authRefreshSecs) * time.Second
 	time.AfterFunc(refreshDuration, func() {
 		e.keepAliveListenKey(params)
@@ -185,7 +185,7 @@ func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg
 	}
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
-	listenKey := utils.GetMapVal(e.Data, marketType+banexg.MidListenKey, "")
+	listenKey := utils.GetMapVal(e.Options, marketType+banexg.MidListenKey, "")
 	wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
 	client, err := e.GetClient(wsUrl, marketType)
 	return listenKey, client, err

@@ -9,6 +9,7 @@ type BanExchange interface {
 	LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, *errs.Error)
 	FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error)
 	FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error)
+	FetchPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error)
 	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
 	FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
 	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error)

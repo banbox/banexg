@@ -83,7 +83,6 @@ type Exchange struct {
 	OnWsClose FuncOnWsClose
 
 	Flags map[string]string
-	Data  map[string]interface{} // common saves
 }
 
 type ExgHosts struct {

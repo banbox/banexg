@@ -89,6 +89,22 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	}
 }
 
+func (e *Binance) FetchPositions(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+	args := utils.SafeParams(params)
+	method, _ := e.Options[banexg.OptPositionMethod]
+	if method == "" {
+		method = "positionRisk"
+	}
+	method = utils.PopMapVal(args, banexg.ParamMethod, method)
+	if method == "positionRisk" {
+		return e.FetchPositionsRisk(symbols, params)
+	} else if method == "account" {
+		return e.FetchAccountPositions(symbols, params)
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "%s for FetchPositions is invalid, choose: positionRisk/account", method)
+	}
+}
+
 func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)

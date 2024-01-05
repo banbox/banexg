@@ -68,10 +68,6 @@ func (e *Exchange) Init() {
 	e.WsChanRefs = map[string]map[string]struct{}{}
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarBalances = map[string]*Balances{}
-	e.Data = map[string]interface{}{}
-	if val, ok := e.Options[OptAuthRefreshSecs]; ok {
-		e.Data[OptAuthRefreshSecs] = val
-	}
 }
 
 /*
@@ -387,6 +383,10 @@ func (e *Exchange) FetchOhlcv(symbol, timeframe string, since int64, limit int, 
 }
 
 func (e *Exchange) FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) FetchPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
