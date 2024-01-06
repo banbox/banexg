@@ -110,3 +110,34 @@ mainFor:
 		}
 	}
 }
+
+func TestWatchMarkPrices(t *testing.T) {
+	exg := getBinance(nil)
+	exg.MarketType = banexg.MarketLinear
+	symbols := []string{"BTC/USDT:USDT", "ETH/USDT:USDT"}
+	out, err := exg.WatchMarkPrices(symbols, &map[string]interface{}{
+		banexg.ParamInterval: "1s",
+	})
+	// 监听所有币种，3s更新:
+	// out, err := exg.WatchMarkPrices(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("start watching markPrices")
+mainFor:
+	for {
+		select {
+		case data, ok := <-out:
+			if !ok {
+				log.Info("read out chan fail, break")
+				break mainFor
+			}
+			builder := strings.Builder{}
+			builder.WriteString("=============================\n")
+			for symbol, price := range data {
+				builder.WriteString(fmt.Sprintf("%s: %v\n", symbol, price))
+			}
+			fmt.Print(builder.String())
+		}
+	}
+}

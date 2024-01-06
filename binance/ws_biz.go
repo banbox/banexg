@@ -9,6 +9,7 @@ import (
 	"github.com/anyongjin/banexg/utils"
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,8 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 			e.handleOhlcv(client, msg)
 		case "indexPrice_kline":
 			e.handleOhlcv(client, msg)
+		case "markPriceUpdate":
+			e.handleMarkPrice(client, msg)
 		case "24hrTicker":
 			e.handleTicker(client, msg)
 		case "24hrMiniTicker":
@@ -233,10 +236,6 @@ func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*banexg
 	return out, nil
 }
 
-func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
-
-}
-
 /*
 WatchOhlcvs
 watches historical candlestick data containing the open, high, low, and close price, and the volume of a market
@@ -245,26 +244,112 @@ watches historical candlestick data containing the open, high, low, and close pr
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
 func (e *Binance) WatchOhlcvs(jobs [][2]string, params *map[string]interface{}) (chan banexg.SymbolKline, *errs.Error) {
-	client, msgHash, requestId, subParams, symbols, args, err := e.prepareOhlcvSub(jobs, params)
+	chanKey, symbols, args, err := e.prepareOhlcvSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
 	}
 
-	chanKey := client.URL + "#" + msgHash
 	create := func(cap int) chan banexg.SymbolKline { return make(chan banexg.SymbolKline, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
+	return out, nil
+}
+
+func (e *Binance) UnWatchOhlcvs(jobs [][2]string, params *map[string]interface{}) *errs.Error {
+	chanKey, symbols, _, err := e.prepareOhlcvSub("UNSUBSCRIBE", jobs, params)
+	if err != nil {
+		return err
+	}
+	e.DelWsChanRefs(chanKey, symbols...)
+	return nil
+}
+
+func (e *Binance) WatchMarkPrices(symbols []string, params *map[string]interface{}) (chan map[string]float64, *errs.Error) {
+	chanKey, args, err := e.prepareMarkPrices("SUBSCRIBE", symbols, params)
+	if err != nil {
+		return nil, err
+	}
+	create := func(cap int) chan map[string]float64 { return make(chan map[string]float64, cap) }
+	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	e.AddWsChanRefs(chanKey, "markPrice")
+	return out, nil
+}
+
+func (e *Binance) UnWatchMarkPrices(symbols []string, params *map[string]interface{}) *errs.Error {
+	chanKey, _, err := e.prepareMarkPrices("UNSUBSCRIBE", symbols, params)
+	if err != nil {
+		return err
+	}
+	e.DelWsChanRefs(chanKey, "markPrice")
+	return nil
+}
+
+func (e *Binance) prepareMarkPrices(method string, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
+	if err != nil {
+		return "", nil, err
+	}
+	if !e.IsContract(marketType) {
+		return "", nil, errs.NewMsg(errs.CodeUnsupportMarket, "WatchMarkPrices support linear/inverse/option, current: %s", marketType)
+	}
+	msgHash := marketType + "@markPrice"
+	client, requestId, err := e.GetWsClient(marketType, msgHash)
+	if err != nil {
+		return "", nil, err
+	}
+	intv := utils.PopMapVal(args, banexg.ParamInterval, "")
+	if intv != "" {
+		if intv != "1s" {
+			return "", nil, errs.NewMsg(errs.CodeParamInvalid, "ParamInterval must be 1s or empty")
+		}
+		intv = "@" + intv
+	}
+	var subParams = make([]string, 0)
+	if len(symbols) == 0 {
+		subParams = append(subParams, "!markPrice@arr"+intv)
+	} else {
+		for _, sym := range symbols {
+			market, err := e.GetMarket(sym)
+			if err != nil {
+				return "", nil, err
+			}
+			subParams = append(subParams, market.LowercaseID+"@markPrice"+intv)
+		}
+	}
 	var request = map[string]interface{}{
-		"method": "SUBSCRIBE",
+		"method": method,
 		"params": subParams,
 		"id":     requestId,
 	}
 	err = client.Write(request, nil)
 	if err != nil {
-		e.DelWsChanRefs(chanKey, symbols...)
-		return nil, err
+		return "", nil, err
 	}
-	return out, nil
+	chanKey := client.URL + "#" + msgHash
+	return chanKey, args, nil
+}
+
+func (e *Binance) handleMarkPrice(client *banexg.WsClient, msg map[string]string) {
+	evtTime, _ := utils.SafeMapVal(msg, "E", int64(0))
+	symbol, _ := utils.SafeMapVal(msg, "s", "")
+	markPrice, _ := utils.SafeMapVal(msg, "p", float64(0))
+	symbol = e.SafeSymbol(symbol, "", client.MarketType)
+	data, ok := e.MarkPrices[client.MarketType]
+	if !ok {
+		data = map[string]float64{}
+		e.MarkPrices[client.MarketType] = data
+	}
+	data[symbol] = markPrice
+	e.KeyTimeStamps["markPrices"] = evtTime
+	chanKey := client.URL + "#" + client.MarketType + "@markPrice"
+	var res = map[string]float64{}
+	maps.Copy(res, data)
+	banexg.WriteOutChan(e.Exchange, chanKey, res, true)
+}
+
+func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
+
 }
 
 type WsKline struct {
@@ -331,19 +416,19 @@ func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
 	banexg.WriteOutChan(e.Exchange, chanKey, *kline, true)
 }
 
-func (e *Binance) prepareOhlcvSub(jobs [][2]string, params *map[string]interface{}) (*banexg.WsClient, string, int, []string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(jobs) == 0 {
-		return nil, "", 0, nil, nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
+		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
 	args, market, err := e.LoadArgsMarket(jobs[0][0], params)
 	if err != nil {
-		return nil, "", 0, nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	name := utils.PopMapVal(args, banexg.ParamName, "kline")
 	msgHash := market.Type + "@" + name
-	wsUrl, requestId, err := e.GetWsInfo(market.Type, msgHash)
+	client, requestId, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
-		return nil, "", 0, nil, nil, nil, err
+		return "", nil, nil, err
 	}
 
 	subParams := make([]string, 0, len(jobs))
@@ -351,7 +436,7 @@ func (e *Binance) prepareOhlcvSub(jobs [][2]string, params *map[string]interface
 	for _, row := range jobs {
 		mar, err := e.GetMarket(row[0])
 		if err != nil {
-			return nil, "", 0, nil, nil, nil, err
+			return "", nil, nil, err
 		}
 		marketId := mar.LowercaseID
 		if name == "indexPriceKline" {
@@ -360,40 +445,14 @@ func (e *Binance) prepareOhlcvSub(jobs [][2]string, params *map[string]interface
 		subParams = append(subParams, fmt.Sprintf("%s@%s_%s", marketId, name, row[1]))
 		symbols = append(symbols, row[0])
 	}
-	client, err := e.GetClient(wsUrl, market.Type)
-	if err != nil {
-		return nil, "", 0, nil, nil, nil, err
-	}
-
-	return client, msgHash, requestId, subParams, symbols, args, nil
-}
-
-func (e *Binance) UnWatchOhlcvs(jobs [][2]string, params *map[string]interface{}) *errs.Error {
-	client, msgHash, requestId, subParams, symbols, _, err := e.prepareOhlcvSub(jobs, params)
-	if err != nil {
-		log.Error("prepareOhlcvSub fail")
-		return err
-	}
-
 	chanKey := client.URL + "#" + msgHash
 	var request = map[string]interface{}{
-		"method": "UNSUBSCRIBE",
+		"method": method,
 		"params": subParams,
 		"id":     requestId,
 	}
-	err = client.Write(request, &banexg.WsJobInfo{
-		ID:      strconv.Itoa(requestId),
-		Symbols: symbols,
-		Method: func(wsUrl string, msg map[string]string, info *banexg.WsJobInfo) {
-			e.DelWsChanRefs(chanKey, symbols...)
-		},
-	})
-	if err != nil {
-		log.Error("unwatch pairs fail")
-		e.DelWsChanRefs(chanKey, symbols...)
-		return err
-	}
-	return nil
+	err = client.Write(request, nil)
+	return chanKey, symbols, args, nil
 }
 
 func (e *Binance) handleTicker(client *banexg.WsClient, msg map[string]string) {

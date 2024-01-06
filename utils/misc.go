@@ -12,20 +12,6 @@ import (
 	"strings"
 )
 
-func DeepCopy(src, dst map[string]interface{}) {
-	for k, v := range src {
-		if v, ok := v.(map[string]interface{}); ok {
-			if bv, ok := dst[k]; ok {
-				if bv, ok := bv.(map[string]interface{}); ok {
-					DeepCopy(v, bv)
-					continue
-				}
-			}
-		}
-		dst[k] = v
-	}
-}
-
 func UUID(length int) string {
 	randomBits := rand.Uint64()
 	text := fmt.Sprintf("%x", randomBits) // 将randomBits转化为十六进制

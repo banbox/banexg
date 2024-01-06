@@ -69,6 +69,8 @@ func (e *Exchange) Init() {
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarBalances = map[string]*Balances{}
 	e.MarPositions = map[string][]*Position{}
+	e.MarkPrices = map[string]map[string]float64{}
+	e.KeyTimeStamps = map[string]int64{}
 }
 
 /*

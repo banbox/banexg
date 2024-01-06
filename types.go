@@ -16,6 +16,8 @@ type FuncOnWsMethod = func(wsUrl string, msg map[string]string, info *WsJobInfo)
 type FuncOnWsErr = func(wsUrl string, err *errs.Error)
 type FuncOnWsClose = func(wsUrl string, err *errs.Error)
 
+type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
+
 type Exchange struct {
 	ID        string   // 交易所ID
 	Name      string   // 显示名称
@@ -62,14 +64,17 @@ type Exchange struct {
 
 	LeverageBrackets map[string][][2]float64 // symbol: [floorValue, maintMarginPct] 按floorValue升序
 
-	OrderBooks   map[string]*OrderBook  // symbol: OrderBook update by wss
-	MarPositions map[string][]*Position // marketType: Position List
-	MarBalances  map[string]*Balances   // marketType: Balances
+	OrderBooks   map[string]*OrderBook         // symbol: OrderBook update by wss
+	MarkPrices   map[string]map[string]float64 // marketType: symbol: mark price
+	MarPositions map[string][]*Position        // marketType: Position List
+	MarBalances  map[string]*Balances          // marketType: Balances
 
 	WSClients  map[string]*WsClient           // url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
 	WsOutChans map[string]interface{}         // url+msgHash: chan Type
 	WsChanRefs map[string]map[string]struct{} // url+msgHash: symbols use this chan
+
+	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 
 	// for calling sub struct func in parent struct
 	Sign            FuncSign

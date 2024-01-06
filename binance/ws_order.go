@@ -32,15 +32,19 @@ func (e *Binance) Stream(marType, subHash string) string {
 	return stream
 }
 
-func (e *Binance) GetWsInfo(marType, msgHash string) (string, int, *errs.Error) {
+func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, int, *errs.Error) {
 	host := e.Hosts.GetHost(marType)
 	if host == "" {
-		return "", 0, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
+		return nil, 0, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
 	}
 	wsUrl := host + "/" + e.Stream(marType, msgHash)
 	requestId := e.wsRequestId[wsUrl] + 1
 	e.wsRequestId[wsUrl] = requestId
-	return wsUrl, requestId, nil
+	client, err := e.GetClient(wsUrl, marType)
+	if err != nil {
+		return nil, 0, err
+	}
+	return client, requestId, nil
 }
 
 /*
@@ -60,19 +64,28 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		#
 		# default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	*/
-	client, msgHash, requestId, args, err := e.prepareBookArgs(symbols, params)
+	getJobFn := func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
+		if limit != 0 {
+			if e.IsContract(client.MarketType) {
+				if !utils.ArrContains(contOdBookLimits, limit) {
+					return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be 0,5,10,20,50,100,500,1000")
+				}
+			} else if limit > 5000 {
+				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be <= 5000")
+			}
+		}
+		jobInfo := &banexg.WsJobInfo{
+			Symbols: symbols,
+			Method:  e.HandleOrderBookSub,
+			Limit:   limit,
+		}
+		return jobInfo, nil
+	}
+	chanKey, args, err := e.prepareBookArgs("SUBSCRIBE", getJobFn, symbols, params)
 	if err != nil {
 		return nil, err
 	}
-	if limit != 0 {
-		if e.IsContract(client.MarketType) {
-			if !utils.ArrContains(contOdBookLimits, limit) {
-				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be 0,5,10,20,50,100,500,1000")
-			}
-		} else if limit > 5000 {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be <= 5000")
-		}
-	}
+
 	/*
 		# notice the differences between trading futures and spot trading
 		# the algorithms use different urls in step 1
@@ -104,26 +117,19 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		# 8. If the quantity is 0, remove the price level.
 		# 9. Receiving an event that removes a price level that is not in your local order book can happen and is normal.
 	*/
-	args["method"] = "SUBSCRIBE"
-	chanKey := client.URL + "#" + msgHash
 	create := func(cap int) chan banexg.OrderBook { return make(chan banexg.OrderBook, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
-	jobInfo := &banexg.WsJobInfo{
-		ID:      strconv.Itoa(requestId),
-		MsgHash: msgHash,
-		Name:    "depth",
-		Symbols: symbols,
-		Method:  e.HandleOrderBookSub,
-		Limit:   limit,
-		Params:  args,
-	}
-	err = client.Write(args, jobInfo)
-	if err != nil {
-		e.DelWsChanRefs(chanKey, symbols...)
-		return nil, err
-	}
 	return out, nil
+}
+
+func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error {
+	chanKey, _, err := e.prepareBookArgs("UNSUBSCRIBE", nil, symbols, params)
+	if err != nil {
+		return err
+	}
+	e.DelWsChanRefs(chanKey, symbols...)
+	return nil
 }
 
 func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *errs.Error) {
@@ -138,22 +144,31 @@ func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *er
 	}
 	return exgParams, nil
 }
-func (e *Binance) prepareBookArgs(symbols []string, params *map[string]interface{}) (*banexg.WsClient, string, int, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
-		return nil, "", 0, nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
+		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
 	}
 	args, market, err := e.LoadArgsMarket(symbols[0], params)
 	if err != nil {
-		return nil, "", 0, nil, err
+		return "", nil, err
 	}
 	var msgHash = market.Type + "@depth"
-	wsUrl, requestId, err := e.GetWsInfo(market.Type, msgHash)
+	client, requestId, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
-		return nil, "", 0, nil, err
+		return "", nil, err
 	}
-	client, err := e.GetClient(wsUrl, market.Type)
-	if err != nil {
-		return nil, "", 0, nil, err
+	var jobInfo *banexg.WsJobInfo
+	if getJobInfo != nil {
+		jobInfo, err = getJobInfo(client)
+		if err != nil {
+			return "", nil, err
+		}
+		if jobInfo != nil {
+			jobInfo.ID = strconv.Itoa(requestId)
+			jobInfo.MsgHash = msgHash
+			jobInfo.Name = "depth"
+			jobInfo.Symbols = symbols
+		}
 	}
 	watchRate, ok := e.WsIntvs["WatchOrderBooks"]
 	if !ok {
@@ -161,20 +176,16 @@ func (e *Binance) prepareBookArgs(symbols []string, params *map[string]interface
 	}
 	exgParams, err := e.getExgWsParams(symbols, fmt.Sprintf("depth@%dms", watchRate))
 	if err != nil {
-		return nil, "", 0, nil, err
+		return "", nil, err
 	}
-	args["params"] = exgParams
-	args["id"] = requestId
-	return client, msgHash, requestId, args, nil
-}
-
-func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error {
-	client, _, _, args, err := e.prepareBookArgs(symbols, params)
-	if err != nil {
-		return err
+	var request = map[string]interface{}{
+		"method": method,
+		"params": exgParams,
+		"id":     requestId,
 	}
-	args["method"] = "UNSUBSCRIBE"
-	return client.Write(args, nil)
+	err = client.Write(request, jobInfo)
+	chanKey := client.URL + "#" + msgHash
+	return chanKey, args, err
 }
 
 /*

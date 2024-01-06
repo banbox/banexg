@@ -27,6 +27,7 @@ const (
 	ParamProxy              = "proxy"
 	ParamName               = "name"
 	ParamMethod             = "method"
+	ParamInterval           = "interval"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )

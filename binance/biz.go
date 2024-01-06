@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"go.uber.org/zap"
+	"maps"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -83,7 +84,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			extendParams := map[string]interface{}{
 				"timestamp": e.Nonce(),
 			}
-			utils.DeepCopy(params, extendParams)
+			maps.Copy(extendParams, params)
 			if e.RecvWindow > 0 {
 				extendParams["recvWindow"] = e.RecvWindow
 			}
