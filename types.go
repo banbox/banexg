@@ -11,7 +11,7 @@ type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Er
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, *errs.Error)
 type FuncAuth = func(params *map[string]interface{}) *errs.Error
 
-type FuncOnWsMsg = func(wsUrl string, msg map[string]string)
+type FuncOnWsMsg = func(wsUrl string, msg *WsMsg)
 type FuncOnWsMethod = func(wsUrl string, msg map[string]string, info *WsJobInfo)
 type FuncOnWsErr = func(wsUrl string, err *errs.Error)
 type FuncOnWsClose = func(wsUrl string, err *errs.Error)
@@ -442,4 +442,17 @@ type WsJobInfo struct {
 	Method  func(wsUrl string, msg map[string]string, info *WsJobInfo)
 	Limit   int
 	Params  map[string]interface{}
+}
+
+/*
+WsMsg
+表示websocket收到的消息
+*/
+type WsMsg struct {
+	Event   string
+	ID      string
+	IsArray bool
+	Text    string
+	Object  map[string]string
+	List    []map[string]string
 }

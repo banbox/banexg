@@ -1,6 +1,7 @@
 package banexg
 
 import (
+	"fmt"
 	"github.com/anyongjin/banexg/errs"
 	"github.com/anyongjin/banexg/log"
 	"github.com/anyongjin/banexg/utils"
@@ -382,50 +383,55 @@ func (c *WsClient) read() {
 
 func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
-	var err *errs.Error
-	var err_ error
-	var id string
-	if strings.HasPrefix(msgText, "{") {
-		var msg = make(map[string]interface{})
-		err_ = sonic.UnmarshalString(msgText, &msg)
-		if err_ == nil {
-			id = c.handleMsg(utils.MapValStr(msg))
-		}
-	} else if strings.HasPrefix(msgText, "[") {
-		var msgs = make([]map[string]interface{}, 0)
-		err_ = sonic.UnmarshalString(msgText, &msgs)
-		if err_ == nil && len(msgs) > 0 {
-			for _, it := range msgs {
-				id = c.handleMsg(utils.MapValStr(it))
-			}
-		}
-	} else {
-		err = errs.NewMsg(errs.CodeWsInvalidMsg, "invalid ws msg, not dict or list")
-	}
-	if err_ != nil {
-		err = errs.New(errs.CodeUnmarshalFail, err_)
-	}
+	fmt.Printf("receive %s\n", msgText)
+	msg, err := NewWsMsg(msgText)
 	if err != nil {
 		if c.OnError != nil {
 			c.OnError(c.URL, err)
 		}
 		log.Error("invalid ws msg", zap.String("msg", msgText), zap.Error(err))
-	} else if id != "" {
-		delete(c.JobInfos, id)
+		return
 	}
-}
-
-func (c *WsClient) handleMsg(msg map[string]string) string {
-	id, ok := msg["id"]
-	if ok {
-		if sub, ok := c.JobInfos[id]; ok && sub.Method != nil {
+	if !msg.IsArray && msg.ID != "" {
+		if sub, ok := c.JobInfos[msg.ID]; ok && sub.Method != nil {
 			// 订阅信息中提供了处理函数，则调用处理函数
-			sub.Method(c.URL, msg, sub)
-			delete(c.JobInfos, id)
-			return id
+			sub.Method(c.URL, msg.Object, sub)
+			delete(c.JobInfos, msg.ID)
+			return
 		}
 	}
 	// 未匹配则调用通用消息处理
 	c.OnMessage(c.URL, msg)
-	return ""
+}
+
+func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {
+	var err_ error
+	if strings.HasPrefix(msgText, "{") {
+		var msg = make(map[string]interface{})
+		err_ = sonic.UnmarshalString(msgText, &msg)
+		if err_ == nil {
+			var obj = utils.MapValStr(msg)
+			event, _ := utils.SafeMapVal(obj, "e", "")
+			id, _ := utils.SafeMapVal(obj, "id", "")
+			return &WsMsg{Event: event, ID: id, Object: obj, Text: msgText}, nil
+		}
+	} else if strings.HasPrefix(msgText, "[") {
+		var msgs = make([]map[string]interface{}, 0)
+		err_ = sonic.UnmarshalString(msgText, &msgs)
+		if err_ == nil && len(msgs) > 0 {
+			var event string
+			var itemList = make([]map[string]string, len(msgs))
+			for i, it := range msgs {
+				var obj = utils.MapValStr(it)
+				if i == 0 {
+					event, _ = utils.SafeMapVal(obj, "e", "")
+				}
+				itemList[i] = obj
+			}
+			return &WsMsg{Event: event, IsArray: true, List: itemList, Text: msgText}, nil
+		}
+	} else {
+		return nil, errs.NewMsg(errs.CodeWsInvalidMsg, "invalid ws msg, not dict or list")
+	}
+	return nil, errs.New(errs.CodeUnmarshalFail, err_)
 }

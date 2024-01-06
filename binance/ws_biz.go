@@ -16,20 +16,18 @@ import (
 )
 
 func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
-	return func(wsUrl string, msg map[string]string) {
-		event, ok := msg["e"]
-		if !ok {
-			if jobId, ok := msg["id"]; ok {
+	return func(wsUrl string, item *banexg.WsMsg) {
+		if item.Event == "" {
+			if item.ID != "" {
 				// 任务结果返回
-				err := banexg.CheckWsError(msg)
+				err := banexg.CheckWsError(item.Object)
 				if err != nil {
-					log.Error("ws job fail", zap.String("job", jobId), zap.Error(err))
+					log.Error("ws job fail", zap.String("job", item.ID), zap.Error(err))
 				} else {
-					log.Info("ws job ok", zap.String("job", jobId))
+					log.Info("ws job ok", zap.String("job", item.ID))
 				}
 			} else {
-				msgText, _ := sonic.MarshalString(msg)
-				log.Error("no event ws msg", zap.String("msg", msgText))
+				log.Error("no event ws msg", zap.String("msg", item.Text))
 			}
 			return
 		}
@@ -37,7 +35,12 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 		if !ok {
 			log.Error("no ws client found for ", zap.String("url", wsUrl))
 		}
-		switch event {
+		var msgList = item.List
+		if !item.IsArray {
+			msgList = []map[string]string{item.Object}
+		}
+		var msg = item.Object
+		switch item.Event {
 		case "depthUpdate":
 			e.handleOrderBook(client, msg)
 		case "trade":
@@ -51,13 +54,22 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 		case "indexPrice_kline":
 			e.handleOhlcv(client, msg)
 		case "markPriceUpdate":
-			e.handleMarkPrice(client, msg)
+			// linear/inverse
+			e.handleMarkPrices(client, msgList)
+		case "markPrice":
+			// option
+			e.handleMarkPrices(client, msgList)
 		case "24hrTicker":
-			e.handleTicker(client, msg)
+			//spot/linear/inverse/option
+			e.handleTickers(client, msgList)
 		case "24hrMiniTicker":
-			e.handleTicker(client, msg)
+			//spot/linear/inverse
+			e.handleTickers(client, msgList)
 		case "bookTicker":
-			e.handleTicker(client, msg)
+			e.handleTickers(client, msgList)
+		case "openInterest":
+			// option 合约持仓量
+			break
 		case "outboundAccountPosition":
 			e.handleBalance(client, msg)
 		case "balanceUpdate":
@@ -69,8 +81,7 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 		case "ORDER_TRADE_UPDATE":
 			e.handleOrderUpdate(client, msg)
 		default:
-			msgText, _ := sonic.MarshalString(msg)
-			log.Warn("unhandle ws msg", zap.String("msg", msgText))
+			log.Warn("unhandle ws msg", zap.String("msg", item.Text))
 		}
 	}
 }
@@ -330,21 +341,23 @@ func (e *Binance) prepareMarkPrices(method string, symbols []string, params *map
 	return chanKey, args, nil
 }
 
-func (e *Binance) handleMarkPrice(client *banexg.WsClient, msg map[string]string) {
-	evtTime, _ := utils.SafeMapVal(msg, "E", int64(0))
-	symbol, _ := utils.SafeMapVal(msg, "s", "")
-	markPrice, _ := utils.SafeMapVal(msg, "p", float64(0))
-	symbol = e.SafeSymbol(symbol, "", client.MarketType)
+func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string) {
+	evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
+	e.KeyTimeStamps["markPrices"] = evtTime
 	data, ok := e.MarkPrices[client.MarketType]
 	if !ok {
 		data = map[string]float64{}
 		e.MarkPrices[client.MarketType] = data
 	}
-	data[symbol] = markPrice
-	e.KeyTimeStamps["markPrices"] = evtTime
-	chanKey := client.URL + "#" + client.MarketType + "@markPrice"
 	var res = map[string]float64{}
-	maps.Copy(res, data)
+	for _, msg := range msgList {
+		symbol, _ := utils.SafeMapVal(msg, "s", "")
+		markPrice, _ := utils.SafeMapVal(msg, "p", float64(0))
+		symbol = e.SafeSymbol(symbol, "", client.MarketType)
+		res[symbol] = markPrice
+	}
+	chanKey := client.URL + "#" + client.MarketType + "@markPrice"
+	maps.Copy(data, res)
 	banexg.WriteOutChan(e.Exchange, chanKey, res, true)
 }
 
@@ -455,7 +468,7 @@ func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[s
 	return chanKey, symbols, args, nil
 }
 
-func (e *Binance) handleTicker(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleTickers(client *banexg.WsClient, msgList []map[string]string) {
 
 }
 

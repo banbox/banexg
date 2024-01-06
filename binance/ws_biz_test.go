@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWatchOhlcvs(t *testing.T) {
@@ -132,8 +133,9 @@ mainFor:
 				log.Info("read out chan fail, break")
 				break mainFor
 			}
+			timeStr := time.Now().Format("2006-01-02 15:04:05")
 			builder := strings.Builder{}
-			builder.WriteString("=============================\n")
+			builder.WriteString("============== " + timeStr + " ===============\n")
 			for symbol, price := range data {
 				builder.WriteString(fmt.Sprintf("%s: %v\n", symbol, price))
 			}
