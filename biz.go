@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -239,10 +238,6 @@ func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (Mar
 		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "unknown markets type: %t", result)
 	}
 	return e.Markets, nil
-}
-
-func (e *Exchange) PrecisionCost(symbol string, cost float64) float64 {
-	return cost
 }
 
 func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
@@ -491,7 +486,7 @@ Get's the "1 pip" value for this pair.
 
 	Used in PriceFilter to calculate the 1pip movements.
 */
-func (e *Exchange) PriceOnePip(symbol string) (float64, error) {
+func (e *Exchange) PriceOnePip(symbol string) (float64, *errs.Error) {
 	market, err := e.GetMarket(symbol)
 	if err != nil {
 		return 0, err
@@ -717,27 +712,31 @@ func (e *Exchange) LoadArgsMarketType(args map[string]interface{}, symbols ...st
 	return marketType, contractType, nil
 }
 
-func (e *Exchange) PrecAmount(m *Market, amount float64) (string, error) {
-	precStr := strconv.Itoa(m.Precision.Amount)
-	amtStr := strconv.FormatFloat(amount, 'f', -1, 64)
-	return utils.DecToPrec(amtStr, e.PrecisionMode, precStr, false, e.PrecPadZero)
+func (e *Exchange) PrecAmount(m *Market, amount float64) (string, *errs.Error) {
+	res, err := utils.PrecFloat64Str(amount, m.Precision.Amount, false)
+	if err != nil {
+		return "", errs.New(errs.CodePrecDecFail, err)
+	}
+	return res, nil
 }
 
-func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (string, error) {
-	precStr := strconv.Itoa(m.Precision.Price)
-	valStr := strconv.FormatFloat(value, 'f', -1, 64)
-	return utils.DecToPrec(valStr, e.PrecisionMode, precStr, round, e.PrecPadZero)
+func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (string, *errs.Error) {
+	res, err := utils.PrecFloat64Str(value, m.Precision.Price, round)
+	if err != nil {
+		return "", errs.New(errs.CodePrecDecFail, err)
+	}
+	return res, nil
 }
 
-func (e *Exchange) PrecPrice(m *Market, price float64) (string, error) {
+func (e *Exchange) PrecPrice(m *Market, price float64) (string, *errs.Error) {
 	return e.precPriceCost(m, price, true)
 }
 
-func (e *Exchange) PrecCost(m *Market, cost float64) (string, error) {
+func (e *Exchange) PrecCost(m *Market, cost float64) (string, *errs.Error) {
 	return e.precPriceCost(m, cost, false)
 }
 
-func (e *Exchange) PrecFee(m *Market, fee float64) (string, error) {
+func (e *Exchange) PrecFee(m *Market, fee float64) (string, *errs.Error) {
 	return e.precPriceCost(m, fee, true)
 }
 

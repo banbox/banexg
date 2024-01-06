@@ -164,7 +164,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			if cost != 0 {
 				precRes, err := e.PrecCost(market, cost)
 				if err != nil {
-					return nil, errs.NewMsg(errs.CodeParamInvalid, "precision cost fail: %v", err)
+					return nil, err
 				}
 				args["quoteOrderQty"] = precRes
 			}
@@ -207,7 +207,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if quantityRequired {
 		amtStr, err := e.PrecAmount(market, amount)
 		if err != nil {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "precision for amount fail: %v", err)
+			return nil, err
 		}
 		args["quantity"] = amtStr
 	}
@@ -217,7 +217,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		}
 		priceStr, err := e.PrecPrice(market, price)
 		if err != nil {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "precision for price fail: %v", err)
+			return nil, err
 		}
 		args["price"] = priceStr
 	}
@@ -241,7 +241,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		if stopPrice != 0 {
 			stopPriceStr, err := e.PrecPrice(market, stopPrice)
 			if err != nil {
-				return nil, errs.NewMsg(errs.CodeParamInvalid, "stopPrice prec fail: %v", err)
+				return nil, err
 			}
 			args["stopPrice"] = stopPriceStr
 		}

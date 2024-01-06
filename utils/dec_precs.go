@@ -189,11 +189,15 @@ PrecFloat64
 对给定浮点数取近似值，精确到指定位数
 */
 func PrecFloat64(num float64, prec int, isRound bool) (float64, error) {
-	numStr := strconv.FormatFloat(num, 'f', -1, 64)
-	precStr := strconv.Itoa(prec)
-	resStr, err := DecToPrec(numStr, PrecModeDecimalPlace, precStr, isRound, false)
+	resStr, err := PrecFloat64Str(num, prec, isRound)
 	if err != nil {
 		return 0, err
 	}
 	return strconv.ParseFloat(resStr, 64)
+}
+
+func PrecFloat64Str(num float64, prec int, isRound bool) (string, error) {
+	numStr := strconv.FormatFloat(num, 'f', -1, 64)
+	precStr := strconv.Itoa(prec)
+	return DecToPrec(numStr, PrecModeDecimalPlace, precStr, isRound, false)
 }
