@@ -58,7 +58,7 @@ mainFor:
 
 func TestWatchBalance(t *testing.T) {
 	exg := getBinance(nil)
-	//exg.MarketType = banexg.MarketLinear
+	exg.MarketType = banexg.MarketLinear
 	out, err := exg.WatchBalance(nil)
 	if err != nil {
 		panic(err)

@@ -21,14 +21,15 @@ import (
 type WsClient struct {
 	Conn       WsConn
 	URL        string
+	AccName    string
 	MarketType string
 	Send       chan []byte
 	control    chan int              // 用于内部同步控制命令
 	JobInfos   map[string]*WsJobInfo // request id: Sub Data
 	ChanCaps   map[string]int        // msgHash: cap size of cache msg
-	OnMessage  FuncOnWsMsg
-	OnError    FuncOnWsErr
-	OnClose    FuncOnWsClose
+	OnMessage  func(client *WsClient, msg *WsMsg)
+	OnError    func(client *WsClient, err *errs.Error)
+	OnClose    func(client *WsClient, err *errs.Error)
 }
 
 type WebSocket struct {
@@ -118,8 +119,9 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 	return result, nil
 }
 
-func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.Error) {
-	client, ok := e.WSClients[wsUrl]
+func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
+	clientKey := accName + "@" + wsUrl
+	client, ok := e.WSClients[clientKey]
 	if ok && client.Conn != nil {
 		return client, nil
 	}
@@ -133,9 +135,9 @@ func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.
 	if e.OnWsMsg == nil {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "OnWsMsg is required for ws client")
 	}
-	onClosed := func(wsUrl string, err *errs.Error) {
+	onClosed := func(client *WsClient, err *errs.Error) {
 		if e.OnWsClose != nil {
-			e.OnWsClose(wsUrl, err)
+			e.OnWsClose(client, err)
 		}
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
@@ -145,7 +147,8 @@ func (e *Exchange) GetClient(wsUrl string, marketType string) (*WsClient, *errs.
 		return nil, err
 	}
 	client.MarketType = marketType
-	e.WSClients[wsUrl] = client
+	client.AccName = accName
+	e.WSClients[clientKey] = client
 	return client, nil
 }
 
@@ -224,7 +227,7 @@ func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
 }
 
 func (e *Exchange) handleWsClientClosed(client *WsClient) int {
-	prefix := client.URL + "#"
+	prefix := client.Prefix("")
 	removeNum := 0
 	for key, _ := range e.WsChanRefs {
 		if !strings.HasPrefix(key, prefix) {
@@ -371,7 +374,7 @@ func (c *WsClient) read() {
 		msgRaw, err := c.Conn.ReadMsg()
 		if err != nil {
 			if c.OnClose != nil {
-				c.OnClose(c.URL, errs.New(errs.CodeWsReadFail, err))
+				c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
 			}
 			log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Error(err))
 			return
@@ -387,7 +390,7 @@ func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	msg, err := NewWsMsg(msgText)
 	if err != nil {
 		if c.OnError != nil {
-			c.OnError(c.URL, err)
+			c.OnError(c, err)
 		}
 		log.Error("invalid ws msg", zap.String("msg", msgText), zap.Error(err))
 		return
@@ -395,13 +398,18 @@ func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	if !msg.IsArray && msg.ID != "" {
 		if sub, ok := c.JobInfos[msg.ID]; ok && sub.Method != nil {
 			// 订阅信息中提供了处理函数，则调用处理函数
-			sub.Method(c.URL, msg.Object, sub)
+			sub.Method(c, msg.Object, sub)
 			delete(c.JobInfos, msg.ID)
 			return
 		}
 	}
 	// 未匹配则调用通用消息处理
-	c.OnMessage(c.URL, msg)
+	c.OnMessage(c, msg)
+}
+
+func (c *WsClient) Prefix(key string) string {
+	var arr = []string{c.AccName, "@", c.URL, "#", key}
+	return strings.Join(arr, "")
 }
 
 func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {

@@ -9,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -30,11 +31,7 @@ func (e *Exchange) Init() {
 			Proxy: http.ProxyURL(proxy),
 		}
 	}
-	if e.Creds == nil {
-		e.Creds = &Credential{}
-	}
-	utils.SetFieldBy(&e.Creds.ApiKey, e.Options, OptApiKey, "")
-	utils.SetFieldBy(&e.Creds.Secret, e.Options, OptApiSecret, "")
+	e.parseOptCreds()
 	utils.SetFieldBy(&e.UserAgent, e.Options, OptUserAgent, "")
 	if e.EnableRateLimit == BoolNull {
 		e.EnableRateLimit = BoolTrue
@@ -66,15 +63,11 @@ func (e *Exchange) Init() {
 	e.WsOutChans = map[string]interface{}{}
 	e.WsChanRefs = map[string]map[string]struct{}{}
 	e.OrderBooks = map[string]*OrderBook{}
-	e.MarBalances = map[string]*Balances{}
-	e.MarPositions = map[string][]*Position{}
 	e.MarkPrices = map[string]map[string]float64{}
 	e.KeyTimeStamps = map[string]int64{}
 }
 
-/*
-***************************  Business Functions  ******************************
- */
+/****************************  Business Functions  *******************************/
 
 func (e *Exchange) SafeCurrency(currId string) *Currency {
 	if e.CurrenciesById != nil {
@@ -547,7 +540,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 	}
 	sign := e.Sign(api, params)
 	if sign.Error != nil {
-		return &HttpRes{Error: sign.Error}
+		return &HttpRes{AccName: sign.AccName, Error: sign.Error}
 	}
 	var req *http.Request
 	var err error
@@ -559,7 +552,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		req, err = http.NewRequest(sign.Method, sign.Url, nil)
 	}
 	if err != nil {
-		return &HttpRes{Error: errs.New(errs.CodeInvalidRequest, err)}
+		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeInvalidRequest, err)}
 	}
 	req = req.WithContext(ctx)
 	req.Header = sign.Headers
@@ -569,9 +562,9 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
 	rsp, err := e.HttpClient.Do(req)
 	if err != nil {
-		return &HttpRes{Error: errs.New(errs.CodeNetFail, err)}
+		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
 	}
-	var result = HttpRes{Status: rsp.StatusCode, Headers: rsp.Header}
+	var result = HttpRes{AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header}
 	rspData, err := io.ReadAll(rsp.Body)
 	if err != nil {
 		result.Error = errs.New(errs.CodeNetFail, err)
@@ -749,4 +742,87 @@ func (e *Exchange) GetRetryNum(key string, defVal int) int {
 		return retryNum
 	}
 	return defVal
+}
+
+func (e *Exchange) GetAccName(params *map[string]interface{}) string {
+	if params == nil {
+		return e.DefAccName
+	}
+	return utils.PopMapVal(*params, ParamAccount, e.DefAccName)
+}
+
+func (e *Exchange) GetAccount(id string) (*Account, *errs.Error) {
+	if id == "" {
+		if e.DefAccName != "" {
+			id = e.DefAccName
+		} else if len(e.Accounts) == 1 {
+			for key := range e.Accounts {
+				id = key
+				e.DefAccName = key
+				break
+			}
+		} else {
+			return nil, errs.NewMsg(errs.CodeAccKeyError, "ParamAccount or DefAccName must be specified")
+		}
+	}
+	acc, ok := e.Accounts[id]
+	if !ok {
+		return nil, errs.NewMsg(errs.CodeAccKeyError, "Account key invalid: %s", id)
+	}
+	return acc, nil
+}
+
+func (e *Exchange) GetAccountCreds(id string) (*Credential, *errs.Error) {
+	acc, err := e.GetAccount(id)
+	if err != nil {
+		return nil, err
+	}
+	if acc.Creds != nil {
+		err = acc.Creds.CheckFilled(e.CredKeys)
+		if err != nil {
+			return nil, err
+		}
+		return acc.Creds, nil
+	}
+	return nil, errs.NewMsg(errs.CodeCredsRequired, "Creds not exits")
+}
+
+func (e *Exchange) parseOptCreds() {
+	var defCreds map[string]map[string]interface{}
+	creds := utils.GetMapVal(e.Options, OptAccCreds, defCreds)
+	e.Accounts = make(map[string]*Account)
+	if creds != nil {
+		for k, cred := range creds {
+			e.Accounts[k] = newAccount(k, cred)
+		}
+		e.DefAccName = utils.GetMapVal(e.Options, OptAccName, "")
+	} else {
+		apiKey := utils.GetMapVal(e.Options, OptApiKey, "")
+		apiSecret := utils.GetMapVal(e.Options, OptApiSecret, "")
+		if apiKey != "" || apiSecret != "" {
+			e.DefAccName = "default"
+			e.Accounts[e.DefAccName] = &Account{
+				Name:         e.DefAccName,
+				Creds:        &Credential{ApiKey: apiKey, Secret: apiSecret},
+				MarBalances:  map[string]*Balances{},
+				MarPositions: map[string][]*Position{},
+				Data:         map[string]interface{}{},
+			}
+		}
+	}
+}
+
+func newAccount(name string, cred map[string]interface{}) *Account {
+	var current = map[string]interface{}{}
+	maps.Copy(current, cred)
+	return &Account{
+		Name: name,
+		Creds: &Credential{
+			ApiKey: utils.PopMapVal(current, OptApiKey, ""),
+			Secret: utils.PopMapVal(current, OptApiSecret, ""),
+		},
+		MarPositions: map[string][]*Position{},
+		MarBalances:  map[string]*Balances{},
+		Data:         current,
+	}
 }

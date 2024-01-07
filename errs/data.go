@@ -4,6 +4,7 @@ const (
 	CodeNetFail = -1*iota - 1
 	CodeNotSupport
 	CodeInvalidRequest
+	CodeAccKeyError
 	CodeMissingApiKey
 	CodeCredsRequired
 	CodeSignFail

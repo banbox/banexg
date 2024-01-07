@@ -905,9 +905,7 @@ func NewExchange(Options map[string]interface{}) *Binance {
 				"transfer":                       banexg.HasOk,
 				"withdraw":                       banexg.HasOk,
 			},
-			Creds: &banexg.Credential{
-				Keys: map[string]bool{"ApiKey": true, "Secret": true},
-			},
+			CredKeys: map[string]bool{"ApiKey": true, "Secret": true},
 		},
 		newOrderRespType: map[string]string{
 			banexg.OdTypeMarket: "FULL",

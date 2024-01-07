@@ -50,12 +50,8 @@ func (e *Binance) Init() {
 
 func makeSign(e *Binance) banexg.FuncSign {
 	return func(api banexg.Entry, args *map[string]interface{}) *banexg.HttpReq {
-		var params map[string]interface{}
-		if args == nil {
-			params = make(map[string]interface{})
-		} else {
-			params = *args
-		}
+		var params = utils.SafeParams(args)
+		accID := e.GetAccName(&params)
 		path := api.Path
 		hostKey := api.Host
 		url := e.Hosts.GetHost(hostKey) + "/" + path
@@ -63,21 +59,23 @@ func makeSign(e *Binance) banexg.FuncSign {
 		query := make([]string, 0)
 		body := ""
 		if path == "historicalTrades" {
-			if e.Creds.ApiKey == "" {
+			creds, err := e.GetAccountCreds(accID)
+			if err != nil {
 				log.Panic("historicalTrades requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: errs.MissingApiKey}
+				return &banexg.HttpReq{Error: err}
 			}
-			headers.Add("X-MBX-APIKEY", e.Creds.ApiKey)
+			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 		} else if path == "userDataStream" || path == "listenKey" {
 			//v1 special case for userDataStream
-			if e.Creds.ApiKey == "" {
+			creds, err := e.GetAccountCreds(accID)
+			if err != nil {
 				log.Panic("userDataStream requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: errs.MissingApiKey}
+				return &banexg.HttpReq{Error: err}
 			}
-			headers.Add("X-MBX-APIKEY", e.Creds.ApiKey)
+			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			headers.Add("Content-Type", "application/x-www-form-urlencoded")
 		} else if _, ok := secretApis[hostKey]; ok || (hostKey == "sapi" && path != "system/status") {
-			err := e.Creds.CheckFilled()
+			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
 				return &banexg.HttpReq{Error: err}
 			}
@@ -109,7 +107,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			}
 			var sign, method, hash string
 			var digest = "hex"
-			var secret = e.Creds.Secret
+			var secret = creds.Secret
 			if strings.Contains(secret, "PRIVATE KEY") {
 				if len(secret) > 120 {
 					method, hash = "rsa", "sha256"
@@ -125,7 +123,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 				return &banexg.HttpReq{Error: err}
 			}
 			query = append(query, "signature="+sign)
-			headers.Add("X-MBX-APIKEY", e.Creds.ApiKey)
+			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			if api.Method == "GET" || api.Method == "DELETE" {
 				url += "?" + strings.Join(query, "&")
 			} else {
@@ -135,7 +133,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 		} else if len(params) > 0 {
 			url += "?" + utils.UrlEncodeMap(params, true)
 		}
-		return &banexg.HttpReq{Url: url, Method: api.Method, Headers: headers, Body: body}
+		return &banexg.HttpReq{AccName: accID, Url: url, Method: api.Method, Headers: headers, Body: body}
 	}
 }
 
@@ -149,9 +147,6 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 	return func(params *map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
 		if !e.HasApi("fetchCurrencies") {
 			return nil, errs.ApiNotSupport
-		}
-		if err := e.Creds.CheckFilled(); err != nil {
-			return nil, errs.CredsRequired
 		}
 		if e.Hosts.TestNet {
 			//sandbox/testnet does not support sapi endpoints

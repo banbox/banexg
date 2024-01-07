@@ -19,18 +19,18 @@ func (h *ExgHosts) GetHost(key string) string {
 	return host
 }
 
-func (c *Credential) CheckFilled() *errs.Error {
+func (c *Credential) CheckFilled(keys map[string]bool) *errs.Error {
 	var requires []string
-	if c.ApiKey == "" && c.Keys["ApiKey"] {
+	if c.ApiKey == "" && keys["ApiKey"] {
 		requires = append(requires, "ApiKey")
 	}
-	if c.Secret == "" && c.Keys["Secret"] {
+	if c.Secret == "" && keys["Secret"] {
 		requires = append(requires, "Secret")
 	}
-	if c.UID == "" && c.Keys["UID"] {
+	if c.UID == "" && keys["UID"] {
 		requires = append(requires, "UID")
 	}
-	if c.Password == "" && c.Keys["Password"] {
+	if c.Password == "" && keys["Password"] {
 		requires = append(requires, "Password")
 	}
 	if len(requires) > 0 {

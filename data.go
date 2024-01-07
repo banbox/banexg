@@ -28,6 +28,7 @@ const (
 	ParamName               = "name"
 	ParamMethod             = "method"
 	ParamInterval           = "interval"
+	ParamAccount            = "account"
 
 	UriEncodeSafe = utils.UriEncodeSafe
 )
@@ -72,6 +73,8 @@ const (
 	OptProxy           = "Proxy"
 	OptApiKey          = "ApiKey"
 	OptApiSecret       = "ApiSecret"
+	OptAccCreds        = "Creds"
+	OptAccName         = "AccName"
 	OptUserAgent       = "UserAgent"
 	OptReqHeaders      = "ReqHeaders"
 	OptCareMarkets     = "CareMarkets"

@@ -40,7 +40,7 @@ func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, int, *
 	wsUrl := host + "/" + e.Stream(marType, msgHash)
 	requestId := e.wsRequestId[wsUrl] + 1
 	e.wsRequestId[wsUrl] = requestId
-	client, err := e.GetClient(wsUrl, marType)
+	client, err := e.GetClient(wsUrl, marType, "")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -184,7 +184,7 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 		"id":     requestId,
 	}
 	err = client.Write(request, jobInfo)
-	chanKey := client.URL + "#" + msgHash
+	chanKey := client.Prefix(msgHash)
 	return chanKey, args, err
 }
 
@@ -205,7 +205,7 @@ func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan banexg.MyT
 		return nil, err
 	}
 	args := utils.SafeParams(params)
-	chanKey := client.URL + "#mytrades"
+	chanKey := client.Prefix("mytrades")
 	create := func(cap int) chan banexg.MyTrade { return make(chan banexg.MyTrade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
@@ -248,7 +248,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 		log.Info("book nonce empty, cache")
 		return
 	}
-	var chanKey = fmt.Sprintf("%s#%s@depth", client.URL, client.MarketType)
+	var chanKey = client.Prefix("depth")
 	var zero = int64(0)
 	U, _ := utils.SafeMapVal(msg, "U", zero)
 	u, _ := utils.SafeMapVal(msg, "u", zero)
@@ -324,19 +324,13 @@ func (e *Binance) handleOrderBookMsg(msg map[string]string, book *banexg.OrderBo
 	}
 }
 
-func (e *Binance) HandleOrderBookSub(wsUrl string, msg map[string]string, info *banexg.WsJobInfo) {
+func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]string, info *banexg.WsJobInfo) {
 	err := banexg.CheckWsError(msg)
-	urlZap := zap.String("url", wsUrl)
-	chanKey := wsUrl + "#" + info.MsgHash
+	urlZap := zap.String("url", client.URL)
+	chanKey := client.Prefix(info.MsgHash)
 	if err != nil {
 		e.DelWsChanRefs(chanKey, info.Symbols...)
 		log.Error("sub order error", urlZap, zap.Error(err))
-		return
-	}
-	client, ok := e.WSClients[wsUrl]
-	if !ok {
-		e.DelWsChanRefs(chanKey, info.Symbols...)
-		log.Error("no ws client for", urlZap)
 		return
 	}
 	symbols := info.Symbols

@@ -19,10 +19,14 @@ func TestSetOptions(t *testing.T) {
 	} else {
 		t.Errorf("Fail PrecisionMode, cur %v, expect: %v", e.PrecisionMode, PrecModeTickSize)
 	}
-	if e.Creds.ApiKey == FakeApiKey {
+	creds, err := e.GetAccountCreds("default")
+	if err != nil {
+		panic(err)
+	}
+	if creds.ApiKey == FakeApiKey {
 		t.Logf("Pass ApiKey")
 	} else {
-		t.Errorf("Fail ApiKey, cur %v, expect: %v", e.Creds.ApiKey, FakeApiKey)
+		t.Errorf("Fail ApiKey, cur %v, expect: %v", creds.ApiKey, FakeApiKey)
 	}
 	if e.MarketType == MarketMargin {
 		t.Logf("Pass MarketType")

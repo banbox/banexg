@@ -9,12 +9,12 @@ import (
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Error)
 type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, *errs.Error)
-type FuncAuth = func(params *map[string]interface{}) *errs.Error
+type FuncAuth = func(params *map[string]interface{}) (*Account, *errs.Error)
 
-type FuncOnWsMsg = func(wsUrl string, msg *WsMsg)
-type FuncOnWsMethod = func(wsUrl string, msg map[string]string, info *WsJobInfo)
-type FuncOnWsErr = func(wsUrl string, err *errs.Error)
-type FuncOnWsClose = func(wsUrl string, err *errs.Error)
+type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
+type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)
+type FuncOnWsErr = func(client *WsClient, err *errs.Error)
+type FuncOnWsClose = func(client *WsClient, err *errs.Error)
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
@@ -24,11 +24,14 @@ type Exchange struct {
 	Countries []string // 可用国家
 	Hosts     *ExgHosts
 	Fees      *ExgFee
-	Apis      map[string]Entry // 所有API的路径
-	Has       map[string]int   // 是否定义了某个API
-	Creds     *Credential
+	Apis      map[string]Entry       // 所有API的路径
+	Has       map[string]int         // 是否定义了某个API
 	Options   map[string]interface{} // 用户传入的配置
 	Proxy     *url.URL
+
+	CredKeys   map[string]bool     // cred keys required for exchange
+	Accounts   map[string]*Account // name: account
+	DefAccName string              // default account name
 
 	EnableRateLimit int   // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
 	RateLimit       int64 // 请求速率控制毫秒数，最小间隔单位
@@ -64,15 +67,13 @@ type Exchange struct {
 
 	LeverageBrackets map[string][][2]float64 // symbol: [floorValue, maintMarginPct] 按floorValue升序
 
-	OrderBooks   map[string]*OrderBook         // symbol: OrderBook update by wss
-	MarkPrices   map[string]map[string]float64 // marketType: symbol: mark price
-	MarPositions map[string][]*Position        // marketType: Position List
-	MarBalances  map[string]*Balances          // marketType: Balances
+	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
+	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
 
-	WSClients  map[string]*WsClient           // url: websocket clients
+	WSClients  map[string]*WsClient           // accName@url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
-	WsOutChans map[string]interface{}         // url+msgHash: chan Type
-	WsChanRefs map[string]map[string]struct{} // url+msgHash: symbols use this chan
+	WsOutChans map[string]interface{}         // accName@url+msgHash: chan Type
+	WsChanRefs map[string]map[string]struct{} // accName@url+msgHash: symbols use this chan
 
 	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 
@@ -88,6 +89,14 @@ type Exchange struct {
 	OnWsClose FuncOnWsClose
 
 	Flags map[string]string
+}
+
+type Account struct {
+	Name         string
+	Creds        *Credential
+	MarPositions map[string][]*Position // marketType: Position List
+	MarBalances  map[string]*Balances   // marketType: Balances
+	Data         map[string]interface{}
 }
 
 type ExgHosts struct {
@@ -134,7 +143,6 @@ type Entry struct {
 }
 
 type Credential struct {
-	Keys     map[string]bool
 	ApiKey   string
 	Secret   string
 	UID      string
@@ -142,6 +150,7 @@ type Credential struct {
 }
 
 type HttpReq struct {
+	AccName string
 	Url     string
 	Method  string
 	Headers http.Header
@@ -150,6 +159,7 @@ type HttpReq struct {
 }
 
 type HttpRes struct {
+	AccName string
 	Status  int
 	Headers http.Header
 	Content string
@@ -439,7 +449,7 @@ type WsJobInfo struct {
 	MsgHash string
 	Name    string
 	Symbols []string
-	Method  func(wsUrl string, msg map[string]string, info *WsJobInfo)
+	Method  func(client *WsClient, msg map[string]string, info *WsJobInfo)
 	Limit   int
 	Params  map[string]interface{}
 }
