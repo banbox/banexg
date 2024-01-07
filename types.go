@@ -18,6 +18,8 @@ type FuncOnWsClose = func(client *WsClient, err *errs.Error)
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
+type FuncNewExchange = func(map[string]interface{}) (BanExchange, *errs.Error)
+
 type Exchange struct {
 	ID        string   // 交易所ID
 	Name      string   // 显示名称

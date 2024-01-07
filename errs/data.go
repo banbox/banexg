@@ -23,6 +23,7 @@ const (
 	CodeConnectFail
 	CodeInvalidTimeFrame
 	CodePrecDecFail
+	CodeBadExgName
 )
 
 var (

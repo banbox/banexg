@@ -166,3 +166,5 @@ const (
 const (
 	MidListenKey = "listenKey"
 )
+
+var newExgs map[string]FuncNewExchange

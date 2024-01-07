@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-func (e *Exchange) Init() {
+func (e *Exchange) Init() *errs.Error {
 	e.HttpClient = &http.Client{}
 	proxyUrl := utils.GetMapVal(e.Options, OptProxy, "")
 	if proxyUrl != "" {
 		proxy, err := url.Parse(proxyUrl)
 		if err != nil {
-			panic(err)
+			return errs.New(errs.CodeParamInvalid, err)
 		}
 		e.Proxy = proxy
 		e.HttpClient.Transport = &http.Transport{
@@ -65,6 +65,7 @@ func (e *Exchange) Init() {
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarkPrices = map[string]map[string]float64{}
 	e.KeyTimeStamps = map[string]int64{}
+	return nil
 }
 
 /****************************  Business Functions  *******************************/

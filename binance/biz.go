@@ -30,8 +30,11 @@ var secretApis = map[string]bool{
 	"papi":            true,
 }
 
-func (e *Binance) Init() {
-	e.Exchange.Init()
+func (e *Binance) Init() *errs.Error {
+	err := e.Exchange.Init()
+	if err != nil {
+		return err
+	}
 	utils.SetFieldBy(&e.RecvWindow, e.Options, OptRecvWindow, 10000)
 	if e.CareMarkets == nil || len(e.CareMarkets) == 0 {
 		e.CareMarkets = DefCareMarkets
@@ -46,6 +49,7 @@ func (e *Binance) Init() {
 	}
 	e.streamBySubHash = map[string]string{}
 	e.wsRequestId = map[string]int{}
+	return nil
 }
 
 func makeSign(e *Binance) banexg.FuncSign {

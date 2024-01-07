@@ -44,6 +44,8 @@ type BanExchange interface {
 	PriceOnePip(symbol string) (float64, *errs.Error)
 	IsContract(marketType string) bool
 	MilliSeconds() int64
+
+	GetAccount(id string) (*Account, *errs.Error)
 }
 
 type WsConn interface {

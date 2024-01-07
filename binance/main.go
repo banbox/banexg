@@ -1,8 +1,11 @@
 package binance
 
-import "github.com/banbox/banexg"
+import (
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
+)
 
-func NewExchange(Options map[string]interface{}) *Binance {
+func NewExchange(Options map[string]interface{}) (*Binance, *errs.Error) {
 	exg := &Binance{
 		Exchange: &banexg.Exchange{
 			ID:        "binance",
@@ -918,6 +921,10 @@ func NewExchange(Options map[string]interface{}) *Binance {
 	exg.OnWsMsg = makeHandleWsMsg(exg)
 	exg.GetRetryWait = makeGetRetryWait(exg)
 	exg.Authenticate = makeAuthenticate(exg)
-	exg.Init()
-	return exg
+	err := exg.Init()
+	return exg, err
+}
+
+func NewBanExchange(Options map[string]interface{}) (banexg.BanExchange, *errs.Error) {
+	return NewExchange(Options)
 }
