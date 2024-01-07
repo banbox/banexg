@@ -2,8 +2,8 @@ package binance
 
 import (
 	"fmt"
-	"github.com/anyongjin/banexg"
-	"github.com/anyongjin/banexg/log"
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/log"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
 	"strconv"

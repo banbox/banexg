@@ -2,7 +2,7 @@ package banexg
 
 import (
 	"fmt"
-	"github.com/anyongjin/banexg/errs"
+	"github.com/banbox/banexg/errs"
 )
 
 func (h *ExgHosts) GetHost(key string) string {

@@ -1,7 +1,7 @@
 package banexg
 
 import (
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg/utils"
 )
 
 const (

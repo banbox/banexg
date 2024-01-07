@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/anyongjin/banexg/log"
+	"github.com/banbox/banexg/log"
 	"go.uber.org/zap"
 	"testing"
 )

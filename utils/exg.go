@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/anyongjin/banexg/errs"
+	"github.com/banbox/banexg/errs"
 	"regexp"
 	"strconv"
 )

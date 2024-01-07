@@ -1,8 +1,8 @@
 package binance
 
 import (
-	"github.com/anyongjin/banexg/log"
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
 )
 
 func getBinance(param *map[string]interface{}) *Binance {

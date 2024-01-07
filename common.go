@@ -2,8 +2,8 @@ package banexg
 
 import (
 	"fmt"
-	"github.com/anyongjin/banexg/log"
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"sort"

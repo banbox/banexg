@@ -3,9 +3,9 @@ package binance
 import (
 	"bufio"
 	"fmt"
-	"github.com/anyongjin/banexg"
-	"github.com/anyongjin/banexg/log"
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
 	"github.com/bytedance/sonic"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"

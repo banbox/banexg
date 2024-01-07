@@ -2,8 +2,8 @@ package binance
 
 import (
 	"context"
-	"github.com/anyongjin/banexg"
-	"github.com/anyongjin/banexg/errs"
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 	"github.com/bytedance/sonic"
 	"strconv"
 )

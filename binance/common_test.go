@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg/utils"
 	"github.com/h2non/gock"
 	"strings"
 )

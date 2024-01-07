@@ -1,6 +1,6 @@
 package binance
 
-import "github.com/anyongjin/banexg"
+import "github.com/banbox/banexg"
 
 const (
 	HostDApiPublic    = "dapiPublic"

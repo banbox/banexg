@@ -3,9 +3,9 @@ package banexg
 import (
 	"bytes"
 	"context"
-	"github.com/anyongjin/banexg/errs"
-	"github.com/anyongjin/banexg/log"
-	"github.com/anyongjin/banexg/utils"
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"

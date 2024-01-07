@@ -1,6 +1,6 @@
 package binance
 
-import "github.com/anyongjin/banexg"
+import "github.com/banbox/banexg"
 
 func NewExchange(Options map[string]interface{}) *Binance {
 	exg := &Binance{

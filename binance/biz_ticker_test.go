@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/anyongjin/banexg"
+	"github.com/banbox/banexg"
 	"github.com/bytedance/sonic"
 	"testing"
 )

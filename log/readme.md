@@ -3,7 +3,7 @@
 
 # 如何使用
 ```go
-imports github.com/anyongjin/banexg/log
+imports github.com/banbox/banexg/log
 
 // Optional
 log.SetupByArgs(true, "D:/test.log")

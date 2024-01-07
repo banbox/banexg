@@ -1,4 +1,4 @@
-module github.com/anyongjin/banexg
+module github.com/banbox/banexg
 
 go 1.21.4
 

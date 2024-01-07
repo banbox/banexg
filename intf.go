@@ -1,7 +1,7 @@
 package banexg
 
 import (
-	"github.com/anyongjin/banexg/errs"
+	"github.com/banbox/banexg/errs"
 	"io"
 )
 

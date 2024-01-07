@@ -1,8 +1,8 @@
 package binance
 
 import (
-	"github.com/anyongjin/banexg"
-	"github.com/anyongjin/banexg/errs"
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 )
 
 type Binance struct {

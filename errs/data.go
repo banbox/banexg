@@ -1,7 +1,7 @@
 package errs
 
 const (
-	CodeNetFail = -1 * iota
+	CodeNetFail = -1*iota - 1
 	CodeNotSupport
 	CodeInvalidRequest
 	CodeMissingApiKey
