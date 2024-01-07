@@ -3,7 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -15,12 +15,12 @@ import (
 	"time"
 )
 
-func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
-	return func(client *banexg.WsClient, item *banexg.WsMsg) {
+func makeHandleWsMsg(e *Binance) base.FuncOnWsMsg {
+	return func(client *base.WsClient, item *base.WsMsg) {
 		if item.Event == "" {
 			if item.ID != "" {
 				// 任务结果返回
-				err := banexg.CheckWsError(item.Object)
+				err := base.CheckWsError(item.Object)
 				if err != nil {
 					log.Error("ws job fail", zap.String("job", item.ID), zap.Error(err))
 				} else {
@@ -86,34 +86,34 @@ type AuthRes struct {
 	ListenKey string `json:"listenKey"`
 }
 
-func makeAuthenticate(e *Binance) banexg.FuncAuth {
-	return func(params *map[string]interface{}) (*banexg.Account, *errs.Error) {
+func makeAuthenticate(e *Binance) base.FuncAuth {
+	return func(params *map[string]interface{}) (*base.Account, *errs.Error) {
 		zeroVal := int64(0)
 		args := utils.SafeParams(params)
 		marketType, _ := e.GetArgsMarketType(args, "")
 		lastTimeKey := marketType + "lastAuthTime"
-		authField := marketType + banexg.MidListenKey
+		authField := marketType + base.MidListenKey
 		lastAuthTime := utils.GetMapVal(e.Options, lastTimeKey, zeroVal)
-		authRefreshSecs := utils.GetMapVal(e.Options, banexg.OptAuthRefreshSecs, 1200)
+		authRefreshSecs := utils.GetMapVal(e.Options, base.OptAuthRefreshSecs, 1200)
 		refreshDuration := int64(authRefreshSecs * 1000)
 		curTime := e.MilliSeconds()
 		if curTime-lastAuthTime <= refreshDuration {
 			return nil, nil
 		}
-		marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+		marginMode := utils.PopMapVal(args, base.ParamMarginMode, "")
 		method := "publicPostUserDataStream"
-		if marketType == banexg.MarketLinear {
+		if marketType == base.MarketLinear {
 			method = "fapiPrivatePostListenKey"
-		} else if marketType == banexg.MarketInverse {
+		} else if marketType == base.MarketInverse {
 			method = "dapiPrivatePostListenKey"
-		} else if marginMode == banexg.MarginIsolated {
+		} else if marginMode == base.MarginIsolated {
 			method = "sapiPostUserDataStreamIsolated"
 			marketId, err := e.GetMarketIDByArgs(args, true)
 			if err != nil {
 				return nil, err
 			}
 			args["symbol"] = marketId
-		} else if marketType == banexg.MarketMargin {
+		} else if marketType == base.MarketMargin {
 			method = "sapiPostUserDataStream"
 		}
 		rsp := e.RequestApiRetry(context.Background(), method, &args, 1)
@@ -139,11 +139,11 @@ func makeAuthenticate(e *Binance) banexg.FuncAuth {
 	}
 }
 
-func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]interface{}) {
+func (e *Binance) keepAliveListenKey(acc *base.Account, params *map[string]interface{}) {
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
 	lastTimeKey := marketType + "lastAuthTime"
-	authField := marketType + banexg.MidListenKey
+	authField := marketType + base.MidListenKey
 	listenKey := utils.GetMapVal(acc.Data, authField, "")
 	if listenKey == "" {
 		return
@@ -162,13 +162,13 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]int
 		}
 	}()
 	method := "publicPutUserDataStream"
-	if marketType == banexg.MarketLinear {
+	if marketType == base.MarketLinear {
 		method = "fapiPrivatePutListenKey"
-	} else if marketType == banexg.MarketInverse {
+	} else if marketType == base.MarketInverse {
 		method = "dapiPrivatePutListenKey"
 	} else {
-		args[banexg.MidListenKey] = listenKey
-		if marketType == banexg.MarketMargin {
+		args[base.MidListenKey] = listenKey
+		if marketType == base.MarketMargin {
 			method = "sapiPutUserDataStream"
 			marketId, err := e.GetMarketIDByArgs(args, true)
 			if err != nil {
@@ -185,14 +185,14 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]int
 	}
 	success = true
 	acc.Data[lastTimeKey] = e.MilliSeconds()
-	authRefreshSecs := utils.GetMapVal(acc.Data, banexg.OptAuthRefreshSecs, 1200)
+	authRefreshSecs := utils.GetMapVal(acc.Data, base.OptAuthRefreshSecs, 1200)
 	refreshDuration := time.Duration(authRefreshSecs) * time.Second
 	time.AfterFunc(refreshDuration, func() {
 		e.keepAliveListenKey(acc, params)
 	})
 }
 
-func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg.WsClient, *errs.Error) {
+func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *base.WsClient, *errs.Error) {
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
 		return "", nil, err
@@ -203,13 +203,13 @@ func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg
 	}
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
-	listenKey := utils.GetMapVal(acc.Data, marketType+banexg.MidListenKey, "")
+	listenKey := utils.GetMapVal(acc.Data, marketType+base.MidListenKey, "")
 	wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
 	client, err := e.GetClient(wsUrl, marketType, acc.Name)
 	return listenKey, client, err
 }
 
-func (e *Binance) WatchBalance(params *map[string]interface{}) (chan banexg.Balances, *errs.Error) {
+func (e *Binance) WatchBalance(params *map[string]interface{}) (chan base.Balances, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -225,14 +225,14 @@ func (e *Binance) WatchBalance(params *map[string]interface{}) (chan banexg.Bala
 	acc.MarBalances[client.MarketType] = balances
 	args := utils.SafeParams(params)
 	chanKey := client.Prefix("balance")
-	create := func(cap int) chan banexg.Balances { return make(chan banexg.Balances, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	create := func(cap int) chan base.Balances { return make(chan base.Balances, cap) }
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
 	out <- *balances
 	return out, nil
 }
 
-func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*banexg.Position, *errs.Error) {
+func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*base.Position, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -248,8 +248,8 @@ func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*banexg
 	acc.MarPositions[client.MarketType] = positions
 	args := utils.SafeParams(params)
 	chanKey := client.Prefix("positions")
-	create := func(cap int) chan []*banexg.Position { return make(chan []*banexg.Position, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	create := func(cap int) chan []*base.Position { return make(chan []*base.Position, cap) }
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
 	out <- positions
 	return out, nil
@@ -262,14 +262,14 @@ watches historical candlestick data containing the open, high, low, and close pr
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOhlcvs(jobs [][2]string, params *map[string]interface{}) (chan banexg.SymbolKline, *errs.Error) {
+func (e *Binance) WatchOhlcvs(jobs [][2]string, params *map[string]interface{}) (chan base.SymbolKline, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareOhlcvSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
 	}
 
-	create := func(cap int) chan banexg.SymbolKline { return make(chan banexg.SymbolKline, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	create := func(cap int) chan base.SymbolKline { return make(chan base.SymbolKline, cap) }
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
 }
@@ -289,7 +289,7 @@ func (e *Binance) WatchMarkPrices(symbols []string, params *map[string]interface
 		return nil, err
 	}
 	create := func(cap int) chan map[string]float64 { return make(chan map[string]float64, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "markPrice")
 	return out, nil
 }
@@ -317,7 +317,7 @@ func (e *Binance) prepareMarkPrices(method string, symbols []string, params *map
 	if err != nil {
 		return "", nil, err
 	}
-	intv := utils.PopMapVal(args, banexg.ParamInterval, "")
+	intv := utils.PopMapVal(args, base.ParamInterval, "")
 	if intv != "" {
 		if intv != "1s" {
 			return "", nil, errs.NewMsg(errs.CodeParamInvalid, "ParamInterval must be 1s or empty")
@@ -349,7 +349,7 @@ func (e *Binance) prepareMarkPrices(method string, symbols []string, params *map
 	return chanKey, args, nil
 }
 
-func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string) {
+func (e *Binance) handleMarkPrices(client *base.WsClient, msgList []map[string]string) {
 	evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
 	e.KeyTimeStamps["markPrices"] = evtTime
 	data, ok := e.MarkPrices[client.MarketType]
@@ -366,10 +366,10 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 	}
 	chanKey := client.Prefix(client.MarketType + "@markPrice")
 	maps.Copy(data, res)
-	banexg.WriteOutChan(e.Exchange, chanKey, res, true)
+	base.WriteOutChan(e.Exchange, chanKey, res, true)
 }
 
-func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleTrade(client *base.WsClient, msg map[string]string) {
 
 }
 
@@ -387,7 +387,7 @@ type WsKline struct {
 	LastId     int64  `json:"L"`
 }
 
-func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleOhlcv(client *base.WsClient, msg map[string]string) {
 	/*
 		https://binance-docs.github.io/apidocs/futures/cn/#k-7
 	*/
@@ -423,9 +423,9 @@ func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
 	h, _ := strconv.ParseFloat(k.High, 64)
 	l, _ := strconv.ParseFloat(k.Low, 64)
 	v, _ := strconv.ParseFloat(k.Volume, 64)
-	var kline = &banexg.SymbolKline{
+	var kline = &base.SymbolKline{
 		Symbol: e.SafeSymbol(marketId, "", client.MarketType),
-		Kline: banexg.Kline{
+		Kline: base.Kline{
 			Time:   k.OpenTime,
 			Open:   o,
 			Close:  c,
@@ -434,7 +434,7 @@ func (e *Binance) handleOhlcv(client *banexg.WsClient, msg map[string]string) {
 			Volume: v,
 		},
 	}
-	banexg.WriteOutChan(e.Exchange, chanKey, *kline, true)
+	base.WriteOutChan(e.Exchange, chanKey, *kline, true)
 }
 
 func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
@@ -445,7 +445,7 @@ func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[s
 	if err != nil {
 		return "", nil, nil, err
 	}
-	name := utils.PopMapVal(args, banexg.ParamName, "kline")
+	name := utils.PopMapVal(args, base.ParamName, "kline")
 	msgHash := market.Type + "@" + name
 	client, requestId, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
@@ -476,7 +476,7 @@ func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[s
 	return chanKey, symbols, args, nil
 }
 
-func (e *Binance) handleTickers(client *banexg.WsClient, msgList []map[string]string) {
+func (e *Binance) handleTickers(client *base.WsClient, msgList []map[string]string) {
 
 }
 
@@ -484,7 +484,7 @@ func (e *Binance) handleTickers(client *banexg.WsClient, msgList []map[string]st
 handleBalance
 处理现货余额变动更新消息
 */
-func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleBalance(client *base.WsClient, msg map[string]string) {
 	event, _ := utils.SafeMapVal(msg, "e", "")
 	acc, err := e.GetAccount(client.AccName)
 	if err != nil {
@@ -493,8 +493,8 @@ func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) 
 	}
 	balances, ok := acc.MarBalances[client.MarketType]
 	if !ok {
-		balances = &banexg.Balances{
-			Assets: map[string]*banexg.Asset{},
+		balances = &base.Balances{
+			Assets: map[string]*base.Asset{},
 		}
 		acc.MarBalances[client.MarketType] = balances
 	}
@@ -532,7 +532,7 @@ func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) 
 				asset.Used = lock
 				asset.Total = total
 			} else {
-				asset = &banexg.Asset{Code: code, Free: free, Used: lock, Total: total}
+				asset = &base.Asset{Code: code, Free: free, Used: lock, Total: total}
 				balances.Assets[code] = asset
 			}
 		}
@@ -540,7 +540,7 @@ func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) 
 		log.Error("invalid balance update", zap.String("event", event))
 	}
 	chanKey := client.Prefix("balance")
-	banexg.WriteOutChan(e.Exchange, chanKey, *balances, true)
+	base.WriteOutChan(e.Exchange, chanKey, *balances, true)
 }
 
 type ContractAsset struct {
@@ -565,7 +565,7 @@ type WSContractPosition struct {
 /*
 处理U本位合约，币本位合约，期权账户更新消息
 */
-func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleAccountUpdate(client *base.WsClient, msg map[string]string) {
 	updBalance := false
 	updPosition := false
 	acc, err := e.GetAccount(client.AccName)
@@ -575,23 +575,23 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 	}
 	balances, ok := acc.MarBalances[client.MarketType]
 	if !ok {
-		balances = &banexg.Balances{
-			Assets: map[string]*banexg.Asset{},
+		balances = &base.Balances{
+			Assets: map[string]*base.Asset{},
 		}
 		acc.MarBalances[client.MarketType] = balances
 	}
 	positions, ok := acc.MarPositions[client.MarketType]
 	if !ok {
-		positions = make([]*banexg.Position, 0)
+		positions = make([]*base.Position, 0)
 		acc.MarPositions[client.MarketType] = positions
 	}
-	posMap := make(map[string]*banexg.Position)
+	posMap := make(map[string]*base.Position)
 	for _, p := range positions {
 		posMap[p.Symbol+"#"+p.Side] = p
 	}
 	evtTime, _ := utils.SafeMapVal(msg, "E", int64(0))
 	balances.TimeStamp = evtTime
-	if client.MarketType != banexg.MarketOption {
+	if client.MarketType != base.MarketOption {
 		// linear/inverse
 		text, _ := msg["a"]
 		var Data = struct {
@@ -615,7 +615,7 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 				asset.Total = total
 				asset.Used = total - asset.Free
 			} else {
-				asset = &banexg.Asset{Code: code, Free: total, Used: 0, Total: total}
+				asset = &base.Asset{Code: code, Free: total, Used: 0, Total: total}
 				balances.Assets[code] = asset
 			}
 		}
@@ -625,11 +625,11 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			key := symbol + "#" + side
 			p, ok := posMap[key]
 			if !ok {
-				p = &banexg.Position{
+				p = &base.Position{
 					Info:       pos,
 					Symbol:     symbol,
 					Side:       side,
-					Hedged:     side != banexg.PosSideBoth,
+					Hedged:     side != base.PosSideBoth,
 					MarginMode: pos.MarginType,
 				}
 				posMap[key] = p
@@ -639,7 +639,7 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			p.UnrealizedPnl, _ = strconv.ParseFloat(pos.UnrealizedPnl, 64)
 			p.Contracts, _ = strconv.ParseFloat(pos.PosAmount, 64)
 		}
-		positions = make([]*banexg.Position, 0, len(posMap))
+		positions = make([]*base.Position, 0, len(posMap))
 		for _, p := range posMap {
 			if p.Contracts == 0 {
 				continue
@@ -654,14 +654,14 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 		return
 	}
 	if updBalance {
-		banexg.WriteOutChan(e.Exchange, client.Prefix("balance"), *balances, true)
+		base.WriteOutChan(e.Exchange, client.Prefix("balance"), *balances, true)
 	}
 	if updPosition {
 		positions = acc.MarPositions[client.MarketType]
-		banexg.WriteOutChan(e.Exchange, client.Prefix("positions"), positions, true)
+		base.WriteOutChan(e.Exchange, client.Prefix("positions"), positions, true)
 	}
 }
-func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleOrderUpdate(client *base.WsClient, msg map[string]string) {
 	event, _ := utils.SafeMapVal(msg, "e", "")
 	if event == "ORDER_TRADE_UPDATE" {
 		objText, _ := utils.SafeMapVal(msg, "o", "")
@@ -684,5 +684,5 @@ func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]stri
 		trade.Fee.Currency = e.SafeCurrencyCode(trade.Fee.Currency)
 	}
 
-	banexg.WriteOutChan(e.Exchange, client.Prefix("mytrades"), trade, false)
+	base.WriteOutChan(e.Exchange, client.Prefix("mytrades"), trade, false)
 }

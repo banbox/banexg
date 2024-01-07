@@ -13,5 +13,9 @@ func getBinance(param *map[string]interface{}) *Binance {
 	for k, v := range local {
 		args[k] = v
 	}
-	return NewExchange(args)
+	exg, err := New(args)
+	if err != nil {
+		panic(err)
+	}
+	return exg
 }

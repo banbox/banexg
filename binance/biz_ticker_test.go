@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/bytedance/sonic"
 	"testing"
 )
@@ -40,7 +40,7 @@ func TestFetchTicker3(t *testing.T) {
 func TestFetchTickers(t *testing.T) {
 	exg := getBinance(nil)
 	tickers, err := exg.FetchTickers(nil, &map[string]interface{}{
-		"market": banexg.MarketLinear,
+		"market": base.MarketLinear,
 	})
 	if err != nil {
 		panic(err)

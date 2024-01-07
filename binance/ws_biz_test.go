@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/log"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
@@ -58,7 +58,7 @@ mainFor:
 
 func TestWatchBalance(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = banexg.MarketLinear
+	exg.MarketType = base.MarketLinear
 	out, err := exg.WatchBalance(nil)
 	if err != nil {
 		panic(err)
@@ -85,7 +85,7 @@ mainFor:
 
 func TestWatchPositions(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = banexg.MarketLinear
+	exg.MarketType = base.MarketLinear
 	out, err := exg.WatchPositions(nil)
 	if err != nil {
 		panic(err)
@@ -114,10 +114,10 @@ mainFor:
 
 func TestWatchMarkPrices(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = banexg.MarketLinear
+	exg.MarketType = base.MarketLinear
 	symbols := []string{"BTC/USDT:USDT", "ETH/USDT:USDT"}
 	out, err := exg.WatchMarkPrices(symbols, &map[string]interface{}{
-		banexg.ParamInterval: "1s",
+		base.ParamInterval: "1s",
 	})
 	// 监听所有币种，3s更新:
 	// out, err := exg.WatchMarkPrices(nil, nil)

@@ -3,7 +3,7 @@ package binance
 import (
 	"errors"
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -32,7 +32,7 @@ func (e *Binance) Stream(marType, subHash string) string {
 	return stream
 }
 
-func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, int, *errs.Error) {
+func (e *Binance) GetWsClient(marType, msgHash string) (*base.WsClient, int, *errs.Error) {
 	host := e.Hosts.GetHost(marType)
 	if host == "" {
 		return nil, 0, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
@@ -56,7 +56,7 @@ watches information on open orders with bid(buy) and ask(sell) prices, volumes a
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
 */
-func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan banexg.OrderBook, *errs.Error) {
+func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan base.OrderBook, *errs.Error) {
 	/*
 		# todo add support for <levels>-snapshots(depth)
 		# https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#partial-book-depth-streams        # <symbol>@depth<levels>@100ms or <symbol>@depth<levels>(1000ms)
@@ -64,7 +64,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		#
 		# default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	*/
-	getJobFn := func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
+	getJobFn := func(client *base.WsClient) (*base.WsJobInfo, *errs.Error) {
 		if limit != 0 {
 			if e.IsContract(client.MarketType) {
 				if !utils.ArrContains(contOdBookLimits, limit) {
@@ -74,7 +74,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be <= 5000")
 			}
 		}
-		jobInfo := &banexg.WsJobInfo{
+		jobInfo := &base.WsJobInfo{
 			Symbols: symbols,
 			Method:  e.HandleOrderBookSub,
 			Limit:   limit,
@@ -117,8 +117,8 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		# 8. If the quantity is 0, remove the price level.
 		# 9. Receiving an event that removes a price level that is not in your local order book can happen and is normal.
 	*/
-	create := func(cap int) chan banexg.OrderBook { return make(chan banexg.OrderBook, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	create := func(cap int) chan base.OrderBook { return make(chan base.OrderBook, cap) }
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
 }
@@ -144,7 +144,7 @@ func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *er
 	}
 	return exgParams, nil
 }
-func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareBookArgs(method string, getJobInfo base.FuncGetWsJob, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
 	}
@@ -157,7 +157,7 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 	if err != nil {
 		return "", nil, err
 	}
-	var jobInfo *banexg.WsJobInfo
+	var jobInfo *base.WsJobInfo
 	if getJobInfo != nil {
 		jobInfo, err = getJobInfo(client)
 		if err != nil {
@@ -199,20 +199,20 @@ WatchMyTrades
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns dict[]: a list of [trade structures]{@link https://docs.ccxt.com/#/?id=trade-structure
 */
-func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan banexg.MyTrade, *errs.Error) {
+func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan base.MyTrade, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
 	}
 	args := utils.SafeParams(params)
 	chanKey := client.Prefix("mytrades")
-	create := func(cap int) chan banexg.MyTrade { return make(chan banexg.MyTrade, cap) }
-	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	create := func(cap int) chan base.MyTrade { return make(chan base.MyTrade, cap) }
+	out := base.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
 	return out, nil
 }
 
-func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string) {
+func (e *Binance) handleOrderBook(client *base.WsClient, msg map[string]string) {
 	/*
 		# initial snapshot is fetched with ccxt's fetchOrderBook
 		# the feed does not include a snapshot, just the deltas
@@ -270,7 +270,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			if valid {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
+					base.WriteOutChan(e.Exchange, chanKey, *book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -287,7 +287,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			if U <= nonce || pu == nonce {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
+					base.WriteOutChan(e.Exchange, chanKey, *book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -302,7 +302,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 	}
 }
 
-func (e *Binance) handleOrderBookMsg(msg map[string]string, book *banexg.OrderBook) {
+func (e *Binance) handleOrderBookMsg(msg map[string]string, book *base.OrderBook) {
 	var zero = int64(0)
 	u, _ := utils.SafeMapVal(msg, "u", zero)
 	at, ok := msg["a"]
@@ -324,8 +324,8 @@ func (e *Binance) handleOrderBookMsg(msg map[string]string, book *banexg.OrderBo
 	}
 }
 
-func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]string, info *banexg.WsJobInfo) {
-	err := banexg.CheckWsError(msg)
+func (e *Binance) HandleOrderBookSub(client *base.WsClient, msg map[string]string, info *base.WsJobInfo) {
+	err := base.CheckWsError(msg)
 	urlZap := zap.String("url", client.URL)
 	chanKey := client.Prefix(info.MsgHash)
 	if err != nil {
@@ -337,7 +337,7 @@ func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]str
 	var failSymbols []string
 	for _, symbol := range symbols {
 		delete(e.OrderBooks, symbol)
-		e.OrderBooks[symbol] = &banexg.OrderBook{
+		e.OrderBooks[symbol] = &base.OrderBook{
 			Symbol: symbol,
 			Cache:  make([]map[string]string, 0),
 		}
@@ -356,7 +356,7 @@ func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]str
 	}
 }
 
-func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string, info *banexg.WsJobInfo) *errs.Error {
+func (e *Binance) fetchOrderBookSnapshot(client *base.WsClient, symbol string, info *base.WsJobInfo) *errs.Error {
 	// 3. Get a depth snapshot from https://www.binance.com/api/v1/depth?symbol=BNBBTC&limit=1000 .
 	// default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	book, err := e.FetchOrderBook(symbol, info.Limit, &info.Params)
@@ -397,7 +397,7 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			}
 		}
 	}
-	banexg.WriteOutChan(e.Exchange, info.MsgHash, *book, true)
+	base.WriteOutChan(e.Exchange, info.MsgHash, *book, true)
 	return nil
 }
 
@@ -410,8 +410,8 @@ parseMyTrade
 	private spot trade
 	private contract trade
 */
-func parseMyTrade(msg map[string]string) banexg.MyTrade {
-	var res = banexg.MyTrade{}
+func parseMyTrade(msg map[string]string) base.MyTrade {
+	var res = base.MyTrade{}
 	zeroFlt := float64(0)
 	// execType, _ := utils.SafeMapVal(msg, "x", "")
 	res.ID, _ = utils.SafeMapVal(msg, "t", "")
@@ -424,7 +424,7 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.Maker, _ = utils.SafeMapVal(msg, "m", false)
 	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
 	feeCurr, _ := utils.SafeMapVal(msg, "N", "")
-	res.Fee = &banexg.Fee{
+	res.Fee = &base.Fee{
 		IsMaker:  res.Maker,
 		Currency: feeCurr,
 		Cost:     feeCost,
@@ -446,8 +446,8 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	return res
 }
 
-func parsePubTrade(msg map[string]string) banexg.Trade {
-	var res = banexg.Trade{}
+func parsePubTrade(msg map[string]string) base.Trade {
+	var res = base.Trade{}
 	zeroFlt := float64(0)
 	res.ID, _ = utils.SafeMapVal(msg, "a", "")
 	res.Price, _ = utils.SafeMapVal(msg, "p", zeroFlt)

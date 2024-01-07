@@ -1,14 +1,14 @@
 package binance
 
 import (
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/utils"
 	"sort"
 	"strconv"
 )
 
-func (mar *BnbMarket) GetPrecision() *banexg.Precision {
-	var pre = banexg.Precision{}
+func (mar *BnbMarket) GetPrecision() *base.Precision {
+	var pre = base.Precision{}
 	if mar.QuantityPrecision > 0 {
 		pre.Amount = mar.QuantityPrecision
 	} else if mar.QuantityScale > 0 {
@@ -24,22 +24,22 @@ func (mar *BnbMarket) GetPrecision() *banexg.Precision {
 	return &pre
 }
 
-func (mar *BnbMarket) GetMarketLimits() (*banexg.MarketLimits, int, int) {
+func (mar *BnbMarket) GetMarketLimits() (*base.MarketLimits, int, int) {
 	minQty, _ := strconv.ParseFloat(mar.MinQty, 64)
 	maxQty, _ := strconv.ParseFloat(mar.MaxQty, 64)
 	var filters = make(map[string]BnbFilter)
 	for _, flt := range mar.Filters {
 		filters[utils.GetMapVal(flt, "filterType", "")] = flt
 	}
-	var res = banexg.MarketLimits{
-		Amount: &banexg.LimitRange{
+	var res = base.MarketLimits{
+		Amount: &base.LimitRange{
 			Min: minQty,
 			Max: maxQty,
 		},
-		Leverage: &banexg.LimitRange{},
-		Price:    &banexg.LimitRange{},
-		Cost:     &banexg.LimitRange{},
-		Market:   &banexg.LimitRange{},
+		Leverage: &base.LimitRange{},
+		Price:    &base.LimitRange{},
+		Cost:     &base.LimitRange{},
+		Market:   &base.LimitRange{},
 	}
 	var pricePrec, amountPrec int
 	if flt, ok := filters["PRICE_FILTER"]; ok {

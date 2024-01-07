@@ -1,6 +1,6 @@
 package binance
 
-import "github.com/banbox/banexg"
+import "github.com/banbox/banexg/base"
 
 const (
 	HostDApiPublic    = "dapiPublic"
@@ -31,7 +31,7 @@ const (
 
 var (
 	DefCareMarkets = []string{
-		banexg.MarketSpot, banexg.MarketLinear, banexg.MarketInverse,
+		base.MarketSpot, base.MarketLinear, base.MarketInverse,
 	}
 )
 

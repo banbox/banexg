@@ -3,7 +3,7 @@ package binance
 import (
 	"bufio"
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"github.com/bytedance/sonic"
@@ -136,13 +136,13 @@ func TestWatchOrderBookOut(t *testing.T) {
 	gock.New("https://fapi.binance.com").Get("/fapi/v1/depth").
 		Reply(200).File("testdata/order_book_shot.json")
 
-	var conn banexg.WsConn
+	var conn base.WsConn
 	conn = &MockWsConn{
 		Path:    "testdata/ws_odbook_msg.log",
 		msgChan: make(chan []byte, 10),
 	}
 	exg := getBinance(&map[string]interface{}{
-		banexg.OptWsConn: conn,
+		base.OptWsConn: conn,
 	})
 	// 模拟网络请求
 	gock.InterceptClient(exg.HttpClient)
@@ -160,7 +160,7 @@ func TestWatchOrderBookOut(t *testing.T) {
 	}
 	expect := strings.Replace(string(data), "\r\n", "\n", -1)
 	writer := buffer.Buffer{}
-	var book *banexg.OrderBook
+	var book *base.OrderBook
 mainFor:
 	for {
 		select {
@@ -196,7 +196,7 @@ mainFor:
 
 func TestWatchMyTrades(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = banexg.MarketLinear
+	exg.MarketType = base.MarketLinear
 	out, err := exg.WatchMyTrades(nil)
 	if err != nil {
 		panic(err)

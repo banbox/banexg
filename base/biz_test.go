@@ -1,4 +1,4 @@
-package banexg
+package base
 
 import (
 	"testing"

@@ -1,4 +1,4 @@
-package banexg
+package base
 
 import (
 	"github.com/banbox/banexg/errs"

@@ -2,13 +2,13 @@ package binance
 
 import (
 	"context"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/errs"
 	"github.com/bytedance/sonic"
 	"strconv"
 )
 
-func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*banexg.OrderBook, *errs.Error) {
+func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*base.OrderBook, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]in
 	}
 }
 
-func parseOrderBook[T IBnbOrderBook](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.OrderBook, *errs.Error) {
+func parseOrderBook[T IBnbOrderBook](m *base.Market, rsp *base.HttpRes) (*base.OrderBook, *errs.Error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
@@ -53,7 +53,7 @@ func parseOrderBook[T IBnbOrderBook](m *banexg.Market, rsp *banexg.HttpRes) (*ba
 	return result, nil
 }
 
-func (o BaseOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
+func (o BaseOrderBook) ToStdOrderBook(market *base.Market) *base.OrderBook {
 	var asks = make([][2]float64, len(o.Asks))
 	var bids = make([][2]float64, len(o.Bids))
 	for i, it := range o.Asks {
@@ -68,35 +68,35 @@ func (o BaseOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
 		item[1], _ = strconv.ParseFloat(it[1], 64)
 		bids[i] = item
 	}
-	var res = banexg.OrderBook{
+	var res = base.OrderBook{
 		Symbol: market.Symbol,
-		Asks:   banexg.NewOrderBookSide(false, len(asks), asks),
-		Bids:   banexg.NewOrderBookSide(true, len(bids), bids),
+		Asks:   base.NewOrderBookSide(false, len(asks), asks),
+		Bids:   base.NewOrderBookSide(true, len(bids), bids),
 		Cache:  make([]map[string]string, 0),
 	}
 	return &res
 }
 
-func (o OptionOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
+func (o OptionOrderBook) ToStdOrderBook(market *base.Market) *base.OrderBook {
 	var res = o.BaseOrderBook.ToStdOrderBook(market)
 	res.TimeStamp = o.Time
 	res.Nonce = int64(o.UpdateID)
 	return res
 }
 
-func (o LinearOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
+func (o LinearOrderBook) ToStdOrderBook(market *base.Market) *base.OrderBook {
 	var res = o.BaseOrderBook.ToStdOrderBook(market)
 	res.TimeStamp = o.Time
 	res.Nonce = int64(o.UpdateID)
 	return res
 }
 
-func (o InverseOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
+func (o InverseOrderBook) ToStdOrderBook(market *base.Market) *base.OrderBook {
 	var res = o.LinearOrderBook.ToStdOrderBook(market)
 	return res
 }
 
-func (o SpotOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
+func (o SpotOrderBook) ToStdOrderBook(market *base.Market) *base.OrderBook {
 	var res = o.BaseOrderBook.ToStdOrderBook(market)
 	res.Nonce = int64(o.UpdateID)
 	return res

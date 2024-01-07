@@ -1,4 +1,4 @@
-package banexg
+package base
 
 import (
 	"github.com/banbox/banexg/utils"
@@ -29,8 +29,6 @@ const (
 	ParamMethod             = "method"
 	ParamInterval           = "interval"
 	ParamAccount            = "account"
-
-	UriEncodeSafe = utils.UriEncodeSafe
 )
 
 var (
@@ -90,21 +88,9 @@ const (
 )
 
 const (
-	RoundModeTruncate  = 0
-	RoundModeRound     = 1
-	RoundModeRoundUp   = 2
-	RoundModeRoundDown = 3
-)
-
-const (
 	PrecModeDecimalPlace = utils.PrecModeDecimalPlace
 	PrecModeSignifDigits = utils.PrecModeSignifDigits
 	PrecModeTickSize     = utils.PrecModeTickSize
-)
-
-const (
-	PaddingNo   = 5
-	PaddingZero = 6
 )
 
 const (
@@ -166,5 +152,3 @@ const (
 const (
 	MidListenKey = "listenKey"
 )
-
-var newExgs map[string]FuncNewExchange

@@ -3,7 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -41,19 +41,19 @@ func (e *Binance) Init() *errs.Error {
 	}
 	e.streamIndex = -1
 	e.streamLimits = map[string]int{
-		banexg.MarketSpot:    50,
-		banexg.MarketMargin:  50,
-		banexg.MarketLinear:  50,
-		banexg.MarketInverse: 50,
-		banexg.MarketOption:  50,
+		base.MarketSpot:    50,
+		base.MarketMargin:  50,
+		base.MarketLinear:  50,
+		base.MarketInverse: 50,
+		base.MarketOption:  50,
 	}
 	e.streamBySubHash = map[string]string{}
 	e.wsRequestId = map[string]int{}
 	return nil
 }
 
-func makeSign(e *Binance) banexg.FuncSign {
-	return func(api banexg.Entry, args *map[string]interface{}) *banexg.HttpReq {
+func makeSign(e *Binance) base.FuncSign {
+	return func(api base.Entry, args *map[string]interface{}) *base.HttpReq {
 		var params = utils.SafeParams(args)
 		accID := e.GetAccName(&params)
 		path := api.Path
@@ -66,7 +66,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("historicalTrades requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: err}
+				return &base.HttpReq{Error: err}
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 		} else if path == "userDataStream" || path == "listenKey" {
@@ -74,14 +74,14 @@ func makeSign(e *Binance) banexg.FuncSign {
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("userDataStream requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: err}
+				return &base.HttpReq{Error: err}
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			headers.Add("Content-Type", "application/x-www-form-urlencoded")
 		} else if _, ok := secretApis[hostKey]; ok || (hostKey == "sapi" && path != "system/status") {
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
-				return &banexg.HttpReq{Error: err}
+				return &base.HttpReq{Error: err}
 			}
 			extendParams := map[string]interface{}{
 				"timestamp": e.Nonce(),
@@ -93,13 +93,13 @@ func makeSign(e *Binance) banexg.FuncSign {
 			if path == "batchOrders" || strings.Contains(path, "sub-account") || path == "capital/withdraw/apply" || strings.Contains(path, "staking") {
 				query = append(query, utils.UrlEncodeMap(extendParams, true))
 				if api.Method == "DELETE" && path == "batchOrders" {
-					if orderIds, ok := extendParams[banexg.ParamOrderIds]; ok {
+					if orderIds, ok := extendParams[base.ParamOrderIds]; ok {
 						if ids, ok := orderIds.([]string); ok {
 							idText := strings.Join(ids, ",")
 							query = append(query, "orderidlist=["+idText+"]")
 						}
 					}
-					if orderIds, ok := extendParams[banexg.ParamOrigClientOrderIDs]; ok {
+					if orderIds, ok := extendParams[base.ParamOrigClientOrderIDs]; ok {
 						if ids, ok := orderIds.([]string); ok {
 							idText := strings.Join(ids, ",")
 							query = append(query, "origclientorderidlist=["+idText+"]")
@@ -124,7 +124,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			queryText := strings.Join(query, "&")
 			sign, err = utils.Signature(queryText, secret, method, hash, digest)
 			if err != nil {
-				return &banexg.HttpReq{Error: err}
+				return &base.HttpReq{Error: err}
 			}
 			query = append(query, "signature="+sign)
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
@@ -137,7 +137,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 		} else if len(params) > 0 {
 			url += "?" + utils.UrlEncodeMap(params, true)
 		}
-		return &banexg.HttpReq{AccName: accID, Url: url, Method: api.Method, Headers: headers, Body: body}
+		return &base.HttpReq{AccName: accID, Url: url, Method: api.Method, Headers: headers, Body: body}
 	}
 }
 
@@ -147,8 +147,8 @@ fetches all available currencies on an exchange
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns dict: an associative dictionary of currencies
 */
-func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
-	return func(params *map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
+func makeFetchCurr(e *Binance) base.FuncFetchCurr {
+	return func(params *map[string]interface{}) (base.CurrencyMap, *errs.Error) {
 		if !e.HasApi("fetchCurrencies") {
 			return nil, errs.ApiNotSupport
 		}
@@ -169,14 +169,14 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
-		var result = make(banexg.CurrencyMap)
+		var result = make(base.CurrencyMap)
 		for _, item := range currList {
 			isWithDraw, isDeposit := false, false
-			var curr = banexg.Currency{
+			var curr = base.Currency{
 				ID:       item.Coin,
 				Name:     item.Name,
 				Code:     item.Coin,
-				Networks: make([]*banexg.ChainNetwork, len(item.NetworkList)),
+				Networks: make([]*base.ChainNetwork, len(item.NetworkList)),
 				Fee:      -1,
 				Fees:     make(map[string]float64),
 				Info:     item,
@@ -201,7 +201,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 						curr.Precision = float64(precisionTick)
 					}
 				}
-				curr.Networks[i] = &banexg.ChainNetwork{
+				curr.Networks[i] = &base.ChainNetwork{
 					ID:        net.Network,
 					Network:   net.Network,
 					Name:      net.Name,
@@ -249,20 +249,20 @@ func makeGetRetryWait(e *Binance) func(e *errs.Error) int {
 }
 
 var marketApiMap = map[string]string{
-	banexg.MarketSpot:    "publicGetExchangeInfo",
-	banexg.MarketLinear:  "fapiPublicGetExchangeInfo",
-	banexg.MarketInverse: "dapiPublicGetExchangeInfo",
-	banexg.MarketOption:  "eapiPublicGetExchangeInfo",
+	base.MarketSpot:    "publicGetExchangeInfo",
+	base.MarketLinear:  "fapiPublicGetExchangeInfo",
+	base.MarketInverse: "dapiPublicGetExchangeInfo",
+	base.MarketOption:  "eapiPublicGetExchangeInfo",
 }
 
-func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
+func (e *Binance) mapMarket(mar *BnbMarket) *base.Market {
 	isSwap, isFuture, isOption := false, false, false
 	var symParts = strings.Split(mar.Symbol, "-")
 	var baseId = mar.BaseAsset
 	var quoteId = mar.QuoteAsset
-	var base = e.SafeCurrency(baseId).Code
+	var baseCode = e.SafeCurrency(baseId).Code
 	var quote = e.SafeCurrency(quoteId).Code
-	var symbol = fmt.Sprintf("%s/%s", base, quote)
+	var symbol = fmt.Sprintf("%s/%s", baseCode, quote)
 	var isContract = mar.ContractType != ""
 	var expiry = max(mar.DeliveryDate, mar.ExpiryDate)
 	var settleId = mar.MarginAsset
@@ -310,13 +310,13 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 			contractSize = 1.0
 		}
 		isLinear = settle == quote
-		isInverse = settle == base
+		isInverse = settle == baseCode
 		if isLinear && e.Fees.Linear != nil {
 			fees = e.Fees.Linear
 		} else if !isLinear && e.Fees.Inverse != nil {
 			fees = e.Fees.Inverse
 		} else {
-			fees = &banexg.TradeFee{}
+			fees = &base.TradeFee{}
 		}
 	}
 	isActive := status == "TRADING"
@@ -330,14 +330,14 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 	}
 	marketType := ""
 	if isOption {
-		marketType = banexg.MarketOption
+		marketType = base.MarketOption
 		isActive = false
 	} else if isInverse {
-		marketType = banexg.MarketInverse
+		marketType = base.MarketInverse
 	} else if isLinear {
-		marketType = banexg.MarketLinear
+		marketType = base.MarketLinear
 	} else if isSpot {
-		marketType = banexg.MarketSpot
+		marketType = base.MarketSpot
 	}
 	strikePrice, _ := strconv.ParseFloat(mar.StrikePrice, 64)
 	prec := mar.GetPrecision()
@@ -348,11 +348,11 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 	if amountPrec > 0 {
 		prec.Amount = amountPrec
 	}
-	var market = banexg.Market{
+	var market = base.Market{
 		ID:             mar.Symbol,
 		LowercaseID:    strings.ToLower(mar.Symbol),
 		Symbol:         symbol,
-		Base:           base,
+		Base:           baseCode,
 		Quote:          quote,
 		Settle:         settle,
 		BaseID:         baseId,
@@ -392,15 +392,15 @@ retrieves data on all markets for binance
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns dict[]: an array of objects representing market data
 */
-func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
-	return func(params *map[string]interface{}) (banexg.MarketMap, *errs.Error) {
+func makeFetchMarkets(e *Binance) base.FuncFetchMarkets {
+	return func(params *map[string]interface{}) (base.MarketMap, *errs.Error) {
 		var ctx = context.Background()
-		var ch = make(chan *banexg.HttpRes)
+		var ch = make(chan *base.HttpRes)
 		doReq := func(key string) {
 			apiKey, ok := marketApiMap[key]
 			if !ok {
 				log.Error("unsupported market type", zap.String("key", key))
-				ch <- &banexg.HttpRes{Error: errs.UnsupportMarket}
+				ch <- &base.HttpRes{Error: errs.UnsupportMarket}
 				return
 			}
 			tryNum := e.GetRetryNum("FetchMarkets", 1)
@@ -408,14 +408,14 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 		}
 		watNum := 0
 		for _, marketType := range e.CareMarkets {
-			if e.Hosts.TestNet && marketType == banexg.MarketOption {
+			if e.Hosts.TestNet && marketType == base.MarketOption {
 				// option market not support in sandbox env
 				continue
 			}
 			go doReq(marketType)
 			watNum += 1
 		}
-		var result = make(banexg.MarketMap)
+		var result = make(base.MarketMap)
 		for i := 0; i < watNum; i++ {
 			rsp, ok := <-ch
 			if !ok {
@@ -441,20 +441,20 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 	}
 }
 
-func parseOptionOhlcv(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
+func parseOptionOhlcv(rsp *base.HttpRes) ([]*base.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
 	err := sonic.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "decode option kline fail %v", err)
 	}
-	var res = make([]*banexg.Kline, len(klines))
+	var res = make([]*base.Kline, len(klines))
 	for i, bar := range klines {
 		open, _ := strconv.ParseFloat(bar.Open, 64)
 		high, _ := strconv.ParseFloat(bar.High, 64)
 		low, _ := strconv.ParseFloat(bar.Low, 64)
 		closeP, _ := strconv.ParseFloat(bar.Close, 64)
 		volume, _ := strconv.ParseFloat(bar.Amount, 64)
-		res[i] = &banexg.Kline{
+		res[i] = &base.Kline{
 			Time:   bar.OpenTime,
 			Open:   open,
 			High:   high,
@@ -466,7 +466,7 @@ func parseOptionOhlcv(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 	return res, nil
 }
 
-func parseBnbOhlcv(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
+func parseBnbOhlcv(rsp *base.HttpRes, volIndex int) ([]*base.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
 	dc := decoder.NewDecoder(rsp.Content)
 	dc.UseInt64()
@@ -475,7 +475,7 @@ func parseBnbOhlcv(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "parse bnb ohlcv fail: %v", err)
 	}
-	var res = make([]*banexg.Kline, len(klines))
+	var res = make([]*base.Kline, len(klines))
 	v := reflect.TypeOf(klines[0][0])
 	log.Info("time format", zap.String("type", v.Name()))
 	for i, bar := range klines {
@@ -491,7 +491,7 @@ func parseBnbOhlcv(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 		low, _ := strconv.ParseFloat(lowStr, 64)
 		closeP, _ := strconv.ParseFloat(closeStr, 64)
 		volume, _ := strconv.ParseFloat(volStr, 64)
-		res[i] = &banexg.Kline{
+		res[i] = &base.Kline{
 			Time:   int64(barTime),
 			Open:   open,
 			High:   high,
@@ -523,7 +523,7 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
+func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*base.Kline, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -652,9 +652,9 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 		return err
 	}
 	var method string
-	if marketType == banexg.MarketLinear {
+	if marketType == base.MarketLinear {
 		method = "fapiPrivateGetLeverageBracket"
-	} else if marketType == banexg.MarketInverse {
+	} else if marketType == base.MarketInverse {
 		method = "dapiPrivateV2GetLeverageBracket"
 	} else {
 		return errs.NewMsg(errs.CodeUnsupportMarket, "LoadLeverageBrackets support linear/inverse contracts only")
@@ -673,7 +673,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 		return e.SafeSymbol(id, "", marketType)
 	}
 	var brackets map[string][][2]float64
-	if marketType == banexg.MarketLinear {
+	if marketType == base.MarketLinear {
 		brackets, err = parseLvgBrackets[*LinearSymbolLvgBrackets](mapSymbol, rsp)
 	} else {
 		brackets, err = parseLvgBrackets[*InversePairLvgBrackets](mapSymbol, rsp)
@@ -703,7 +703,7 @@ func (e *Binance) GetMaintMarginPct(symbol string, notional float64) float64 {
 	return maintMarginPct
 }
 
-func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *banexg.HttpRes) (map[string][][2]float64, *errs.Error) {
+func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *base.HttpRes) (map[string][][2]float64, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {

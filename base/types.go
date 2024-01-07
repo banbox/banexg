@@ -1,4 +1,4 @@
-package banexg
+package base
 
 import (
 	"github.com/banbox/banexg/errs"
@@ -17,8 +17,6 @@ type FuncOnWsErr = func(client *WsClient, err *errs.Error)
 type FuncOnWsClose = func(client *WsClient, err *errs.Error)
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
-
-type FuncNewExchange = func(map[string]interface{}) (BanExchange, *errs.Error)
 
 type Exchange struct {
 	ID        string   // 交易所ID

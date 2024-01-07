@@ -2,7 +2,7 @@ package binance
 
 import (
 	"context"
-	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/bytedance/sonic"
@@ -21,7 +21,7 @@ fetches price tickers for multiple markets, statistical information calculated o
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
 */
-func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
+func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*base.Ticker, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -29,11 +29,11 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 	}
 	var method string
 	switch marketType {
-	case banexg.MarketOption:
+	case base.MarketOption:
 		method = "eapiPublicGetTicker"
-	case banexg.MarketLinear:
+	case base.MarketLinear:
 		method = "fapiPublicGetTicker24hr"
-	case banexg.MarketInverse:
+	case base.MarketInverse:
 		method = "dapiPublicGetTicker24hr"
 	default:
 		method = "publicGetTicker24hr"
@@ -44,18 +44,18 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 		return nil, rsp.Error
 	}
 	switch marketType {
-	case banexg.MarketOption:
+	case base.MarketOption:
 		return parseTickers[*OptionTicker](rsp, e, marketType)
-	case banexg.MarketLinear:
+	case base.MarketLinear:
 		return parseTickers[*LinearTicker](rsp, e, marketType)
-	case banexg.MarketInverse:
+	case base.MarketInverse:
 		return parseTickers[*InverseTicker24hr](rsp, e, marketType)
 	default:
 		return parseTickers[*SpotTicker24hr](rsp, e, marketType)
 	}
 }
 
-func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*banexg.Ticker, *errs.Error) {
+func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*base.Ticker, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 	} else if market.Inverse {
 		method = "dapiPublicGetTicker24hr"
 	} else {
-		rolling := utils.PopMapVal(args, banexg.ParamRolling, false)
+		rolling := utils.PopMapVal(args, base.ParamRolling, false)
 		if rolling {
 			method = "publicGetTicker"
 		} else {
@@ -104,20 +104,20 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 	}
 }
 
-func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, *errs.Error) {
+func parseTickers[T IBnbTicker](rsp *base.HttpRes, e *Binance, marketType string) ([]*base.Ticker, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	var result = make([]*banexg.Ticker, len(data))
+	var result = make([]*base.Ticker, len(data))
 	for i, item := range data {
 		result[i] = item.ToStdTicker(e, marketType)
 	}
 	return result, nil
 }
 
-func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) (*banexg.Ticker, *errs.Error) {
+func parseTicker[T IBnbTicker](rsp *base.HttpRes, e *Binance, marketType string) (*base.Ticker, *errs.Error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
@@ -127,7 +127,7 @@ func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType strin
 	return result, nil
 }
 
-func (t *SpotTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *SpotTicker) ToStdTicker(e *Binance, marketType string) *base.Ticker {
 	highPrice, _ := strconv.ParseFloat(t.HighPrice, 64)
 	lowPrice, _ := strconv.ParseFloat(t.LowPrice, 64)
 	openPrice, _ := strconv.ParseFloat(t.OpenPrice, 64)
@@ -138,7 +138,7 @@ func (t *SpotTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
 	volume, _ := strconv.ParseFloat(t.Volume, 64)
 	quoteVolume, _ := strconv.ParseFloat(t.QuoteVolume, 64)
 	symbol := e.SafeSymbol(t.Symbol, "", marketType)
-	ticker := &banexg.Ticker{
+	ticker := &base.Ticker{
 		Symbol:      symbol,
 		TimeStamp:   t.CloseTime,
 		High:        highPrice,
@@ -155,7 +155,7 @@ func (t *SpotTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
 	return ticker
 }
 
-func (t *BookTicker) SetStdTicker(ticker *banexg.Ticker) {
+func (t *BookTicker) SetStdTicker(ticker *base.Ticker) {
 	bidPrice, _ := strconv.ParseFloat(t.BidPrice, 64)
 	bidQty, _ := strconv.ParseFloat(t.BidQty, 64)
 	askPrice, _ := strconv.ParseFloat(t.AskPrice, 64)
@@ -166,13 +166,13 @@ func (t *BookTicker) SetStdTicker(ticker *banexg.Ticker) {
 	ticker.AskVolume = askQty
 }
 
-func (t *LinearTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *LinearTicker) ToStdTicker(e *Binance, marketType string) *base.Ticker {
 	ticker := t.SpotTicker.ToStdTicker(e, marketType)
 	ticker.Info = t
 	return ticker
 }
 
-func (t *SpotTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *SpotTicker24hr) ToStdTicker(e *Binance, marketType string) *base.Ticker {
 	ticker := t.LinearTicker.ToStdTicker(e, marketType)
 	ticker.Symbol = e.SafeSymbol(t.Symbol, "", marketType)
 	ticker.Info = t
@@ -182,7 +182,7 @@ func (t *SpotTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.Tick
 	return ticker
 }
 
-func (t *InverseTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *InverseTicker24hr) ToStdTicker(e *Binance, marketType string) *base.Ticker {
 	ticker := t.SpotTicker.ToStdTicker(e, marketType)
 	ticker.Info = t
 	baseVolume, _ := strconv.ParseFloat(t.BaseVolume, 64)
@@ -190,8 +190,8 @@ func (t *InverseTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.T
 	return ticker
 }
 
-func (t *OptionTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := &banexg.Ticker{
+func (t *OptionTicker) ToStdTicker(e *Binance, marketType string) *base.Ticker {
+	ticker := &base.Ticker{
 		Symbol:      e.SafeSymbol(t.Symbol, "", marketType),
 		TimeStamp:   t.CloseTime,
 		Change:      t.PriceChange,
