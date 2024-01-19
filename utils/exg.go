@@ -6,13 +6,13 @@ import (
 	"strconv"
 )
 
-func PrecisionFromString(input string) int {
+func PrecisionFromString(input string) float64 {
 	//support string formats like '1e-4'
 	matched, _ := regexp.MatchString("e", input)
 	if matched {
 		re := regexp.MustCompile(`\de`)
 		numStr := re.ReplaceAllString(input, "")
-		num, _ := strconv.Atoi(numStr)
+		num, _ := strconv.ParseFloat(numStr, 64)
 		return num * -1
 	}
 	//support integer formats (without dot) like '1', '10' etc [Note: bug in decimalToPrecision, so this should not be used atm]
@@ -23,7 +23,7 @@ func PrecisionFromString(input string) int {
 	if matched, _ := regexp.MatchString(`\.`, input); matched {
 		innerParts := regexp.MustCompile(`\.`).Split(parts[0], -1)
 		if len(innerParts) > 1 {
-			return len(innerParts[1])
+			return float64(len(innerParts[1]))
 		}
 	}
 	return 0

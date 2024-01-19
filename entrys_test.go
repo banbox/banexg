@@ -27,7 +27,7 @@ func TestNewExg(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	res, err := exg.FetchOhlcv("ETH/USDT:USDT", "1d", 0, 10, nil)
+	res, err := exg.FetchOHLCV("ETH/USDT:USDT", "1d", 0, 10, nil)
 	if err != nil {
 		panic(err)
 	}

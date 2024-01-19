@@ -2,6 +2,7 @@ package base
 
 import (
 	"github.com/banbox/banexg/utils"
+	"sync"
 )
 
 const (
@@ -151,4 +152,27 @@ const (
 
 const (
 	MidListenKey = "listenKey"
+)
+
+var (
+	AllMarketTypes = map[string]struct{}{
+		MarketSpot:    {},
+		MarketMargin:  {},
+		MarketLinear:  {},
+		MarketInverse: {},
+		MarketOption:  {},
+	}
+	AllContractTypes = map[string]struct{}{
+		MarketSwap:   {},
+		MarketFuture: {},
+	}
+)
+
+var (
+	exgCacheMarkets     = map[string]MarketMap{}   // cache markets for exchanges before expired
+	exgCacheCurrs       = map[string]CurrencyMap{} // cache currencies for exchanges before expired
+	exgCareMarkets      = map[string][]string{}    // what market types was cached for exchanges
+	exgMarketTS         = map[string]int64{}       // when was markets cached
+	exgMarketExpireMins = 360                      // ttl minutes for markets cache
+	marketsLock         sync.RWMutex               // 访问缓存的读写锁
 )

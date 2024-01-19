@@ -138,6 +138,10 @@ var (
 	ParamChanCap          = base.ParamChanCap
 )
 
+var (
+// AllMarketTypes = base.AllMarketTypes
+)
+
 type FuncSign = base.FuncSign
 type FuncFetchCurr = base.FuncFetchCurr
 type FuncFetchMarkets = base.FuncFetchMarkets
@@ -169,7 +173,7 @@ type MarketLimits = base.MarketLimits
 type MarketMap = base.MarketMap
 type MarketArrMap = base.MarketArrMap
 type Ticker = base.Ticker
-type OhlcvArr = base.OhlcvArr
+type OHLCVArr = base.OHLCVArr
 type Kline = base.Kline
 type SymbolKline = base.SymbolKline
 type Balances = base.Balances

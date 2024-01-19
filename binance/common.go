@@ -3,28 +3,27 @@ package binance
 import (
 	"github.com/banbox/banexg/base"
 	"github.com/banbox/banexg/utils"
-	"sort"
 	"strconv"
 )
 
 func (mar *BnbMarket) GetPrecision() *base.Precision {
 	var pre = base.Precision{}
 	if mar.QuantityPrecision > 0 {
-		pre.Amount = mar.QuantityPrecision
+		pre.Amount = float64(mar.QuantityPrecision)
 	} else if mar.QuantityScale > 0 {
-		pre.Amount = mar.QuantityScale
+		pre.Amount = float64(mar.QuantityScale)
 	}
 	if mar.PricePrecision > 0 {
-		pre.Price = mar.PricePrecision
+		pre.Price = float64(mar.PricePrecision)
 	} else if mar.PriceScale > 0 {
-		pre.Price = mar.PriceScale
+		pre.Price = float64(mar.PriceScale)
 	}
-	pre.Base = mar.BaseAssetPrecision
-	pre.Quote = mar.QuotePrecision
+	pre.Base = float64(mar.BaseAssetPrecision)
+	pre.Quote = float64(mar.QuotePrecision)
 	return &pre
 }
 
-func (mar *BnbMarket) GetMarketLimits() (*base.MarketLimits, int, int) {
+func (mar *BnbMarket) GetMarketLimits() (*base.MarketLimits, float64, float64) {
 	minQty, _ := strconv.ParseFloat(mar.MinQty, 64)
 	maxQty, _ := strconv.ParseFloat(mar.MaxQty, 64)
 	var filters = make(map[string]BnbFilter)
@@ -41,7 +40,7 @@ func (mar *BnbMarket) GetMarketLimits() (*base.MarketLimits, int, int) {
 		Cost:     &base.LimitRange{},
 		Market:   &base.LimitRange{},
 	}
-	var pricePrec, amountPrec int
+	var pricePrec, amountPrec float64
 	if flt, ok := filters["PRICE_FILTER"]; ok {
 		// PRICE_FILTER reports zero values for maxPrice
 		// since they updated filter types in November 2018
@@ -71,31 +70,37 @@ func (mar *BnbMarket) GetMarketLimits() (*base.MarketLimits, int, int) {
 	return &res, pricePrec, amountPrec
 }
 
-func (b *LinearSymbolLvgBrackets) ToStdBracket() [][2]float64 {
-	var res = make([][2]float64, 0, len(b.Brackets))
-	for _, item := range b.Brackets {
-		bracket := [2]float64{item.NotionalFloor, item.MaintMarginRatio}
-		res = append(res, bracket)
+func (b *LinearSymbolLvgBrackets) ToStdBracket() *SymbolLvgBrackets {
+	var res = SymbolLvgBrackets{
+		NotionalCoef: b.NotionalCoef,
+		Brackets:     make([]*LvgBracket, len(b.Brackets)),
 	}
-	sort.SliceStable(res, func(i, j int) bool {
-		return res[i][0] <= res[j][0]
-	})
-	return res
+	for i, item := range b.Brackets {
+		res.Brackets[i] = &LvgBracket{
+			BaseLvgBracket: item.BaseLvgBracket,
+			Capacity:       item.NotionalCap,
+			Floor:          item.NotionalFloor,
+		}
+	}
+	return &res
 }
 func (b *LinearSymbolLvgBrackets) GetSymbol() string {
 	return b.Symbol
 }
 
-func (b *InversePairLvgBrackets) ToStdBracket() [][2]float64 {
-	var res = make([][2]float64, 0, len(b.Brackets))
-	for _, item := range b.Brackets {
-		bracket := [2]float64{item.QtylFloor, item.MaintMarginRatio}
-		res = append(res, bracket)
+func (b *InversePairLvgBrackets) ToStdBracket() *SymbolLvgBrackets {
+	var res = SymbolLvgBrackets{
+		NotionalCoef: b.NotionalCoef,
+		Brackets:     make([]*LvgBracket, len(b.Brackets)),
 	}
-	sort.SliceStable(res, func(i, j int) bool {
-		return res[i][0] <= res[j][0]
-	})
-	return res
+	for i, item := range b.Brackets {
+		res.Brackets[i] = &LvgBracket{
+			BaseLvgBracket: item.BaseLvgBracket,
+			Capacity:       item.QtyCap,
+			Floor:          item.QtylFloor,
+		}
+	}
+	return &res
 }
 func (b *InversePairLvgBrackets) GetSymbol() string {
 	return b.Symbol

@@ -11,8 +11,9 @@ type Binance struct {
 	newOrderRespType map[string]string
 	streamBySubHash  map[string]string // subHash: stream
 	streamIndex      int
-	streamLimits     map[string]int // marketType: limit
-	wsRequestId      map[string]int // url: count
+	streamLimits     map[string]int                // marketType: limit
+	wsRequestId      map[string]int                // url: count
+	LeverageBrackets map[string]*SymbolLvgBrackets // symbol: Leverage Brackets
 }
 
 /*
@@ -692,6 +693,16 @@ type BaseLvgBracket struct {
 }
 
 /*
+LvgBracket
+标准杠杆费率信息
+*/
+type LvgBracket struct {
+	BaseLvgBracket
+	Capacity float64
+	Floor    float64
+}
+
+/*
 合约的杠杆分层标准
 */
 type LinearLvgBracket struct {
@@ -718,7 +729,17 @@ type InversePairLvgBrackets struct {
 	Brackets     []*InverseLvgBracket `json:"brackets"`
 }
 
+/*
+SymbolLvgBrackets
+币种所有杠杆费率信息
+*/
+type SymbolLvgBrackets struct {
+	Symbol       string  `json:"symbol"`
+	NotionalCoef float64 `json:"notionalCoef"` //用户bracket相对默认bracket的倍数，仅在和交易对默认不一样时显示
+	Brackets     []*LvgBracket
+}
+
 type ISymbolLvgBracket interface {
-	ToStdBracket() [][2]float64
+	ToStdBracket() *SymbolLvgBrackets
 	GetSymbol() string
 }

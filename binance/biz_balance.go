@@ -435,7 +435,7 @@ func calcPositionRisk(res *base.Position, e *Binance, market *base.Market, isola
 		} else {
 			revMaintPct = -1.0 + maintMarginPct*mmpSign
 		}
-		var prec int
+		var prec float64
 		if market.Type == base.MarketLinear {
 			// walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
 			leftSide := res.LiquidationPrice*revMaintPct + entryPriceSign

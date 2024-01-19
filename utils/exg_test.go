@@ -11,7 +11,10 @@ type TestCase struct {
 }
 
 func TestPrecisionFromString(t *testing.T) {
-	var cases = []TestCase{
+	var cases = []struct {
+		Input  string
+		Output float64
+	}{
 		{"1e-4", 4},
 		{"0.0001", 4},
 		{"0.00000001", 8},

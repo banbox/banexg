@@ -44,11 +44,11 @@ func makeHandleWsMsg(e *Binance) base.FuncOnWsMsg {
 		case "aggTrade":
 			e.handleTrade(client, msg)
 		case "kline":
-			e.handleOhlcv(client, msg)
+			e.handleOHLCV(client, msg)
 		case "markPrice_kline":
-			e.handleOhlcv(client, msg)
+			e.handleOHLCV(client, msg)
 		case "indexPrice_kline":
-			e.handleOhlcv(client, msg)
+			e.handleOHLCV(client, msg)
 		case "markPriceUpdate":
 			// linear/inverse
 			e.handleMarkPrices(client, msgList)
@@ -256,14 +256,14 @@ func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*base.P
 }
 
 /*
-WatchOhlcvs
+WatchOHLCVs
 watches historical candlestick data containing the open, high, low, and close price, and the volume of a market
 :param [][2]string jobs: array of arrays containing unified symbols and timeframes to fetch OHLCV data for, example [['BTC/USDT', '1m'], ['LTC/USDT', '5m']]
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOhlcvs(jobs [][2]string, params *map[string]interface{}) (chan base.SymbolKline, *errs.Error) {
-	chanKey, symbols, args, err := e.prepareOhlcvSub("SUBSCRIBE", jobs, params)
+func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan base.SymbolKline, *errs.Error) {
+	chanKey, symbols, args, err := e.prepareOHLCVSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +274,8 @@ func (e *Binance) WatchOhlcvs(jobs [][2]string, params *map[string]interface{}) 
 	return out, nil
 }
 
-func (e *Binance) UnWatchOhlcvs(jobs [][2]string, params *map[string]interface{}) *errs.Error {
-	chanKey, symbols, _, err := e.prepareOhlcvSub("UNSUBSCRIBE", jobs, params)
+func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params *map[string]interface{}) *errs.Error {
+	chanKey, symbols, _, err := e.prepareOHLCVSub("UNSUBSCRIBE", jobs, params)
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ type WsKline struct {
 	LastId     int64  `json:"L"`
 }
 
-func (e *Binance) handleOhlcv(client *base.WsClient, msg map[string]string) {
+func (e *Binance) handleOHLCV(client *base.WsClient, msg map[string]string) {
 	/*
 		https://binance-docs.github.io/apidocs/futures/cn/#k-7
 	*/
@@ -437,7 +437,7 @@ func (e *Binance) handleOhlcv(client *base.WsClient, msg map[string]string) {
 	base.WriteOutChan(e.Exchange, chanKey, *kline, true)
 }
 
-func (e *Binance) prepareOhlcvSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(jobs) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}

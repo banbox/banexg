@@ -8,7 +8,7 @@ import (
 
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Error)
-type FuncFetchMarkets = func(params *map[string]interface{}) (MarketMap, *errs.Error)
+type FuncFetchMarkets = func(marketTypes []string, params *map[string]interface{}) (MarketMap, *errs.Error)
 type FuncAuth = func(params *map[string]interface{}) (*Account, *errs.Error)
 
 type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
@@ -58,14 +58,12 @@ type Exchange struct {
 	TimeDelay  int64 // 系统时钟延迟的毫秒数
 	HttpClient *http.Client
 
-	PrecisionMode int
+	PrecisionMode int    // 2:PrecModeDecimalPlace  3:PrecModeSignifDigits  4:PrecModeTickSize
 	PrecPadZero   bool   // padding zero for precision
 	MarketType    string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
 	ContractType  string // MarketSwap/MarketFuture
 	MarginMode    string // MarginCross/MarginIsolated
 	TimeInForce   string // GTC/IOC/FOK
-
-	LeverageBrackets map[string][][2]float64 // symbol: [floorValue, maintMarginPct] 按floorValue升序
 
 	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
@@ -251,10 +249,10 @@ type Market struct {
 }
 
 type Precision struct {
-	Amount int `json:"amount"`
-	Price  int `json:"price"`
-	Base   int `json:"base"`
-	Quote  int `json:"quote"`
+	Amount float64 `json:"amount"`
+	Price  float64 `json:"price"`
+	Base   float64 `json:"base"`
+	Quote  float64 `json:"quote"`
 }
 
 type MarketLimits struct {
@@ -295,7 +293,7 @@ type Ticker struct {
 **************************   Business Types   **************************
  */
 
-type OhlcvArr = [6]float64
+type OHLCVArr = [6]float64
 
 type Kline struct {
 	Time   int64

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestWatchOhlcvs(t *testing.T) {
+func TestWatchOHLCVs(t *testing.T) {
 	gock.DisableNetworking()
 	err := LoadGockItems("testdata/gock.json")
 	if err != nil {
@@ -23,7 +23,7 @@ func TestWatchOhlcvs(t *testing.T) {
 
 	symbol := "ETH/USDT:USDT"
 	jobs := [][2]string{{symbol, "1m"}}
-	out, err_ := exg.WatchOhlcvs(jobs, nil)
+	out, err_ := exg.WatchOHLCVs(jobs, nil)
 	if err_ != nil {
 		panic(err_)
 	}
@@ -38,7 +38,7 @@ mainFor:
 			}
 			count += 1
 			if count == 10 {
-				err2 := exg.UnWatchOhlcvs(jobs, nil)
+				err2 := exg.UnWatchOHLCVs(jobs, nil)
 				if err2 != nil {
 					log.Error("unwatch fail", zap.Error(err))
 				} else {

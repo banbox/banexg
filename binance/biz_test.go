@@ -257,7 +257,7 @@ func TestLoadMarkets(t *testing.T) {
 	}
 }
 
-func TestGetOhlcv(t *testing.T) {
+func TestGetOHLCV(t *testing.T) {
 	since := int64(1670716800000)
 	btcSwapBar := base.Kline{
 		Time: since, Open: 17120.1, High: float64(17265), Low: float64(17060),
@@ -280,7 +280,7 @@ func TestGetOhlcv(t *testing.T) {
 	exg := getBinance(nil)
 	for _, c := range cases {
 		exg.MarketType = c.TradeMode
-		klines, err := exg.FetchOhlcv(c.Symbol, c.TimeFrame, since, 0, nil)
+		klines, err := exg.FetchOHLCV(c.Symbol, c.TimeFrame, since, 0, nil)
 		if err != nil {
 			panic(err)
 		}
@@ -465,18 +465,21 @@ func TestParseLinearPositionRisk(t *testing.T) {
 	exg := getBinance(nil)
 	exg.MarketType = base.MarketLinear
 	_, _ = exg.LoadMarkets(false, nil)
-	exg.LeverageBrackets = map[string][][2]float64{
+	exg.LeverageBrackets = map[string]*SymbolLvgBrackets{
 		"BTC/USDT:USDT": {
-			{0, 0.004},
-			{50000, 0.005},
-			{500000, 0.01},
-			{10000000, 0.025},
-			{80000000, 0.05},
-			{150000000, 0.1},
-			{300000000, 0.125},
-			{450000000, 0.15},
-			{600000000, 0.25},
-			{800000000, 0.5},
+			Symbol: "BTC/USDT:USDT",
+			Brackets: []*LvgBracket{
+				{Floor: 0, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.004}},
+				{Floor: 50000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.005}},
+				{Floor: 500000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.01}},
+				{Floor: 10000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.025}},
+				{Floor: 80000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.05}},
+				{Floor: 150000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.1}},
+				{Floor: 300000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.125}},
+				{Floor: 450000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.15}},
+				{Floor: 600000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.25}},
+				{Floor: 800000000, BaseLvgBracket: BaseLvgBracket{MaintMarginRatio: 0.5}},
+			},
 		},
 	}
 	var content = `[{"symbol":"BTCUSDT","positionAmt":"-0.003","entryPrice":"42976.6","breakEvenPrice":"42955.1117","markPrice":"42832.79591057","unRealizedProfit":"0.43141226","liquidationPrice":"48303.07832462","leverage":"20","maxNotionalValue":"80000000","marginType":"cross","isolatedMargin":"0.00000000","isAutoAddMargin":"false","positionSide":"SHORT","notional":"-128.49838773","isolatedWallet":"0","updateTime":1704362904896,"isolated":false,"adlQuantile":2}]`

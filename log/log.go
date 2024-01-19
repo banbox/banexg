@@ -212,7 +212,7 @@ func SetupLogger(cfg *Config) {
 	}
 }
 
-func SetupByArgs(debug bool, logFile string) {
+func Setup(debug bool, logFile string) {
 	if debug && len(logFile) == 0 {
 		return
 	}

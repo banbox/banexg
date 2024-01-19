@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"maps"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 )
@@ -393,7 +392,7 @@ retrieves data on all markets for binance
 :returns dict[]: an array of objects representing market data
 */
 func makeFetchMarkets(e *Binance) base.FuncFetchMarkets {
-	return func(params *map[string]interface{}) (base.MarketMap, *errs.Error) {
+	return func(marketTypes []string, params *map[string]interface{}) (base.MarketMap, *errs.Error) {
 		var ctx = context.Background()
 		var ch = make(chan *base.HttpRes)
 		doReq := func(key string) {
@@ -407,7 +406,7 @@ func makeFetchMarkets(e *Binance) base.FuncFetchMarkets {
 			ch <- e.RequestApiRetry(ctx, apiKey, params, tryNum)
 		}
 		watNum := 0
-		for _, marketType := range e.CareMarkets {
+		for _, marketType := range marketTypes {
 			if e.Hosts.TestNet && marketType == base.MarketOption {
 				// option market not support in sandbox env
 				continue
@@ -441,7 +440,7 @@ func makeFetchMarkets(e *Binance) base.FuncFetchMarkets {
 	}
 }
 
-func parseOptionOhlcv(rsp *base.HttpRes) ([]*base.Kline, *errs.Error) {
+func parseOptionOHLCV(rsp *base.HttpRes) ([]*base.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
 	err := sonic.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
@@ -466,7 +465,7 @@ func parseOptionOhlcv(rsp *base.HttpRes) ([]*base.Kline, *errs.Error) {
 	return res, nil
 }
 
-func parseBnbOhlcv(rsp *base.HttpRes, volIndex int) ([]*base.Kline, *errs.Error) {
+func parseBnbOHLCV(rsp *base.HttpRes, volIndex int) ([]*base.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
 	dc := decoder.NewDecoder(rsp.Content)
 	dc.UseInt64()
@@ -475,9 +474,10 @@ func parseBnbOhlcv(rsp *base.HttpRes, volIndex int) ([]*base.Kline, *errs.Error)
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "parse bnb ohlcv fail: %v", err)
 	}
+	if len(klines) == 0 {
+		return nil, nil
+	}
 	var res = make([]*base.Kline, len(klines))
-	v := reflect.TypeOf(klines[0][0])
-	log.Info("time format", zap.String("type", v.Name()))
 	for i, bar := range klines {
 		barTime, _ := bar[0].(int64)
 		openStr, _ := bar[1].(string)
@@ -523,7 +523,7 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*base.Kline, *errs.Error) {
+func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*base.Kline, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -581,19 +581,19 @@ func (e *Binance) FetchOhlcv(symbol, timeframe string, since int64, limit int, p
 	} else if market.Inverse {
 		method = "dapiPublicGetKlines"
 	}
-	tryNum := e.GetRetryNum("FetchOhlcv", 1)
+	tryNum := e.GetRetryNum("FetchOHLCV", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
 	if market.Option {
-		return parseOptionOhlcv(rsp)
+		return parseOptionOHLCV(rsp)
 	} else {
 		volIndex := 5
 		if market.Inverse {
 			volIndex = 7
 		}
-		return parseBnbOhlcv(rsp, volIndex)
+		return parseBnbOHLCV(rsp, volIndex)
 	}
 }
 
@@ -672,7 +672,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 	mapSymbol := func(id string) string {
 		return e.SafeSymbol(id, "", marketType)
 	}
-	var brackets map[string][][2]float64
+	var brackets map[string]*SymbolLvgBrackets
 	if marketType == base.MarketLinear {
 		brackets, err = parseLvgBrackets[*LinearSymbolLvgBrackets](mapSymbol, rsp)
 	} else {
@@ -690,29 +690,46 @@ GetMaintMarginPct
 获取指定名义价值的维持保证金比率
 */
 func (e *Binance) GetMaintMarginPct(symbol string, notional float64) float64 {
-	brackets, ok := e.LeverageBrackets[symbol]
+	info, ok := e.LeverageBrackets[symbol]
 	maintMarginPct := float64(0)
-	if ok && len(brackets) > 0 {
-		for _, row := range brackets {
-			if notional < row[0] {
+	if ok && len(info.Brackets) > 0 {
+		for _, row := range info.Brackets {
+			if notional < row.Floor {
 				break
 			}
-			maintMarginPct = row[1]
+			maintMarginPct = row.MaintMarginRatio
 		}
 	}
 	return maintMarginPct
 }
 
-func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *base.HttpRes) (map[string][][2]float64, *errs.Error) {
+func (e *Binance) CalcMaintMargin(symbol string, cost float64) float64 {
+	info, ok := e.LeverageBrackets[symbol]
+	maintMargin := float64(0)
+	if ok && len(info.Brackets) > 0 {
+		for _, row := range info.Brackets {
+			if cost < row.Floor {
+				break
+			} else if cost >= row.Floor {
+				maintMargin = row.MaintMarginRatio*cost - row.Cum
+			}
+		}
+	}
+	return maintMargin
+}
+
+func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *base.HttpRes) (map[string]*SymbolLvgBrackets, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	var res = make(map[string][][2]float64)
+	var res = make(map[string]*SymbolLvgBrackets)
 	for _, item := range data {
 		symbol := mapSymbol(item.GetSymbol())
-		res[symbol] = item.ToStdBracket()
+		bracket := item.ToStdBracket()
+		bracket.Symbol = symbol
+		res[symbol] = bracket
 	}
 	return res, nil
 }

@@ -92,20 +92,60 @@ func (e *Exchange) SafeCurrencyCode(currId string) string {
 }
 
 func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
+	var markets MarketMap
 	var currencies CurrencyMap
 	var err *errs.Error
-	if e.HasApi("fetchCurrencies") {
-		currencies, err = e.FetchCurrencies(params)
+	markets, currencies = e.getMarketsCache(true)
+	if markets == nil {
+		markets, currencies, err = e.fetchMarketsCurrs(params)
 		if err != nil {
 			e.MarketsWait <- err
 			return
 		}
 	}
-	markets, err := e.FetchMarkets(params)
-	if err != nil {
-		e.MarketsWait <- err
-		return
+	// 更新Markets
+	e.setMarkets(markets)
+	// 更新currencies
+	e.setCurrencies(currencies, markets)
+	e.MarketsWait <- markets
+}
+
+func (e *Exchange) fetchMarketsCurrs(params *map[string]interface{}) (MarketMap, CurrencyMap, *errs.Error) {
+	var markets MarketMap
+	var currencies CurrencyMap
+	var err *errs.Error
+	// 设置写入锁
+	marketsLock.Lock()
+	defer marketsLock.Unlock()
+	ts, ok := exgMarketTS[e.Name]
+	delayMins := int((e.MilliSeconds() - ts) / 60000)
+	if ok && delayMins == 0 {
+		// 并发写入，其他线程已写入
+		markets, currencies = e.getMarketsCache(false)
+		if markets != nil {
+			return markets, currencies, nil
+		}
 	}
+	if e.HasApi("fetchCurrencies") {
+		currencies, err = e.FetchCurrencies(params)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	cares := e.getAllCareMarkets()
+	markets, err = e.FetchMarkets(cares, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	// 写入到缓存
+	exgMarketTS[e.Name] = e.MilliSeconds()
+	exgCacheCurrs[e.Name] = currencies
+	exgCacheMarkets[e.Name] = markets
+	exgCareMarkets[e.Name] = cares
+	return markets, currencies, nil
+}
+
+func (e *Exchange) setMarkets(markets MarketMap) {
 	// 现货的放在前面
 	items := make([]*Market, 0, len(markets))
 	for _, v := range markets {
@@ -121,7 +161,6 @@ func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 		}
 		return iv > ij
 	})
-	// 更新Markets
 	e.MarketsById = make(MarketArrMap)
 	var symbols = make([]string, len(markets))
 	var IDs = make([]string, 0, len(markets)/2)
@@ -139,7 +178,9 @@ func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 	sort.Strings(IDs)
 	e.Symbols = symbols
 	e.IDs = IDs
-	// 处理currencies
+}
+
+func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 	if currencies == nil {
 		var currs = make([]*Currency, 0)
 		var defCurrPrecision = 1e-8
@@ -212,7 +253,56 @@ func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 	for _, v := range e.CurrenciesByCode {
 		e.CurrenciesById[v.ID] = v
 	}
-	e.MarketsWait <- markets
+}
+
+func (e *Exchange) getMarketsCache(lock bool) (MarketMap, CurrencyMap) {
+	// 检查时间戳未过期
+	if lock {
+		marketsLock.RLock()
+		defer marketsLock.RUnlock()
+	}
+	ts, ok := exgMarketTS[e.Name]
+	delayMins := int((e.MilliSeconds() - ts) / 60000)
+	if !ok || delayMins < exgMarketExpireMins {
+		return nil, nil
+	}
+	// 检查是否缓存了所有所需的市场类型
+	if len(e.CareMarkets) < len(e.getAllCareMarkets()) {
+		return nil, nil
+	}
+	// 检查有缓存结果
+	markets, ok := exgCacheMarkets[e.Name]
+	if !ok || len(markets) == 0 {
+		return nil, nil
+	}
+	currs, ok := exgCacheCurrs[e.Name]
+	if !ok || len(currs) == 0 {
+		return nil, nil
+	}
+	return markets, currs
+}
+
+/*
+将当前交易所的CareMarkets和全局所有交易所的ExgCareMarkets合并返回。
+用于刷新全部市场信息
+*/
+func (e *Exchange) getAllCareMarkets() []string {
+	careArr, ok := exgCareMarkets[e.Name]
+	if !ok || len(careArr) == 0 {
+		return e.CareMarkets
+	}
+	cares := map[string]struct{}{}
+	for _, mar := range careArr {
+		cares[mar] = struct{}{}
+	}
+	for _, mar := range e.CareMarkets {
+		cares[mar] = struct{}{}
+	}
+	var res = make([]string, 0, len(cares))
+	for key := range cares {
+		res = append(res, key)
+	}
+	return res
 }
 
 func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, *errs.Error) {
@@ -248,6 +338,16 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 		}
 	}
 	return 0, errs.NoMarketForPair
+}
+
+func (e *Exchange) GetCurMarkets() MarketMap {
+	result := make(MarketMap)
+	for key, mar := range e.Markets {
+		if mar.Type == e.MarketType && mar.Active {
+			result[key] = mar
+		}
+	}
+	return result
 }
 
 /*
@@ -370,7 +470,7 @@ func (e *Exchange) SafeSymbol(marketId, delimiter, marketType string) string {
 	return e.SafeMarket(marketId, delimiter, marketType).Symbol
 }
 
-func (e *Exchange) FetchOhlcv(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error) {
+func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
@@ -416,6 +516,10 @@ func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]i
 
 func (e *Exchange) LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error {
 	return errs.NotImplement
+}
+
+func (e *Exchange) CalcMaintMargin(symbol string, cost float64) float64 {
+	return 0
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
@@ -734,6 +838,10 @@ func (e *Exchange) PrecFee(m *Market, fee float64) (string, *errs.Error) {
 	return e.precPriceCost(m, fee, true)
 }
 
+func (e *Exchange) PrecMode() int {
+	return e.PrecisionMode
+}
+
 /*
 GetRetryNum
 返回失败时重试次数，未设置时默认0
@@ -826,4 +934,24 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 		MarBalances:  map[string]*Balances{},
 		Data:         current,
 	}
+}
+
+func (e *Exchange) SetMarketType(marketType, contractType string) *errs.Error {
+	if marketType != "" {
+		if _, ok := AllMarketTypes[marketType]; !ok {
+			return errs.NewMsg(errs.CodeParamInvalid, "invalid market type: %s", marketType)
+		}
+		e.MarketType = marketType
+	}
+	if contractType != "" {
+		if _, ok := AllContractTypes[contractType]; !ok {
+			return errs.NewMsg(errs.CodeParamInvalid, "invalid contract type: %s", contractType)
+		}
+		e.ContractType = contractType
+	}
+	return nil
+}
+
+func (e *Exchange) GetID() string {
+	return e.ID
 }
