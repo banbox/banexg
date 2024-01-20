@@ -1,6 +1,7 @@
-package banexg
+package bex
 
 import (
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/binance"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
@@ -12,7 +13,7 @@ func init() {
 	}
 }
 
-func New(name string, options *map[string]interface{}) (BanExchange, *errs.Error) {
+func New(name string, options *map[string]interface{}) (banexg.BanExchange, *errs.Error) {
 	fn, ok := newExgs[name]
 	if !ok {
 		return nil, errs.NewMsg(errs.CodeBadExgName, "invalid exg name: %s", name)

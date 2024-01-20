@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/banbox/banexg/base"
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/log"
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
@@ -12,10 +12,10 @@ import (
 func TestFetchOrders(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
-		{"market": base.MarketSpot},
-		//{"market": base.MarketLinear},
-		//{"market": base.MarketInverse},
-		//{"market": base.MarketOption},
+		{"market": banexg.MarketSpot},
+		//{"market": banexg.MarketLinear},
+		//{"market": banexg.MarketInverse},
+		//{"market": banexg.MarketOption},
 	}
 	symbol := "ETH/USDT"
 	since := int64(1702991965921)
@@ -33,10 +33,10 @@ func TestFetchOrders(t *testing.T) {
 func TestFetchOpenOrders(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
-		//{"market": base.MarketSpot},
-		{"market": base.MarketLinear},
-		//{"market": base.MarketInverse},
-		//{"market": base.MarketOption},
+		//{"market": banexg.MarketSpot},
+		{"market": banexg.MarketLinear},
+		//{"market": banexg.MarketInverse},
+		//{"market": banexg.MarketOption},
 	}
 	symbol := "ETH/USDT:USDT"
 	since := int64(1702991965921)
@@ -67,10 +67,10 @@ func printCreateOrder(symbol string, odType string, side string, amount float64,
 
 func TestBinance_CreateOrder(t *testing.T) {
 	args := &map[string]interface{}{
-		base.ParamPositionSide: "LONG",
+		banexg.ParamPositionSide: "LONG",
 	}
 	symbol := "ETH/USDT:USDT"
-	printCreateOrder(symbol, base.OdTypeLimit, base.OdSideBuy, 0.02, 1000, args)
+	printCreateOrder(symbol, banexg.OdTypeLimit, banexg.OdSideBuy, 0.02, 1000, args)
 }
 
 func TestCalcelOrder(t *testing.T) {

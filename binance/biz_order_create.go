@@ -2,13 +2,13 @@ package binance
 
 import (
 	"context"
-	"github.com/banbox/banexg/base"
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"strings"
 )
 
-func isBnbOrderType(market *base.Market, odType string) bool {
+func isBnbOrderType(market *banexg.Market, odType string) bool {
 	if m, ok := market.Info.(*BnbMarket); ok {
 		return utils.ArrContains(m.OrderTypes, odType)
 	}
@@ -37,42 +37,42 @@ CreateOrder 提交订单到交易所
 	:param boolean [params.test]: *spot only* whether to use the test endpoint or not, default is False
 	:returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*base.Order, *errs.Error) {
+func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
 	}
-	marginMode := utils.PopMapVal(args, base.ParamMarginMode, "")
-	sor := utils.PopMapVal(args, base.ParamSor, false)
-	clientOrderId := utils.PopMapVal(args, base.ParamClientOrderId, "")
-	postOnly := utils.PopMapVal(args, base.ParamPostOnly, false)
-	timeInForce := utils.GetMapVal(args, base.ParamTimeInForce, "")
-	if postOnly || timeInForce == base.TimeInForcePO || odType == base.OdTypeLimitMaker {
-		if timeInForce == base.TimeInForceIOC || timeInForce == base.TimeInForceFOK {
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	sor := utils.PopMapVal(args, banexg.ParamSor, false)
+	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
+	postOnly := utils.PopMapVal(args, banexg.ParamPostOnly, false)
+	timeInForce := utils.GetMapVal(args, banexg.ParamTimeInForce, "")
+	if postOnly || timeInForce == banexg.TimeInForcePO || odType == banexg.OdTypeLimitMaker {
+		if timeInForce == banexg.TimeInForceIOC || timeInForce == banexg.TimeInForceFOK {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "postOnly orders cannot have timeInForce: %s", timeInForce)
-		} else if odType == base.OdTypeMarket {
+		} else if odType == banexg.OdTypeMarket {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "market orders cannot be postOnly")
 		}
 		postOnly = true
 	}
-	isMarket := odType == base.OdTypeMarket
-	isLimit := odType == base.OdTypeLimit
-	triggerPrice := utils.PopMapVal(args, base.ParamTriggerPrice, float64(0))
-	stopLossPrice := utils.PopMapVal(args, base.ParamStopLossPrice, float64(0))
+	isMarket := odType == banexg.OdTypeMarket
+	isLimit := odType == banexg.OdTypeLimit
+	triggerPrice := utils.PopMapVal(args, banexg.ParamTriggerPrice, float64(0))
+	stopLossPrice := utils.PopMapVal(args, banexg.ParamStopLossPrice, float64(0))
 	if stopLossPrice == 0 {
 		stopLossPrice = triggerPrice
 	}
-	takeProfitPrice := utils.PopMapVal(args, base.ParamTakeProfitPrice, float64(0))
-	trailingDelta := utils.PopMapVal(args, base.ParamTrailingDelta, 0)
+	takeProfitPrice := utils.PopMapVal(args, banexg.ParamTakeProfitPrice, float64(0))
+	trailingDelta := utils.PopMapVal(args, banexg.ParamTrailingDelta, 0)
 	isStopLoss := stopLossPrice != float64(0) || trailingDelta != 0
 	isTakeProfit := takeProfitPrice != float64(0)
 	args["symbol"] = market.ID
 	args["side"] = strings.ToUpper(side)
-	if postOnly && (market.Spot || market.Type == base.MarketMargin) {
-		odType = base.OdTypeLimitMaker
+	if postOnly && (market.Spot || market.Type == banexg.MarketMargin) {
+		odType = banexg.OdTypeLimitMaker
 	}
-	if market.Type == base.MarketMargin || marginMode != "" {
-		reduceOnly := utils.PopMapVal(args, base.ParamReduceOnly, false)
+	if market.Type == banexg.MarketMargin || marginMode != "" {
+		reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false)
 		if reduceOnly {
 			args["sideEffectType"] = "AUTO_REPAY"
 		}
@@ -106,7 +106,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			}
 		}
 	}
-	if marginMode == base.MarginIsolated {
+	if marginMode == banexg.MarginIsolated {
 		args["isIsolated"] = true
 	}
 	if clientOrderId == "" {
@@ -118,7 +118,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	}
 	args["newClientOrderId"] = clientOrderId
 	odRspType := "RESULT"
-	if market.Spot || market.Type == base.MarketMargin {
+	if market.Spot || market.Type == banexg.MarketMargin {
 		if rspType, ok := e.newOrderRespType[odType]; ok {
 			odRspType = rspType
 		}
@@ -126,7 +126,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	// 'ACK' for order id, 'RESULT' for full order or 'FULL' for order with fills
 	args["newOrderRespType"] = odRspType
 	if market.Option {
-		if odType == base.OdTypeMarket {
+		if odType == banexg.OdTypeMarket {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "market order is invalid for option")
 		}
 	} else if !isBnbOrderType(market, exgOdType) {
@@ -154,10 +154,10 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	   #     TAKE_PROFIT_MARKET   stopPrice
 	   #     TRAILING_STOP_MARKET callbackRate
 	*/
-	if exgOdType == base.OdTypeMarket {
+	if exgOdType == banexg.OdTypeMarket {
 		quantityRequired = true
 		if market.Spot {
-			cost := utils.PopMapVal(args, base.ParamCost, 0.0)
+			cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
 			if cost == 0 && price != 0 {
 				cost = amount * price
 			}
@@ -169,37 +169,37 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 				args["quoteOrderQty"] = precRes
 			}
 		}
-	} else if exgOdType == base.OdTypeLimit {
+	} else if exgOdType == banexg.OdTypeLimit {
 		priceRequired = true
 		timeInForceRequired = true
 		quantityRequired = true
-	} else if exgOdType == base.OdTypeStopLoss || exgOdType == base.OdTypeTakeProfit {
+	} else if exgOdType == banexg.OdTypeStopLoss || exgOdType == banexg.OdTypeTakeProfit {
 		stopPriceRequired = true
 		quantityRequired = true
 		if market.Linear || market.Inverse {
 			priceRequired = true
 		}
-	} else if exgOdType == base.OdTypeStopLossLimit || exgOdType == base.OdTypeTakeProfitLimit {
+	} else if exgOdType == banexg.OdTypeStopLossLimit || exgOdType == banexg.OdTypeTakeProfitLimit {
 		quantityRequired = true
 		stopPriceRequired = true
 		priceRequired = true
 		timeInForceRequired = true
-	} else if exgOdType == base.OdTypeLimitMaker {
+	} else if exgOdType == banexg.OdTypeLimitMaker {
 		priceRequired = true
 		quantityRequired = true
-	} else if exgOdType == base.OdTypeStop {
+	} else if exgOdType == banexg.OdTypeStop {
 		quantityRequired = true
 		stopPriceRequired = true
 		priceRequired = true
 	} else if exgOdType == "STOP_MARKET" || exgOdType == "TAKE_PROFIT_MARKET" {
-		closePosition := utils.GetMapVal(args, base.ParamClosePosition, false)
+		closePosition := utils.GetMapVal(args, banexg.ParamClosePosition, false)
 		if !closePosition {
 			quantityRequired = true
 		}
 		stopPriceRequired = true
 	} else if exgOdType == "TRAILING_STOP_MARKET" {
 		quantityRequired = true
-		callBackRate := utils.GetMapVal(args, base.ParamCallbackRate, 0.0)
+		callBackRate := utils.GetMapVal(args, banexg.ParamCallbackRate, 0.0)
 		if callBackRate == 0 {
 			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require callbackRate for %s order", odType)
 		}
@@ -228,7 +228,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		args["timeInForce"] = timeInForce
 	}
 	if market.Contract && postOnly {
-		args["timeInForce"] = base.TimeInForceGTX
+		args["timeInForce"] = banexg.TimeInForceGTX
 	}
 	if stopPriceRequired {
 		if market.Contract {
@@ -246,8 +246,8 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			args["stopPrice"] = stopPriceStr
 		}
 	}
-	if timeInForce == base.TimeInForcePO {
-		delete(args, base.ParamTimeInForce)
+	if timeInForce == banexg.TimeInForcePO {
+		delete(args, banexg.ParamTimeInForce)
 	}
 	method := "privatePostOrder"
 	if sor {
@@ -256,13 +256,13 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		method = "fapiPrivatePostOrder"
 	} else if market.Inverse {
 		method = "dapiPrivatePostOrder"
-	} else if market.Type == base.MarketMargin || marginMode != "" {
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = "sapiPostMarginOrder"
 	} else if market.Option {
 		method = "eapiPrivatePostOrder"
 	}
-	if market.Spot || market.Type == base.MarketMargin {
-		test := utils.GetMapVal(args, base.ParamTest, false)
+	if market.Spot || market.Type == banexg.MarketMargin {
+		test := utils.GetMapVal(args, banexg.ParamTest, false)
 		if test {
 			method += "Test"
 		}

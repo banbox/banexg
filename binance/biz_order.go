@@ -2,7 +2,7 @@ package binance
 
 import (
 	"context"
-	"github.com/banbox/banexg/base"
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/bytedance/sonic"
@@ -14,13 +14,13 @@ import (
 FetchOrders 获取自己的订单
 symbol: 必填，币种
 */
-func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*base.Order, *errs.Error) {
+func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
 	}
 	args["symbol"] = market.ID
-	marginMode := utils.PopMapVal(args, base.ParamMarginMode, "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := "privateGetAllOrders"
 	if market.Option {
 		method = "eapiPrivateGetHistoryOrders"
@@ -28,7 +28,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 		method = "fapiPrivateGetAllOrders"
 	} else if market.Inverse {
 		method = "dapiPrivateGetAllOrders"
-	} else if market.Type == base.MarketMargin || marginMode != "" {
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = "sapiGetMarginAllOrders"
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
@@ -88,7 +88,7 @@ fetch all unfilled currently open orders
 :param str [params.marginMode]: 'cross' or 'isolated', for spot margin trading
 :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*base.Order, *errs.Error) {
+func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	var args map[string]interface{}
 	var marketType string
 	if symbol != "" {
@@ -103,9 +103,9 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		args = utils.SafeParams(params)
 		marketType, _ = e.GetArgsMarketType(args, "")
 	}
-	marginMode := utils.PopMapVal(args, base.ParamMarginMode, "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := "privateGetOpenOrders"
-	if marketType == base.MarketOption {
+	if marketType == banexg.MarketOption {
 		method = "eapiPrivateGetOpenOrders"
 		if since > 0 {
 			args["startTime"] = since
@@ -113,13 +113,13 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		if limit > 0 {
 			args["limit"] = limit
 		}
-	} else if marketType == base.MarketLinear {
+	} else if marketType == banexg.MarketLinear {
 		method = "fapiPrivateGetOpenOrders"
-	} else if marketType == base.MarketInverse {
+	} else if marketType == banexg.MarketInverse {
 		method = "dapiPrivateGetOpenOrders"
-	} else if marketType == base.MarketMargin || marginMode != "" {
+	} else if marketType == banexg.MarketMargin || marginMode != "" {
 		method = "sapiGetMarginOpenOrders"
-		if marginMode == base.MarginIsolated {
+		if marginMode == banexg.MarginIsolated {
 			args["isIsolated"] = true
 			if symbol == "" {
 				return nil, errs.NewMsg(errs.CodeParamRequired, "FetchOpenOrders requires a symbol for isolated markets")
@@ -131,7 +131,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
-	var marketMap = make(map[string]*base.Market)
+	var marketMap = make(map[string]*banexg.Market)
 	var mapSymbol = func(mid string) string {
 		if market, ok := marketMap[mid]; ok {
 			return market.Symbol
@@ -170,13 +170,13 @@ cancels an open order
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*base.Order, *errs.Error) {
+func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
 	}
-	marginMode := utils.PopMapVal(args, base.ParamMarginMode, "")
-	clientOrderId := utils.PopMapVal(args, base.ParamClientOrderId, "")
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
 	args["symbol"] = market.ID
 	if clientOrderId != "" {
 		if market.Option {
@@ -194,7 +194,7 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 		method = "fapiPrivateDeleteOrder"
 	} else if market.Inverse {
 		method = "dapiPrivateDeleteOrder"
-	} else if market.Type == base.MarketMargin || marginMode != "" {
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = "sapiDeleteMarginOrder"
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
@@ -220,20 +220,20 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 	}
 }
 
-func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *base.HttpRes) ([]*base.Order, *errs.Error) {
+func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	var result = make([]*base.Order, len(data))
+	var result = make([]*banexg.Order, len(data))
 	for i, item := range data {
 		result[i] = item.ToStdOrder(mapSymbol)
 	}
 	return result, nil
 }
 
-func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *base.HttpRes) (*base.Order, *errs.Error) {
+func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, *errs.Error) {
 	var data = new(T)
 	err := sonic.UnmarshalString(rsp.Content, &data)
 	if err != nil {
@@ -244,16 +244,16 @@ func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *base.HttpRes) (
 }
 
 var orderStateMap = map[string]string{
-	OdStatusNew:             base.OdStatusOpen,
-	OdStatusPartiallyFilled: base.OdStatusOpen,
-	OdStatusAccept:          base.OdStatusOpen,
-	OdStatusFilled:          base.OdStatusClosed,
-	OdStatusCanceled:        base.OdStatusCanceled,
-	OdStatusCancelled:       base.OdStatusCanceled,
-	OdStatusPendingCancel:   base.OdStatusCanceling,
-	OdStatusReject:          base.OdStatusRejected,
-	OdStatusExpired:         base.OdStatusExpired,
-	OdStatusExpiredInMatch:  base.OdStatusExpired,
+	OdStatusNew:             banexg.OdStatusOpen,
+	OdStatusPartiallyFilled: banexg.OdStatusOpen,
+	OdStatusAccept:          banexg.OdStatusOpen,
+	OdStatusFilled:          banexg.OdStatusClosed,
+	OdStatusCanceled:        banexg.OdStatusCanceled,
+	OdStatusCancelled:       banexg.OdStatusCanceled,
+	OdStatusPendingCancel:   banexg.OdStatusCanceling,
+	OdStatusReject:          banexg.OdStatusRejected,
+	OdStatusExpired:         banexg.OdStatusExpired,
+	OdStatusExpiredInMatch:  banexg.OdStatusExpired,
 }
 
 func mapOrderStatus(status string) string {
@@ -263,11 +263,11 @@ func mapOrderStatus(status string) string {
 	return status
 }
 
-func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	status := mapOrderStatus(o.Status)
 	filled, _ := strconv.ParseFloat(o.ExecutedQty, 64)
 	lastTradeTimestamp := int64(0)
-	if filled > 0 && status == base.OdStatusOpen || status == base.OdStatusClosed {
+	if filled > 0 && status == banexg.OdStatusOpen || status == banexg.OdStatusClosed {
 		lastTradeTimestamp = o.UpdateTime
 	}
 	orderType := strings.ToLower(o.Type)
@@ -285,7 +285,7 @@ func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
 		postOnly = true
 	}
 	price, _ := strconv.ParseFloat(o.Price, 64)
-	return &base.Order{
+	return &banexg.Order{
 		ID:                  strconv.Itoa(o.OrderId),
 		ClientOrderID:       o.ClientOrderId,
 		LastTradeTimestamp:  lastTradeTimestamp,
@@ -298,12 +298,12 @@ func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
 		Filled:              filled,
 		Status:              status,
 		Symbol:              mapSymbol(o.Symbol),
-		Fee:                 &base.Fee{},
-		Trades:              make([]*base.Trade, 0),
+		Fee:                 &banexg.Fee{},
+		Trades:              make([]*banexg.Trade, 0),
 	}
 }
 
-func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := int64(0)
 	if o.Time > 0 {
 		timeStamp = o.Time
@@ -324,7 +324,7 @@ func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
 	return result
 }
 
-func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	result := o.SpotBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	timeStamp := int64(0)
@@ -342,13 +342,13 @@ func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
 	return result
 }
 
-func (o *MarginOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *MarginOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	result := o.SpotBase.ToStdOrder(mapSymbol)
 	result.Info = o
 	return result
 }
 
-func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := o.CreateTime
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
@@ -367,7 +367,7 @@ func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
 	return result
 }
 
-func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	timeStamp := o.Time
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
@@ -385,7 +385,7 @@ func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *base.Order {
 	return result
 }
 
-func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumQuote, 64)
 	result := o.FutureBase.ToStdOrder(mapSymbol)
 	result.Info = o
@@ -393,7 +393,7 @@ func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
 	return result
 }
 
-func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string) *base.Order {
+func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumBase, 64)
 	result := o.FutureBase.ToStdOrder(mapSymbol)
 	result.Info = o

@@ -2,7 +2,7 @@ package binance
 
 import (
 	"fmt"
-	"github.com/banbox/banexg/base"
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
@@ -37,7 +37,7 @@ type CompareRes struct {
 	Diffs map[string]map[string]string
 }
 
-func compareMarkets(t *testing.T, markets, ccxtMarkets base.MarketMap) error {
+func compareMarkets(t *testing.T, markets, ccxtMarkets banexg.MarketMap) error {
 	var news = make([]string, 0)
 	var lacks = make([]string, 0)
 	var sames = make([]string, 0)
@@ -159,7 +159,7 @@ func compareMarkets(t *testing.T, markets, ccxtMarkets base.MarketMap) error {
 	return nil
 }
 
-func compareCurrs(t *testing.T, currs, ccxtCurrs base.CurrencyMap) error {
+func compareCurrs(t *testing.T, currs, ccxtCurrs banexg.CurrencyMap) error {
 	var news = make([]string, 0)
 	var lacks = make([]string, 0)
 	var sames = make([]string, 0)
@@ -233,7 +233,7 @@ func compareCurrs(t *testing.T, currs, ccxtCurrs base.CurrencyMap) error {
 func TestLoadMarkets(t *testing.T) {
 	exg := getBinance(nil)
 	// read ccxt markets
-	var ccxtMarkets base.MarketMap
+	var ccxtMarkets banexg.MarketMap
 	err := utils.ReadJsonFile("testdata/ccxt_markets.json", &ccxtMarkets)
 	if err != nil {
 		panic(err)
@@ -246,7 +246,7 @@ func TestLoadMarkets(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	var ccxtCurrs base.CurrencyMap
+	var ccxtCurrs banexg.CurrencyMap
 	err = utils.ReadJsonFile("testdata/ccxt_currs.json", &ccxtCurrs)
 	if err != nil {
 		panic(err)
@@ -259,11 +259,11 @@ func TestLoadMarkets(t *testing.T) {
 
 func TestGetOHLCV(t *testing.T) {
 	since := int64(1670716800000)
-	btcSwapBar := base.Kline{
+	btcSwapBar := banexg.Kline{
 		Time: since, Open: 17120.1, High: float64(17265), Low: float64(17060),
 		Close: 17077.3, Volume: 171004.111,
 	}
-	btcSpotBar := base.Kline{
+	btcSpotBar := banexg.Kline{
 		Time: since, Open: 17127.49, High: 17270.99, Low: float64(17071),
 		Close: 17085.05, Volume: 155286.47871,
 	}
@@ -271,11 +271,11 @@ func TestGetOHLCV(t *testing.T) {
 		TradeMode string
 		Symbol    string
 		TimeFrame string
-		FirstBar  *base.Kline
+		FirstBar  *banexg.Kline
 	}{
-		{TradeMode: base.MarketSwap, Symbol: "BTC/USDT:USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
-		{TradeMode: base.MarketSwap, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
-		{TradeMode: base.MarketSpot, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSpotBar},
+		{TradeMode: banexg.MarketSwap, Symbol: "BTC/USDT:USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
+		{TradeMode: banexg.MarketSwap, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSwapBar},
+		{TradeMode: banexg.MarketSpot, Symbol: "BTC/USDT", TimeFrame: "1d", FirstBar: &btcSpotBar},
 	}
 	exg := getBinance(nil)
 	for _, c := range cases {
@@ -297,11 +297,11 @@ func TestGetOHLCV(t *testing.T) {
 func TestFetchBalances(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
-		{"market": base.MarketSpot},
-		{"market": base.MarketLinear},
-		{"market": base.MarketInverse},
-		{base.ParamMarginMode: base.MarginCross},
-		{base.ParamMarginMode: base.MarginIsolated},
+		{"market": banexg.MarketSpot},
+		{"market": banexg.MarketLinear},
+		{"market": banexg.MarketInverse},
+		{banexg.ParamMarginMode: banexg.MarginCross},
+		{banexg.ParamMarginMode: banexg.MarginIsolated},
 		{"market": "funding"},
 	}
 	for _, item := range cases {
@@ -345,10 +345,10 @@ func TestGetMarket(t *testing.T) {
 		{"BTC/USDT", "BTC/USDT", nil},
 		{"BTC/USDT:USDT", "BTC/USDT:USDT", nil},
 		{"BTC/USDT", "BTC/USDT:USDT", map[string]interface{}{
-			"market": base.MarketLinear,
+			"market": banexg.MarketLinear,
 		}},
 		{"BTC/USDT", "BTC/USDT:USDT", map[string]interface{}{
-			"market": base.MarketSwap,
+			"market": banexg.MarketSwap,
 		}},
 	}
 	for _, item := range items {
@@ -372,17 +372,17 @@ func TestGetMarketType(t *testing.T) {
 	swapBtc := "BTC/USDT:USDT"
 	inverseBtc := "BTC/USD:BTC"
 	mtype, _ := exg.GetArgsMarketType(nil, spotBtc)
-	if mtype != base.MarketSpot {
+	if mtype != banexg.MarketSpot {
 		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: spot", mtype)
 	}
 
 	mtype, _ = exg.GetArgsMarketType(nil, swapBtc)
-	if mtype != base.MarketLinear {
+	if mtype != banexg.MarketLinear {
 		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: swap", mtype)
 	}
 
 	mtype, _ = exg.GetArgsMarketType(nil, inverseBtc)
-	if mtype != base.MarketInverse {
+	if mtype != banexg.MarketInverse {
 		t.Errorf("FAIL GetArgsMarketType, get: %v, expect: inverse", mtype)
 	}
 }
@@ -397,7 +397,7 @@ func TestGetMarketById(t *testing.T) {
 	btcFut := "BTC/USDT:USDT-242903"
 	btcFutMar := *exg.Markets[btcSwap]
 	btcFutMar.Symbol = btcFut
-	exg.MarketsById[btcFut] = []*base.Market{
+	exg.MarketsById[btcFut] = []*banexg.Market{
 		&btcFutMar,
 	}
 	items := []struct {
@@ -434,7 +434,7 @@ func TestMarketCopy(t *testing.T) {
 		panic(err)
 	}
 	mar2 := *mar
-	mar2.Type = base.MarketMargin
+	mar2.Type = banexg.MarketMargin
 	t.Logf("%v -> %v, addr: %p -> %p", mar.Type, mar2.Type, mar, &mar2)
 }
 
@@ -449,7 +449,7 @@ func TestSetLeverage(t *testing.T) {
 
 func TestLoadLeverageBrackets(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = base.MarketLinear
+	exg.MarketType = banexg.MarketLinear
 	err := exg.LoadLeverageBrackets(false, nil)
 	if err != nil {
 		panic(err)
@@ -463,7 +463,7 @@ func TestLoadLeverageBrackets(t *testing.T) {
 
 func TestParseLinearPositionRisk(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = base.MarketLinear
+	exg.MarketType = banexg.MarketLinear
 	_, _ = exg.LoadMarkets(false, nil)
 	exg.LeverageBrackets = map[string]*SymbolLvgBrackets{
 		"BTC/USDT:USDT": {
@@ -484,7 +484,7 @@ func TestParseLinearPositionRisk(t *testing.T) {
 	}
 	var content = `[{"symbol":"BTCUSDT","positionAmt":"-0.003","entryPrice":"42976.6","breakEvenPrice":"42955.1117","markPrice":"42832.79591057","unRealizedProfit":"0.43141226","liquidationPrice":"48303.07832462","leverage":"20","maxNotionalValue":"80000000","marginType":"cross","isolatedMargin":"0.00000000","isAutoAddMargin":"false","positionSide":"SHORT","notional":"-128.49838773","isolatedWallet":"0","updateTime":1704362904896,"isolated":false,"adlQuantile":2}]`
 	var expectStr = `{"id":"","symbol":"BTC/USDT:USDT","timestamp":1704362904896,"isolated":false,"hedged":true,"side":"short","contracts":0.003,"contractSize":1,"entryPrice":42976.6,"markPrice":42832.79591057,"notional":128.49838773,"leverage":20,"collateral":16.55907191,"initialMargin":6.42491939,"maintenanceMargin":0.51399355092,"initialMarginPercentage":0.05,"maintenanceMarginPercentage":0.004,"unrealizedPnl":0.43141226,"liquidationPrice":48303.07832462,"marginMode":"cross","marginRatio":0.031,"percentage":6.71,"info":null}`
-	res := &base.HttpRes{Content: content}
+	res := &banexg.HttpRes{Content: content}
 	posList, err := parsePositionRisk[*LinearPositionRisk](exg, res)
 	if err != nil {
 		panic(err)
@@ -508,7 +508,7 @@ func TestParseLinearPositionRisk(t *testing.T) {
 
 func TestFetchPositionsRisk(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = base.MarketInverse
+	exg.MarketType = banexg.MarketInverse
 	posList, err := exg.FetchPositionsRisk(nil, nil)
 	if err != nil {
 		panic(err)
@@ -522,7 +522,7 @@ func TestFetchPositionsRisk(t *testing.T) {
 
 func TestFetchAccountPositions(t *testing.T) {
 	exg := getBinance(nil)
-	exg.MarketType = base.MarketInverse
+	exg.MarketType = banexg.MarketInverse
 	posList, err := exg.FetchAccountPositions(nil, nil)
 	if err != nil {
 		panic(err)

@@ -1,12 +1,12 @@
 package binance
 
 import (
-	"github.com/banbox/banexg/base"
+	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 )
 
 type Binance struct {
-	*base.Exchange
+	*banexg.Exchange
 	RecvWindow       int
 	newOrderRespType map[string]string
 	streamBySubHash  map[string]string // subHash: stream
@@ -330,7 +330,7 @@ type InversePositionRisk struct {
 }
 
 type IBnbPosRisk interface {
-	ToStdPos(*Binance) (*base.Position, *errs.Error)
+	ToStdPos(*Binance) (*banexg.Position, *errs.Error)
 }
 
 /*
@@ -538,7 +538,7 @@ type SpotFill struct {
 }
 
 type IBnbOrder interface {
-	ToStdOrder(func(string) string) *base.Order
+	ToStdOrder(func(string) string) *banexg.Order
 }
 
 /*
@@ -641,7 +641,7 @@ type OptionTicker struct {
 }
 
 type IBnbTicker interface {
-	ToStdTicker(e *Binance, marketType string) *base.Ticker
+	ToStdTicker(e *Binance, marketType string) *banexg.Ticker
 }
 
 /*
@@ -678,7 +678,7 @@ type SpotOrderBook struct {
 }
 
 type IBnbOrderBook interface {
-	ToStdOrderBook(m *base.Market) *base.OrderBook
+	ToStdOrderBook(m *banexg.Market) *banexg.OrderBook
 }
 
 /*

@@ -1,191 +1,174 @@
 package banexg
 
 import (
-	"github.com/banbox/banexg/base"
-	"github.com/banbox/banexg/errs"
+	"fmt"
+	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
 )
 
-type FuncNewExchange = func(map[string]interface{}) (BanExchange, *errs.Error)
+func (p *Precision) ToString() string {
+	return fmt.Sprintf("%v-%v-%v-%v", p.Amount, p.Price, p.Base, p.Quote)
+}
 
-var newExgs map[string]FuncNewExchange
+func (r *LimitRange) ToString() string {
+	return fmt.Sprintf("[%v-%v]", r.Min, r.Max)
+}
 
-type BanExchange = base.BanExchange
+func (l *MarketLimits) ToString() string {
+	if l == nil {
+		return ""
+	}
+	var b strings.Builder
+	if l.Leverage != nil {
+		b.WriteString("l:")
+		b.WriteString(l.Leverage.ToString())
+	}
+	if l.Amount != nil {
+		b.WriteString("a:")
+		b.WriteString(l.Amount.ToString())
+	}
+	if l.Price != nil {
+		b.WriteString("p:")
+		b.WriteString(l.Price.ToString())
+	}
+	if l.Cost != nil {
+		b.WriteString("c:")
+		b.WriteString(l.Cost.ToString())
+	}
+	if l.Market != nil {
+		b.WriteString("m:")
+		b.WriteString(l.Market.ToString())
+	}
+	return b.String()
+}
 
-var (
-	ParamClientOrderId      = base.ParamClientOrderId
-	ParamOrderIds           = base.ParamOrderIds
-	ParamOrigClientOrderIDs = base.ParamOrigClientOrderIDs
-	ParamSor                = base.ParamSor
-	ParamPostOnly           = base.ParamPostOnly
-	ParamTimeInForce        = base.ParamTimeInForce
-	ParamTriggerPrice       = base.ParamTriggerPrice
-	ParamStopLossPrice      = base.ParamStopLossPrice
-	ParamTakeProfitPrice    = base.ParamTakeProfitPrice
-	ParamTrailingDelta      = base.ParamTrailingDelta
-	ParamReduceOnly         = base.ParamReduceOnly
-	ParamCost               = base.ParamCost
-	ParamClosePosition      = base.ParamClosePosition
-	ParamCallbackRate       = base.ParamCallbackRate
-	ParamRolling            = base.ParamRolling
-	ParamTest               = base.ParamTest
-	ParamMarginMode         = base.ParamMarginMode
-	ParamSymbol             = base.ParamSymbol
-	ParamPositionSide       = base.ParamPositionSide
-	ParamProxy              = base.ParamProxy
-	ParamName               = base.ParamName
-	ParamMethod             = base.ParamMethod
-	ParamInterval           = base.ParamInterval
-	ParamAccount            = base.ParamAccount
-)
+func (l *CodeLimits) ToString() string {
+	if l == nil {
+		return ""
+	}
+	var b strings.Builder
+	if l.Amount != nil {
+		b.WriteString("a:")
+		b.WriteString(l.Amount.ToString())
+	}
+	if l.Withdraw != nil {
+		b.WriteString("w:")
+		b.WriteString(l.Withdraw.ToString())
+	}
+	if l.Deposit != nil {
+		b.WriteString("d:")
+		b.WriteString(l.Deposit.ToString())
+	}
+	return b.String()
+}
 
-const (
-	HasFail     = base.HasFail
-	HasOk       = base.HasOk
-	HasEmulated = base.HasEmulated
-)
+func (b *Balances) Init() *Balances {
+	if b.TimeStamp == 0 {
+		b.TimeStamp = time.Now().UnixMilli()
+	}
+	if b.Free == nil {
+		b.Free = map[string]float64{}
+	}
+	if b.Used == nil {
+		b.Used = map[string]float64{}
+	}
+	if b.Total == nil {
+		b.Total = map[string]float64{}
+	}
+	for code, ast := range b.Assets {
+		if ast.Total == 0 {
+			ast.Total = ast.Used + ast.Free
+		}
+		b.Free[code] = ast.Free
+		b.Used[code] = ast.Used
+		b.Total[code] = ast.Total
+	}
+	return b
+}
 
-const (
-	BoolNull  = base.BoolNull
-	BoolFalse = base.BoolFalse
-	BoolTrue  = base.BoolTrue
-)
+func (a *Asset) IsEmpty() bool {
+	return utils.EqualNearly(a.Used+a.Free, 0) && utils.EqualNearly(a.Debt, 0)
+}
 
-const (
-	OptProxy           = base.OptProxy
-	OptApiKey          = base.OptApiKey
-	OptApiSecret       = base.OptApiSecret
-	OptAccCreds        = base.OptAccCreds
-	OptAccName         = base.OptAccName
-	OptUserAgent       = base.OptUserAgent
-	OptReqHeaders      = base.OptReqHeaders
-	OptCareMarkets     = base.OptCareMarkets
-	OptPrecisionMode   = base.OptPrecisionMode
-	OptMarketType      = base.OptMarketType
-	OptContractType    = base.OptContractType
-	OptTimeInForce     = base.OptTimeInForce
-	OptWsIntvs         = base.OptWsIntvs
-	OptRetries         = base.OptRetries
-	OptWsConn          = base.OptWsConn
-	OptAuthRefreshSecs = base.OptAuthRefreshSecs
-	OptPositionMethod  = base.OptPositionMethod
-)
+func (ob *OrderBook) SetSide(text string, isBuy bool) {
+	var arr = make([][2]string, 0)
+	err := sonic.UnmarshalString(text, &arr)
+	if err != nil {
+		log.Error("unmarshal od book side fail", zap.Error(err))
+		return
+	}
+	var valArr = make([][2]float64, len(arr))
+	for i, row := range arr {
+		val1, _ := strconv.ParseFloat(row[0], 64)
+		val2, _ := strconv.ParseFloat(row[1], 64)
+		valArr[i][0] = val1
+		valArr[i][1] = val2
+	}
+	if isBuy {
+		ob.Bids.Update(valArr)
+	} else {
+		ob.Asks.Update(valArr)
+	}
+}
 
-const (
-	PrecModeDecimalPlace = utils.PrecModeDecimalPlace
-	PrecModeSignifDigits = utils.PrecModeSignifDigits
-	PrecModeTickSize     = utils.PrecModeTickSize
-)
+func NewOrderBookSide(isBuy bool, depth int, deltas [][2]float64) *OrderBookSide {
+	obs := &OrderBookSide{
+		IsBuy: isBuy,
+		Depth: depth,
+		Rows:  make([][2]float64, 0, len(deltas)),
+		Index: make([]float64, 0, len(deltas)),
+	}
+	obs.Update(deltas)
+	return obs
+}
 
-const (
-	MarketSpot    = base.MarketSpot   // 现货交易
-	MarketMargin  = base.MarketMargin // 保证金杠杆现货交易 margin trade
-	MarketLinear  = base.MarketLinear
-	MarketInverse = base.MarketInverse
-	MarketOption  = base.MarketOption // 期权 for option contracts
-	MarketSwap    = base.MarketSwap   // 永续合约 for perpetual swap futures that don't have a delivery date
-	MarketFuture  = base.MarketFuture // 有交割日的期货 for expiring futures contracts that have a delivery/settlement date
-)
+func (obs *OrderBookSide) Update(deltas [][2]float64) {
+	for _, delta := range deltas {
+		obs.StoreArray(delta)
+	}
+	obs.Limit()
+}
 
-const (
-	MarginCross    = base.MarginCross
-	MarginIsolated = base.MarginIsolated
-)
+func (obs *OrderBookSide) StoreArray(delta [2]float64) {
+	price := delta[0]
+	size := delta[1]
+	indexPrice := price
+	if obs.IsBuy {
+		indexPrice = -price
+	}
 
-const (
-	OdStatusOpen      = base.OdStatusOpen
-	OdStatusClosed    = base.OdStatusClosed
-	OdStatusCanceled  = base.OdStatusCanceled
-	OdStatusCanceling = base.OdStatusCanceling
-	OdStatusRejected  = base.OdStatusRejected
-	OdStatusExpired   = base.OdStatusExpired
-)
+	index := sort.SearchFloat64s(obs.Index, indexPrice)
+	if size > 0 {
+		if index < len(obs.Index) && obs.Index[index] == indexPrice {
+			obs.Rows[index][1] = size
+		} else {
+			obs.Index = append(obs.Index, 0)
+			copy(obs.Index[index+1:], obs.Index[index:])
+			obs.Index[index] = indexPrice
 
-const (
-	OdTypeMarket          = base.OdTypeMarket
-	OdTypeLimit           = base.OdTypeLimit
-	OdTypeStopLoss        = base.OdTypeStopLoss
-	OdTypeStopLossLimit   = base.OdTypeStopLossLimit
-	OdTypeTakeProfit      = base.OdTypeTakeProfit
-	OdTypeTakeProfitLimit = base.OdTypeTakeProfitLimit
-	OdTypeStop            = base.OdTypeStop
-	OdTypeLimitMaker      = base.OdTypeLimitMaker
-)
+			obs.Rows = append(obs.Rows, [2]float64{})
+			copy(obs.Rows[index+1:], obs.Rows[index:])
+			obs.Rows[index] = delta
+		}
+	} else if index < len(obs.Index) && obs.Index[index] == indexPrice {
+		obs.Index = append(obs.Index[:index], obs.Index[index+1:]...)
+		obs.Rows = append(obs.Rows[:index], obs.Rows[index+1:]...)
+	}
+}
 
-const (
-	OdSideBuy  = base.OdSideBuy
-	OdSideSell = base.OdSideSell
-)
+func (obs *OrderBookSide) Store(price, size float64) {
+	obs.StoreArray([2]float64{price, size})
+}
 
-const (
-	PosSideLong  = base.PosSideLong
-	PosSideShort = base.PosSideShort
-	PosSideBoth  = base.PosSideBoth
-)
-
-const (
-	TimeInForceGTC = base.TimeInForceGTC // Good Till Cancel 一直有效，直到被成交或取消
-	TimeInForceIOC = base.TimeInForceIOC // Immediate or Cancel 无法立即成交的部分取消
-	TimeInForceFOK = base.TimeInForceFOK // Fill or Kill 无法全部立即成交就撤销
-	TimeInForceGTX = base.TimeInForceGTX // Good Till Crossing 无法成为挂单方就取消
-	TimeInForceGTD = base.TimeInForceGTD // Good Till Date 在特定时间前有效，到期自动取消
-	TimeInForcePO  = base.TimeInForcePO  // Post Only
-)
-
-var (
-	ParamHandshakeTimeout = base.ParamHandshakeTimeout
-	ParamChanCaps         = base.ParamChanCaps
-	ParamChanCap          = base.ParamChanCap
-)
-
-var (
-// AllMarketTypes = base.AllMarketTypes
-)
-
-type FuncSign = base.FuncSign
-type FuncFetchCurr = base.FuncFetchCurr
-type FuncFetchMarkets = base.FuncFetchMarkets
-type FuncAuth = base.FuncAuth
-type FuncOnWsMsg = base.FuncOnWsMsg
-type FuncOnWsMethod = base.FuncOnWsMethod
-type FuncOnWsErr = base.FuncOnWsErr
-type FuncOnWsClose = base.FuncOnWsClose
-type FuncGetWsJob = base.FuncGetWsJob
-type Exchange = base.Exchange
-type Account = base.Account
-type ExgHosts = base.ExgHosts
-type ExgFee = base.ExgFee
-type TradeFee = base.TradeFee
-type FeeTiers = base.FeeTiers
-type FeeTierItem = base.FeeTierItem
-type Entry = base.Entry
-type Credential = base.Credential
-type HttpReq = base.HttpReq
-type HttpRes = base.HttpRes
-type CurrencyMap = base.CurrencyMap
-type Currency = base.Currency
-type ChainNetwork = base.ChainNetwork
-type CodeLimits = base.CodeLimits
-type LimitRange = base.LimitRange
-type Market = base.Market
-type Precision = base.Precision
-type MarketLimits = base.MarketLimits
-type MarketMap = base.MarketMap
-type MarketArrMap = base.MarketArrMap
-type Ticker = base.Ticker
-type OHLCVArr = base.OHLCVArr
-type Kline = base.Kline
-type SymbolKline = base.SymbolKline
-type Balances = base.Balances
-type Asset = base.Asset
-type Position = base.Position
-type Order = base.Order
-type Trade = base.Trade
-type MyTrade = base.MyTrade
-type Fee = base.Fee
-type OrderBook = base.OrderBook
-type OrderBookSide = base.OrderBookSide
-type WsJobInfo = base.WsJobInfo
-type WsMsg = base.WsMsg
-type WsClient = base.WsClient
-type WebSocket = base.WebSocket
+func (obs *OrderBookSide) Limit() {
+	for len(obs.Rows) > obs.Depth {
+		obs.Rows = obs.Rows[:len(obs.Rows)-1]
+		obs.Index = obs.Index[:len(obs.Index)-1]
+	}
+}

@@ -1,4 +1,4 @@
-package banexg
+package bex
 
 import (
 	"fmt"
