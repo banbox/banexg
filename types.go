@@ -304,9 +304,10 @@ type Kline struct {
 	Volume float64
 }
 
-type SymbolKline struct {
+type PairTFKline struct {
 	Kline
-	Symbol string
+	Symbol    string
+	TimeFrame string
 }
 
 type Balances struct {

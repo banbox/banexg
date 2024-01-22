@@ -1,7 +1,6 @@
 package banexg
 
 import (
-	"fmt"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -386,7 +385,7 @@ func (c *WsClient) read() {
 
 func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
-	fmt.Printf("receive %s\n", msgText)
+	// fmt.Printf("receive %s\n", msgText)
 	msg, err := NewWsMsg(msgText)
 	if err != nil {
 		if c.OnError != nil {

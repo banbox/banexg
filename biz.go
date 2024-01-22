@@ -332,9 +332,9 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 	if mar, ok := markets[pair]; ok {
 		precision := mar.Precision.Price
 		if e.PrecisionMode == PrecModeTickSize {
-			return float64(precision), nil
+			return precision, nil
 		} else {
-			return 1 / math.Pow(10, float64(precision)), nil
+			return 1 / math.Pow(10, precision), nil
 		}
 	}
 	return 0, errs.NoMarketForPair
@@ -468,6 +468,27 @@ marketType TradeSpot/TradeMargin/TradeSwap/TradeFuture/TradeOption
 */
 func (e *Exchange) SafeSymbol(marketId, delimiter, marketType string) string {
 	return e.SafeMarket(marketId, delimiter, marketType).Symbol
+}
+
+/*
+CheckSymbols
+split valid and invalid symbols
+*/
+func (e *Exchange) CheckSymbols(symbols ...string) ([]string, []string) {
+	var items = make(map[string]struct{})
+	for _, symbol := range symbols {
+		items[symbol] = struct{}{}
+	}
+	var valids = make([]string, 0, len(symbols))
+	var fails = make([]string, 0, len(symbols)/5)
+	for symbol := range items {
+		if _, ok := e.Markets[symbol]; ok {
+			valids = append(valids, symbol)
+		} else {
+			fails = append(fails, symbol)
+		}
+	}
+	return valids, fails
 }
 
 func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error) {

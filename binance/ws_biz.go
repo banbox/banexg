@@ -262,13 +262,13 @@ watches historical candlestick data containing the open, high, low, and close pr
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan banexg.SymbolKline, *errs.Error) {
+func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan banexg.PairTFKline, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareOHLCVSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
 	}
 
-	create := func(cap int) chan banexg.SymbolKline { return make(chan banexg.SymbolKline, cap) }
+	create := func(cap int) chan banexg.PairTFKline { return make(chan banexg.PairTFKline, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
@@ -423,8 +423,9 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	h, _ := strconv.ParseFloat(k.High, 64)
 	l, _ := strconv.ParseFloat(k.Low, 64)
 	v, _ := strconv.ParseFloat(k.Volume, 64)
-	var kline = &banexg.SymbolKline{
-		Symbol: e.SafeSymbol(marketId, "", client.MarketType),
+	var kline = &banexg.PairTFKline{
+		Symbol:    e.SafeSymbol(marketId, "", client.MarketType),
+		TimeFrame: k.TimeFrame,
 		Kline: banexg.Kline{
 			Time:   k.OpenTime,
 			Open:   o,

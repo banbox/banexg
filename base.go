@@ -38,3 +38,8 @@ func (c *Credential) CheckFilled(keys map[string]bool) *errs.Error {
 	}
 	return nil
 }
+
+func IsContract(marketType string) bool {
+	return marketType == MarketFuture || marketType == MarketSwap ||
+		marketType == MarketLinear || marketType == MarketInverse
+}
