@@ -188,6 +188,63 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 	return chanKey, args, err
 }
 
+func (e *Binance) WatchTrades(symbols []string, params *map[string]interface{}) (chan banexg.Trade, *errs.Error) {
+	chanKey, symbols, args, err := e.prepareWatchTrades("SUBSCRIBE", symbols, params)
+	if err != nil {
+		return nil, err
+	}
+
+	create := func(cap int) chan banexg.Trade { return make(chan banexg.Trade, cap) }
+	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
+	e.AddWsChanRefs(chanKey, symbols...)
+	return out, nil
+}
+
+func (e *Binance) UnWatchTrades(symbols []string, params *map[string]interface{}) *errs.Error {
+	chanKey, symbols, _, err := e.prepareWatchTrades("UNSUBSCRIBE", symbols, params)
+
+	if err != nil {
+		return err
+	}
+	e.DelWsChanRefs(chanKey, symbols...)
+	return nil
+}
+
+func (e *Binance) prepareWatchTrades(method string, symbols []string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+	if len(symbols) == 0 {
+		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
+	}
+	args, market, err := e.LoadArgsMarket(symbols[0], params)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	name := utils.PopMapVal(args, banexg.ParamName, "trade")
+	msgHash := market.Type + "@" + name
+	client, requestId, err := e.GetWsClient(market.Type, msgHash)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	subParams := make([]string, 0, len(symbols))
+	pairs := make([]string, 0, len(symbols))
+	for _, symbol := range symbols {
+		mar, err := e.GetMarket(symbol)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		subParams = append(subParams, fmt.Sprintf("%s@%s", mar.LowercaseID, name))
+		pairs = append(pairs, symbol)
+	}
+	chanKey := client.Prefix(msgHash)
+	var request = map[string]interface{}{
+		"method": method,
+		"params": subParams,
+		"id":     requestId,
+	}
+	err = client.Write(request, nil)
+	return chanKey, pairs, args, nil
+}
+
 /*
 WatchMyTrades
 

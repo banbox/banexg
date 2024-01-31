@@ -35,6 +35,8 @@ type BanExchange interface {
 	UnWatchOHLCVs(jobs [][2]string, params *map[string]interface{}) *errs.Error
 	WatchMarkPrices(symbols []string, params *map[string]interface{}) (chan map[string]float64, *errs.Error)
 	UnWatchMarkPrices(symbols []string, params *map[string]interface{}) *errs.Error
+	WatchTrades(symbols []string, params *map[string]interface{}) (chan Trade, *errs.Error)
+	UnWatchTrades(symbols []string, params *map[string]interface{}) *errs.Error
 	WatchMyTrades(params *map[string]interface{}) (chan MyTrade, *errs.Error)
 	WatchBalance(params *map[string]interface{}) (chan Balances, *errs.Error)
 	WatchPositions(params *map[string]interface{}) (chan []*Position, *errs.Error)

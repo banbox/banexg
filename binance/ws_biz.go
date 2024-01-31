@@ -24,7 +24,7 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 				if err != nil {
 					log.Error("ws job fail", zap.String("job", item.ID), zap.Error(err))
 				} else {
-					log.Info("ws job ok", zap.String("job", item.ID))
+					log.Debug("ws job ok", zap.String("job", item.ID))
 				}
 			} else {
 				log.Error("no event ws msg", zap.String("msg", item.Text))
@@ -370,7 +370,38 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 }
 
 func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
-
+	// event: aggTrade/trade
+	event, _ := utils.SafeMapVal(msg, "e", "")
+	var isAggTrade = event == "aggTrade"
+	var chanKey = client.Prefix(client.MarketType + "@" + event)
+	marketId, _ := utils.SafeMapVal(msg, "s", "")
+	var symbol = e.SafeSymbol(marketId, "", client.MarketType)
+	var tradeId string
+	if isAggTrade {
+		tradeId, _ = utils.SafeMapVal(msg, "a", "")
+	} else {
+		tradeId, _ = utils.SafeMapVal(msg, "t", "")
+	}
+	maker, _ := utils.SafeMapVal(msg, "m", false)
+	quality, _ := utils.SafeMapVal(msg, "q", float64(0))
+	price, _ := utils.SafeMapVal(msg, "p", float64(0))
+	tradeTime, _ := utils.SafeMapVal(msg, "T", int64(0))
+	var trade = &banexg.Trade{
+		ID:        tradeId,
+		Symbol:    symbol,
+		Amount:    quality,
+		Price:     price,
+		Cost:      price * quality,
+		Timestamp: tradeTime,
+		Maker:     maker,
+		Info:      msg,
+	}
+	if maker {
+		trade.Side = banexg.OdSideSell
+	} else {
+		trade.Side = banexg.OdSideBuy
+	}
+	banexg.WriteOutChan(e.Exchange, chanKey, *trade, true)
 }
 
 type WsKline struct {
