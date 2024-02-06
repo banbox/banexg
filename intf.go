@@ -41,10 +41,10 @@ type BanExchange interface {
 	WatchBalance(params *map[string]interface{}) (chan Balances, *errs.Error)
 	WatchPositions(params *map[string]interface{}) (chan []*Position, *errs.Error)
 
-	PrecAmount(m *Market, amount float64) (string, *errs.Error)
-	PrecPrice(m *Market, price float64) (string, *errs.Error)
-	PrecCost(m *Market, cost float64) (string, *errs.Error)
-	PrecFee(m *Market, fee float64) (string, *errs.Error)
+	PrecAmount(m *Market, amount float64) (float64, *errs.Error)
+	PrecPrice(m *Market, price float64) (float64, *errs.Error)
+	PrecCost(m *Market, cost float64) (float64, *errs.Error)
+	PrecFee(m *Market, fee float64) (float64, *errs.Error)
 	PrecMode() int
 
 	HasApi(key string) bool

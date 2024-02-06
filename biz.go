@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -831,31 +832,39 @@ func (e *Exchange) LoadArgsMarketType(args map[string]interface{}, symbols ...st
 	return marketType, contractType, nil
 }
 
-func (e *Exchange) PrecAmount(m *Market, amount float64) (string, *errs.Error) {
-	res, err := utils.PrecFloat64Str(amount, m.Precision.Amount, false)
+func (e *Exchange) PrecAmount(m *Market, amount float64) (float64, *errs.Error) {
+	text, err := utils.PrecFloat64Str(amount, m.Precision.Amount, false)
 	if err != nil {
-		return "", errs.New(errs.CodePrecDecFail, err)
+		return 0, errs.New(errs.CodePrecDecFail, err)
+	}
+	res, err2 := strconv.ParseFloat(text, 64)
+	if err2 != nil {
+		return 0, errs.New(errs.CodePrecDecFail, err2)
 	}
 	return res, nil
 }
 
-func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (string, *errs.Error) {
-	res, err := utils.PrecFloat64Str(value, m.Precision.Price, round)
+func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (float64, *errs.Error) {
+	text, err := utils.PrecFloat64Str(value, m.Precision.Price, round)
 	if err != nil {
-		return "", errs.New(errs.CodePrecDecFail, err)
+		return 0, errs.New(errs.CodePrecDecFail, err)
+	}
+	res, err2 := strconv.ParseFloat(text, 64)
+	if err2 != nil {
+		return 0, errs.New(errs.CodePrecDecFail, err2)
 	}
 	return res, nil
 }
 
-func (e *Exchange) PrecPrice(m *Market, price float64) (string, *errs.Error) {
+func (e *Exchange) PrecPrice(m *Market, price float64) (float64, *errs.Error) {
 	return e.precPriceCost(m, price, true)
 }
 
-func (e *Exchange) PrecCost(m *Market, cost float64) (string, *errs.Error) {
+func (e *Exchange) PrecCost(m *Market, cost float64) (float64, *errs.Error) {
 	return e.precPriceCost(m, cost, false)
 }
 
-func (e *Exchange) PrecFee(m *Market, fee float64) (string, *errs.Error) {
+func (e *Exchange) PrecFee(m *Market, fee float64) (float64, *errs.Error) {
 	return e.precPriceCost(m, fee, true)
 }
 

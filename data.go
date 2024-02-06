@@ -120,14 +120,14 @@ const (
 )
 
 const (
-	OdTypeMarket          = "MARKET"
-	OdTypeLimit           = "LIMIT"
-	OdTypeStopLoss        = "STOP_LOSS"
-	OdTypeStopLossLimit   = "STOP_LOSS_LIMIT"
-	OdTypeTakeProfit      = "TAKE_PROFIT"
-	OdTypeTakeProfitLimit = "TAKE_PROFIT_LIMIT"
-	OdTypeStop            = "STOP"
-	OdTypeLimitMaker      = "LIMIT_MAKER"
+	OdTypeMarket          = "market"
+	OdTypeLimit           = "limit"
+	OdTypeStopLoss        = "stop_loss"
+	OdTypeStopLossLimit   = "stop_loss_limit"
+	OdTypeTakeProfit      = "take_profit"
+	OdTypeTakeProfitLimit = "take_profit_limit"
+	OdTypeStop            = "stop"
+	OdTypeLimitMaker      = "limit_maker"
 )
 
 const (
