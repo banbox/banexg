@@ -3,6 +3,7 @@ package banexg
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -703,7 +704,8 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 	log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
 		zap.Int("len", len(result.Content)), bodyShort)
 	if result.Status >= 400 {
-		result.Error = errs.NewMsg(result.Status, result.Content)
+		msg := fmt.Sprintf("%s  %v", req.URL, result.Content)
+		result.Error = errs.NewMsg(result.Status, msg)
 	}
 	defer func() {
 		cerr := rsp.Body.Close()

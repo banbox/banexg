@@ -14,7 +14,8 @@ import (
 
 // DefaultTimeEncoder serializes time.Time to a human-readable formatted string
 func DefaultTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	s := t.Format("2006/01/02 15:04:05.000 -07:00")
+	//s := t.Format("2006/01/02 15:04:05.000 -07:00")
+	s := t.Format("2006/01/02 15:04:05.000")
 	if e, ok := enc.(*textEncoder); ok {
 		for _, c := range []byte(s) {
 			e.buf.AppendByte(c)
@@ -296,11 +297,11 @@ func (enc *textEncoder) beginQuoteFiled() {
 	if enc.buf.Len() > 0 {
 		enc.buf.AppendByte(' ')
 	}
-	enc.buf.AppendByte('[')
+	//enc.buf.AppendByte('[')
 }
 
 func (enc *textEncoder) endQuoteFiled() {
-	enc.buf.AppendByte(']')
+	//enc.buf.AppendByte(']')
 }
 
 func (enc *textEncoder) AppendUint64(val uint64) {
@@ -541,17 +542,18 @@ func (enc *textEncoder) safeAddByteString(s []byte) {
 
 // See [log-fileds](https://github.com/tikv/rfcs/blob/master/text/2018-12-19-unified-log-format.md#log-fields-section).
 func (enc *textEncoder) needDoubleQuotes(s string) bool {
-	for i := 0; i < len(s); {
-		b := s[i]
-		if b <= 0x20 {
-			return true
-		}
-		switch b {
-		case '\\', '"', '[', ']', '=':
-			return true
-		}
-		i++
-	}
+	// anyongjin: 这里固定不添加双引号
+	//for i := 0; i < len(s); {
+	//	b := s[i]
+	//	if b <= 0x20 {
+	//		return true
+	//	}
+	//	switch b {
+	//	case '\\', '"', '[', ']', '=':
+	//		return true
+	//	}
+	//	i++
+	//}
 	return false
 }
 
@@ -569,14 +571,17 @@ func (enc *textEncoder) tryAddRuneSelf(b byte) bool {
 		enc.buf.AppendByte('\\')
 		enc.buf.AppendByte(b)
 	case '\n':
-		enc.buf.AppendByte('\\')
-		enc.buf.AppendByte('n')
+		enc.buf.AppendByte('\n')
+		//enc.buf.AppendByte('\\')
+		//enc.buf.AppendByte('n')
 	case '\r':
-		enc.buf.AppendByte('\\')
-		enc.buf.AppendByte('r')
+		enc.buf.AppendByte('\r')
+		//enc.buf.AppendByte('\\')
+		//enc.buf.AppendByte('r')
 	case '\t':
-		enc.buf.AppendByte('\\')
-		enc.buf.AppendByte('t')
+		enc.buf.AppendByte('\t')
+		//enc.buf.AppendByte('\\')
+		//enc.buf.AppendByte('t')
 
 	default:
 		// Encode bytes < 0x20, except for the escape sequences above.
