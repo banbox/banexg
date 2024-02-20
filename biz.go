@@ -12,6 +12,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -659,12 +660,18 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 		return &HttpRes{Error: errs.ApiNotSupport}
 	}
 	if e.EnableRateLimit == BoolTrue {
+		e.rateM.Lock()
 		elapsed := e.MilliSeconds() - e.lastRequestMS
-		sleepMS := int64(float64(e.RateLimit) * api.Cost)
+		cost := api.Cost
+		if cost == 0 {
+			cost = 1
+		}
+		sleepMS := int64(math.Round(float64(e.RateLimit) * cost))
 		if elapsed < sleepMS {
 			time.Sleep(time.Duration(sleepMS-elapsed) * time.Millisecond)
 		}
 		e.lastRequestMS = e.MilliSeconds()
+		e.rateM.Unlock()
 	}
 	sign := e.Sign(api, params)
 	if sign.Error != nil {
@@ -706,6 +713,9 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 	if result.Status >= 400 {
 		msg := fmt.Sprintf("%s  %v", req.URL, result.Content)
 		result.Error = errs.NewMsg(result.Status, msg)
+		if result.Status == 429 || result.Status == 418 {
+			result.Error.Data = rsp.Header.Get("Retry-After")
+		}
 	}
 	defer func() {
 		cerr := rsp.Body.Close()
@@ -732,6 +742,21 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			if rsp.Error.Code == errs.CodeNetFail {
 				// 网络错误等待3s重试
 				sleep = 3
+				continue
+			} else if rsp.Error.Code == 429 || rsp.Error.Code == 418 {
+				// 请求过于频繁，随机休息
+				retryAfter, _ := rsp.Error.Data.(string)
+				randWait := int(rand.Float32() * 10)
+				if retryAfter != "" {
+					retryAfterVal, err_ := strconv.Atoi(retryAfter)
+					if err_ != nil {
+						log.Error("parse Retry-After fail", zap.String("val", retryAfter), zap.Error(err_))
+					}
+					sleep = retryAfterVal + randWait
+				} else {
+					sleep = 30 + randWait
+				}
+				log.Warn(fmt.Sprintf("%v occur, retry after: %v", rsp.Error.Code, sleep))
 				continue
 			} else if e.GetRetryWait != nil {
 				// 子交易所根据错误信息返回睡眠时间

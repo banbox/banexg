@@ -4,6 +4,7 @@ import (
 	"github.com/banbox/banexg/errs"
 	"net/http"
 	"net/url"
+	"sync"
 )
 
 type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
@@ -33,9 +34,10 @@ type Exchange struct {
 	Accounts   map[string]*Account // name: account
 	DefAccName string              // default account name
 
-	EnableRateLimit int   // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
-	RateLimit       int64 // 请求速率控制毫秒数，最小间隔单位
-	lastRequestMS   int64 // 上次请求的13位时间戳
+	EnableRateLimit int        // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
+	RateLimit       int64      // 请求速率控制毫秒数，最小间隔单位
+	lastRequestMS   int64      // 上次请求的13位时间戳
+	rateM           sync.Mutex // 同步锁
 
 	UserAgent  string            // UserAgent of http request
 	ReqHeaders map[string]string // http headers for request exchange

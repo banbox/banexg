@@ -11,6 +11,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 			ID:        "binance",
 			Name:      "Binance",
 			Countries: []string{"JP", "MT"},
+			RateLimit: 50,
 			Options:   Options,
 			Hosts: &banexg.ExgHosts{
 				Test: map[string]string{
