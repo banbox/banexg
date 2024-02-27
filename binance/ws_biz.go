@@ -76,6 +76,8 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 			e.handleOrderUpdate(client, msg)
 		case "ORDER_TRADE_UPDATE":
 			e.handleOrderUpdate(client, msg)
+		case "ACCOUNT_CONFIG_UPDATE":
+			e.handleAccountConfigUpdate(client, msg)
 		default:
 			log.Warn("unhandle ws msg", zap.String("msg", item.Text))
 		}
@@ -717,4 +719,27 @@ func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]stri
 	}
 
 	banexg.WriteOutChan(e.Exchange, client.Prefix("mytrades"), trade, false)
+}
+
+func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[string]string) {
+	acText, ok := msg["ac"]
+	if !ok || acText == "" {
+		return
+	}
+	var data = make(map[string]interface{})
+	err_ := sonic.UnmarshalString(acText, &data)
+	if err_ != nil {
+		log.Error("unmarshal AccountConfigUpdate fail", zap.String("ac", acText), zap.Error(err_))
+		return
+	}
+	marketId := utils.GetMapVal(data, "s", "")
+	leverage := utils.GetMapVal(data, "l", 0)
+	market := e.GetMarketById(marketId, client.MarketType)
+	if market == nil {
+		log.Error("no market found for AccountConfigUpdate", zap.String("symbol", marketId))
+		return
+	}
+	e.Leverages[market.Symbol] = leverage
+	item := banexg.AccountConfig{Symbol: market.Symbol, Leverage: leverage}
+	banexg.WriteOutChan(e.Exchange, client.Prefix("accConfig"), item, false)
 }

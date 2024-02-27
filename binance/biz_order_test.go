@@ -12,13 +12,14 @@ import (
 func TestFetchOrders(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
-		{"market": banexg.MarketSpot},
-		//{"market": banexg.MarketLinear},
+		//{"market": banexg.MarketSpot},
+		{"market": banexg.MarketLinear},
 		//{"market": banexg.MarketInverse},
 		//{"market": banexg.MarketOption},
 	}
-	symbol := "ETH/USDT"
-	since := int64(1702991965921)
+
+	symbol := "BTC/USDT:USDT"
+	since := int64(1708511530259)
 	for _, item := range cases {
 		text, _ := sonic.MarshalString(item)
 		res, err := exg.FetchOrders(symbol, since, 0, &item)

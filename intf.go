@@ -12,6 +12,7 @@ type BanExchange interface {
 	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error)
 	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error)
 	LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error
+	GetLeverage(symbol string, notional float64) (int, int)
 	CheckSymbols(symbols ...string) ([]string, []string)
 
 	FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error)
@@ -19,6 +20,7 @@ type BanExchange interface {
 	FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, *errs.Error)
 
 	FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error)
+	FetchAccountPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error)
 	FetchPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error)
 	FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
 
@@ -40,6 +42,7 @@ type BanExchange interface {
 	WatchMyTrades(params *map[string]interface{}) (chan MyTrade, *errs.Error)
 	WatchBalance(params *map[string]interface{}) (chan Balances, *errs.Error)
 	WatchPositions(params *map[string]interface{}) (chan []*Position, *errs.Error)
+	WatchAccountConfig(params *map[string]interface{}) (chan AccountConfig, *errs.Error)
 
 	PrecAmount(m *Market, amount float64) (float64, *errs.Error)
 	PrecPrice(m *Market, price float64) (float64, *errs.Error)
@@ -55,6 +58,7 @@ type BanExchange interface {
 	GetAccount(id string) (*Account, *errs.Error)
 	SetMarketType(marketType, contractType string) *errs.Error
 	GetID() string
+	Close() *errs.Error
 }
 
 type WsConn interface {

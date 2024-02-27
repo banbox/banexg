@@ -172,3 +172,23 @@ func (obs *OrderBookSide) Limit() {
 		obs.Index = obs.Index[:len(obs.Index)-1]
 	}
 }
+
+func (b *OrderBook) LimitPrice(side string, depth float64) float64 {
+	book := b.Asks
+	if side == OdSideBuy {
+		book = b.Bids
+	}
+	volSum, lastPrice := float64(0), float64(0)
+	for _, row := range book.Rows {
+		volSum += row[1]
+		lastPrice = row[0]
+		if volSum >= depth {
+			break
+		}
+	}
+	if volSum < depth {
+		log.Warn("depth not enough", zap.Float64("require", depth), zap.Float64("cur", volSum),
+			zap.Int("len", len(book.Rows)))
+	}
+	return lastPrice
+}

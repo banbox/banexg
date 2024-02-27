@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -542,6 +543,10 @@ func (e *Exchange) LoadLeverageBrackets(reload bool, params *map[string]interfac
 	return errs.NotImplement
 }
 
+func (e *Exchange) GetLeverage(symbol string, notional float64) (int, int) {
+	return 0, 0
+}
+
 func (e *Exchange) CalcMaintMargin(symbol string, cost float64) float64 {
 	return 0
 }
@@ -1011,4 +1016,23 @@ func (e *Exchange) SetMarketType(marketType, contractType string) *errs.Error {
 
 func (e *Exchange) GetID() string {
 	return e.ID
+}
+
+func (e *Exchange) Close() *errs.Error {
+	if e.MarketsWait != nil {
+		close(e.MarketsWait)
+		e.MarketsWait = nil
+	}
+	for key, chanQ := range e.WsOutChans {
+		chVal := reflect.ValueOf(chanQ)
+		if chVal.Kind() == reflect.Chan {
+			chVal.Close()
+		}
+		delete(e.WsOutChans, key)
+	}
+	for _, client := range e.WSClients {
+		client.Close()
+	}
+	e.WSClients = map[string]*WsClient{}
+	return nil
 }

@@ -68,6 +68,7 @@ type Exchange struct {
 	TimeInForce   string // GTC/IOC/FOK
 
 	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
+	Leverages  map[string]int                // 币种当前的杠杆倍数
 	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
 
 	WSClients  map[string]*WsClient           // accName@url: websocket clients
@@ -368,6 +369,7 @@ type Order struct {
 	Symbol              string      `json:"symbol"`
 	Type                string      `json:"type"`
 	TimeInForce         string      `json:"timeInForce"`
+	PositionSide        string      `json:"positionSide"`
 	Side                string      `json:"side"`
 	Price               float64     `json:"price"`
 	Average             float64     `json:"average"`
@@ -402,12 +404,13 @@ type Trade struct {
 
 type MyTrade struct {
 	Trade
-	Filled   float64     `json:"filled"`   // 累计成交量
-	ClientID string      `json:"clientID"` // 客户端订单ID
-	Average  float64     `json:"average"`  // 平均成交价格
-	State    string      `json:"state"`    // 状态
-	PosSide  string      `json:"posSide"`  // 持仓方向 long/short
-	Info     interface{} `json:"info"`
+	Filled     float64     `json:"filled"`     // 累计成交量
+	ClientID   string      `json:"clientID"`   // 客户端订单ID
+	Average    float64     `json:"average"`    // 平均成交价格
+	State      string      `json:"state"`      // 状态
+	PosSide    string      `json:"posSide"`    // 持仓方向 long/short
+	ReduceOnly bool        `json:"reduceOnly"` // 是否是只减仓单
+	Info       interface{} `json:"info"`
 }
 
 type Fee struct {
@@ -432,7 +435,7 @@ OrderBookSide
 */
 type OrderBookSide struct {
 	IsBuy bool
-	Rows  [][2]float64
+	Rows  [][2]float64 // [][price, size]
 	Index []float64
 	Depth int
 }
@@ -466,4 +469,9 @@ type WsMsg struct {
 	Text    string
 	Object  map[string]string
 	List    []map[string]string
+}
+
+type AccountConfig struct {
+	Symbol   string
+	Leverage int
 }

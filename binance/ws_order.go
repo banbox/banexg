@@ -494,6 +494,7 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.State, _ = utils.SafeMapVal(msg, "X", "")
 	posSide, _ := utils.SafeMapVal(msg, "ps", "")
 	res.PosSide = strings.ToLower(posSide)
+	res.ReduceOnly, _ = utils.SafeMapVal(msg, "R", false)
 
 	res.Info = msg
 	res.Timestamp, _ = utils.SafeMapVal(msg, "T", int64(0))

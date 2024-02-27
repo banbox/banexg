@@ -685,6 +685,22 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 	return nil
 }
 
+func (e *Binance) GetLeverage(symbol string, notional float64) (int, int) {
+	info, ok := e.LeverageBrackets[symbol]
+	maxVal := 0
+	if ok && len(info.Brackets) > 0 {
+		for _, row := range info.Brackets {
+			if notional < row.Floor {
+				break
+			}
+			maxVal = row.InitialLeverage
+			break
+		}
+	}
+	leverage, _ := e.Leverages[symbol]
+	return leverage, maxVal
+}
+
 /*
 GetMaintMarginPct
 获取指定名义价值的维持保证金比率
@@ -732,4 +748,15 @@ func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *b
 		res[symbol] = bracket
 	}
 	return res, nil
+}
+
+func (e *Binance) Close() *errs.Error {
+	err := e.Exchange.Close()
+	if err != nil {
+		return err
+	}
+	e.streamBySubHash = make(map[string]string)
+	e.streamIndex = -1
+	e.wsRequestId = map[string]int{}
+	return nil
 }
