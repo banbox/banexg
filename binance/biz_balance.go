@@ -633,13 +633,15 @@ func (a SpotAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
 
 func (a *FutureAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset {
 	code := getCurrCode(a.Asset)
-	free, _ := strconv.ParseFloat(a.AvailableBalance, 64)
 	used, _ := strconv.ParseFloat(a.InitialMargin, 64)
-	total, _ := strconv.ParseFloat(a.MarginBalance, 64)
+	total, _ := strconv.ParseFloat(a.WalletBalance, 64)
+	uPol, _ := strconv.ParseFloat(a.UnrealizedProfit, 64)
+	free := total - used + uPol
 	return &banexg.Asset{
 		Code:  code,
 		Free:  free,
 		Used:  used,
 		Total: total,
+		UPol:  uPol,
 	}
 }

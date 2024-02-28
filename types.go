@@ -329,6 +329,7 @@ type Asset struct {
 	Used  float64
 	Total float64
 	Debt  float64
+	UPol  float64
 }
 
 type Position struct {
