@@ -74,19 +74,28 @@ func GetMapFloat(data map[string]interface{}, key string) float64 {
 	return 0.0
 }
 
+/*
+GetMapVal
+从map中获取指定类型的值。只支持简单类型，不支持slice,map,array,struct等
+*/
 func GetMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 	if val, ok := items[key]; ok {
 		if tVal, ok := val.(T); ok {
 			return tVal
 		} else {
 			var zero T
-			typ := reflect.TypeOf(zero)
-			panic(fmt.Sprintf("option %s should be %s", key, typ.Name()))
+			reqType := reflect.TypeOf(zero).String()
+			curType := reflect.TypeOf(val).String()
+			panic(fmt.Sprintf("option %s should be %s, but is %s", key, reqType, curType))
 		}
 	}
 	return defVal
 }
 
+/*
+PopMapVal
+从map中获取指定类型的值并删除。只支持简单类型，不支持slice,map,array,struct等
+*/
 func PopMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 	if val, ok := items[key]; ok {
 		delete(items, key)
@@ -95,7 +104,7 @@ func PopMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 		} else {
 			var zero T
 			typ := reflect.TypeOf(zero)
-			panic(fmt.Sprintf("option %s should be %s", key, typ.Name()))
+			panic(fmt.Sprintf("option %s should be %s", key, typ.String()))
 		}
 	}
 	return defVal

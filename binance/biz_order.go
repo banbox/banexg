@@ -382,7 +382,7 @@ func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	result.Average = avgPrice
 	result.Amount = amount
 	result.TriggerPrice = stopPrice
-	result.PositionSide = o.PositionSide
+	result.PositionSide = strings.ToLower(o.PositionSide)
 	return result
 }
 
