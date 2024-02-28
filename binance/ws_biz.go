@@ -364,6 +364,9 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 		symbol, _ := utils.SafeMapVal(msg, "s", "")
 		markPrice, _ := utils.SafeMapVal(msg, "p", float64(0))
 		symbol = e.SafeSymbol(symbol, "", client.MarketType)
+		if symbol == "" {
+			continue
+		}
 		res[symbol] = markPrice
 	}
 	chanKey := client.Prefix(client.MarketType + "@markPrice")
@@ -655,6 +658,9 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 		}
 		for _, pos := range Data.Positions {
 			symbol := e.SafeSymbol(pos.Symbol, "", client.MarketType)
+			if symbol == "" {
+				continue
+			}
 			side := strings.ToLower(pos.PositionSide)
 			key := symbol + "#" + side
 			p, ok := posMap[key]

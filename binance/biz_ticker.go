@@ -158,7 +158,11 @@ func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType stri
 	}
 	var result = make([]*banexg.Ticker, len(data))
 	for i, item := range data {
-		result[i] = item.ToStdTicker(e, marketType)
+		ticker := item.ToStdTicker(e, marketType)
+		if ticker.Symbol == "" {
+			continue
+		}
+		result[i] = ticker
 	}
 	return result, nil
 }
@@ -294,6 +298,9 @@ func parsePrices[T ITickerPrice](rsp *banexg.HttpRes, e *Binance, marketType str
 	var result = make(map[string]float64)
 	for _, item := range data {
 		pair, price := item.ToStdPrice(e, marketType)
+		if pair == "" {
+			continue
+		}
 		result[pair] = price
 	}
 	return result, nil

@@ -743,6 +743,9 @@ func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *b
 	var res = make(map[string]*SymbolLvgBrackets)
 	for _, item := range data {
 		symbol := mapSymbol(item.GetSymbol())
+		if symbol == "" {
+			continue
+		}
 		bracket := item.ToStdBracket()
 		bracket.Symbol = symbol
 		res[symbol] = bracket

@@ -536,6 +536,9 @@ func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balan
 	}
 	for _, item := range data.Assets {
 		symbol := e.SafeSymbol(item.Symbol, "", banexg.MarketMargin)
+		if symbol == "" {
+			continue
+		}
 		itemRes := make(map[string]*banexg.Asset)
 		if item.BaseAsset != nil {
 			asset := item.BaseAsset.ToStdAsset(getCurrCode)

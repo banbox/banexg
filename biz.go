@@ -448,7 +448,7 @@ func (e *Exchange) SafeMarket(marketId, delimiter, marketType string) *Market {
 		}
 	}
 	result := &Market{
-		Symbol: marketId,
+		ID: marketId,
 	}
 	if delimiter != "" {
 		parts := strings.Split(marketId, delimiter)
