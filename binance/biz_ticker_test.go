@@ -50,3 +50,14 @@ func TestFetchTickers(t *testing.T) {
 	}
 	fmt.Println(sonic.MarshalString(tickers))
 }
+
+func TestFetchTickerPrice(t *testing.T) {
+	exg := getBinance(nil)
+	prices, err := exg.FetchTickerPrice("", &map[string]interface{}{
+		"market": banexg.MarketLinear,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(sonic.MarshalString(prices))
+}

@@ -11,6 +11,7 @@ type BanExchange interface {
 	GetMarket(symbol string) (*Market, *errs.Error)
 	FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error)
 	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error)
+	FetchTickerPrice(symbol string, params *map[string]interface{}) (map[string]float64, *errs.Error)
 	LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error
 	GetLeverage(symbol string, notional float64) (int, int)
 	CheckSymbols(symbols ...string) ([]string, []string)

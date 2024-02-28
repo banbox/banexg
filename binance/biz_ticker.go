@@ -104,9 +104,55 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 	}
 }
 
+/*
+FetchTickerPrice
+symbol为空表示获取所有，不为空获取单个
+*/
+func (e *Binance) FetchTickerPrice(symbol string, params *map[string]interface{}) (map[string]float64, *errs.Error) {
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args)
+	if err != nil {
+		return nil, err
+	}
+	var method string
+	switch marketType {
+	case banexg.MarketOption:
+		method = "eapiPublicGetTicker"
+	case banexg.MarketLinear:
+		method = "fapiPublicV2GetTickerPrice"
+	case banexg.MarketInverse:
+		method = "dapiPublicGetTickerPrice"
+	default:
+		method = "publicGetTickerPrice"
+	}
+	if symbol != "" {
+		market, err := e.GetMarket(symbol)
+		if err != nil {
+			return nil, err
+		}
+		args["symbol"] = market.ID
+	}
+	tryNum := e.GetRetryNum("GetTickerPrice", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	switch marketType {
+	case banexg.MarketOption:
+		return parsePrices[*OptionTicker](rsp, e, marketType)
+	case banexg.MarketLinear:
+		return parsePrices[*LinearTickerPrice](rsp, e, marketType)
+	case banexg.MarketInverse:
+		return parsePrices[*InverseTickerPrice](rsp, e, marketType)
+	default:
+		return parsePrices[*SymbolPrice](rsp, e, marketType)
+	}
+}
+
 func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, *errs.Error) {
 	var data = make([]T, 0)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	rspText := banexg.EnsureArrStr(rsp.Content)
+	err := sonic.UnmarshalString(rspText, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -207,4 +253,48 @@ func (t *OptionTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker
 		Ask:         t.AskPrice,
 	}
 	return ticker
+}
+
+type ITickerPrice interface {
+	ToStdPrice(e *Binance, marketType string) (string, float64)
+}
+
+type SymbolPrice struct {
+	Symbol string  `json:"symbol"`       // 交易对，比如 "LTCBTC"
+	Price  float64 `json:"price,string"` // 交易价格，保留为字符串以防止精度损失
+}
+
+type LinearTickerPrice struct {
+	SymbolPrice
+	Time int64 `json:"time"` // 撮合引擎的时间戳，单位为毫秒
+}
+
+type InverseTickerPrice struct {
+	LinearTickerPrice
+	PS string `json:"ps"` // 标的交易对
+}
+
+func (t *OptionTicker) ToStdPrice(e *Binance, marketType string) (string, float64) {
+	symbol := e.SafeSymbol(t.Symbol, "", marketType)
+	return symbol, t.LastPrice
+}
+
+func (t *SymbolPrice) ToStdPrice(e *Binance, marketType string) (string, float64) {
+	symbol := e.SafeSymbol(t.Symbol, "", marketType)
+	return symbol, t.Price
+}
+
+func parsePrices[T ITickerPrice](rsp *banexg.HttpRes, e *Binance, marketType string) (map[string]float64, *errs.Error) {
+	var data = make([]T, 0)
+	rspText := banexg.EnsureArrStr(rsp.Content)
+	err := sonic.UnmarshalString(rspText, &data)
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
+	var result = make(map[string]float64)
+	for _, item := range data {
+		pair, price := item.ToStdPrice(e, marketType)
+		result[pair] = price
+	}
+	return result, nil
 }

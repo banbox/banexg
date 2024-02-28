@@ -192,3 +192,13 @@ func (b *OrderBook) LimitPrice(side string, depth float64) float64 {
 	}
 	return lastPrice
 }
+
+func EnsureArrStr(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "[]"
+	} else if strings.HasPrefix(text, "[") {
+		return text
+	}
+	return strings.Join([]string{"[", text, "]"}, "")
+}
