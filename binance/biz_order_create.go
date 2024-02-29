@@ -77,32 +77,31 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			args["sideEffectType"] = "AUTO_REPAY"
 		}
 	}
-	exgOdType := odType
 	stopPrice := float64(0)
 	if isStopLoss {
 		stopPrice = stopLossPrice
 		if isMarket {
-			exgOdType = "STOP_LOSS"
+			odType = banexg.OdTypeStopLoss
 			if market.Contract {
-				exgOdType = "STOP_MARKET"
+				odType = banexg.OdTypeStopMarket
 			}
 		} else if isLimit {
-			exgOdType = "STOP_LOSS_LIMIT"
+			odType = banexg.OdTypeStopLossLimit
 			if market.Contract {
-				exgOdType = "STOP"
+				odType = banexg.OdTypeStop
 			}
 		}
 	} else if isTakeProfit {
 		stopPrice = takeProfitPrice
 		if isMarket {
-			exgOdType = "TAKE_PROFIT"
+			odType = banexg.OdTypeTakeProfit
 			if market.Contract {
-				exgOdType = "TAKE_PROFIT_MARKET"
+				odType = banexg.OdTypeTakeProfitMarket
 			}
 		} else if isLimit {
-			exgOdType = "TAKE_PROFIT_LIMIT"
+			odType = banexg.OdTypeTakeProfitLimit
 			if market.Contract {
-				exgOdType = "TAKE_PROFIT"
+				odType = banexg.OdTypeTakeProfit
 			}
 		}
 	}
@@ -125,6 +124,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	}
 	// 'ACK' for order id, 'RESULT' for full order or 'FULL' for order with fills
 	args["newOrderRespType"] = odRspType
+	exgOdType := strings.ToUpper(odType)
 	if market.Option {
 		if odType == banexg.OdTypeMarket {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "market order is invalid for option")
@@ -154,7 +154,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	   #     TAKE_PROFIT_MARKET   stopPrice
 	   #     TRAILING_STOP_MARKET callbackRate
 	*/
-	if exgOdType == banexg.OdTypeMarket {
+	if odType == banexg.OdTypeMarket {
 		quantityRequired = true
 		if market.Spot {
 			cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
@@ -169,35 +169,35 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 				args["quoteOrderQty"] = precRes
 			}
 		}
-	} else if exgOdType == banexg.OdTypeLimit {
+	} else if odType == banexg.OdTypeLimit {
 		priceRequired = true
 		timeInForceRequired = true
 		quantityRequired = true
-	} else if exgOdType == banexg.OdTypeStopLoss || exgOdType == banexg.OdTypeTakeProfit {
+	} else if odType == banexg.OdTypeStopLoss || odType == banexg.OdTypeTakeProfit {
 		stopPriceRequired = true
 		quantityRequired = true
 		if market.Linear || market.Inverse {
 			priceRequired = true
 		}
-	} else if exgOdType == banexg.OdTypeStopLossLimit || exgOdType == banexg.OdTypeTakeProfitLimit {
+	} else if odType == banexg.OdTypeStopLossLimit || odType == banexg.OdTypeTakeProfitLimit {
 		quantityRequired = true
 		stopPriceRequired = true
 		priceRequired = true
 		timeInForceRequired = true
-	} else if exgOdType == banexg.OdTypeLimitMaker {
+	} else if odType == banexg.OdTypeLimitMaker {
 		priceRequired = true
 		quantityRequired = true
-	} else if exgOdType == banexg.OdTypeStop {
+	} else if odType == banexg.OdTypeStop {
 		quantityRequired = true
 		stopPriceRequired = true
 		priceRequired = true
-	} else if exgOdType == "STOP_MARKET" || exgOdType == "TAKE_PROFIT_MARKET" {
+	} else if odType == banexg.OdTypeStopMarket || odType == banexg.OdTypeTakeProfitMarket {
 		closePosition := utils.GetMapVal(args, banexg.ParamClosePosition, false)
 		if !closePosition {
 			quantityRequired = true
 		}
 		stopPriceRequired = true
-	} else if exgOdType == "TRAILING_STOP_MARKET" {
+	} else if odType == banexg.OdTypeTrailingStopMarket {
 		quantityRequired = true
 		callBackRate := utils.GetMapVal(args, banexg.ParamCallbackRate, 0.0)
 		if callBackRate == 0 {

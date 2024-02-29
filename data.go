@@ -119,15 +119,19 @@ const (
 	OdStatusExpired   = "expired"
 )
 
+// 此处订单类型全部使用币安订单类型小写
 const (
-	OdTypeMarket          = "market"
-	OdTypeLimit           = "limit"
-	OdTypeStopLoss        = "stop_loss"
-	OdTypeStopLossLimit   = "stop_loss_limit"
-	OdTypeTakeProfit      = "take_profit"
-	OdTypeTakeProfitLimit = "take_profit_limit"
-	OdTypeStop            = "stop"
-	OdTypeLimitMaker      = "limit_maker"
+	OdTypeMarket             = "market"
+	OdTypeLimit              = "limit"
+	OdTypeLimitMaker         = "limit_maker"
+	OdTypeStop               = "stop"
+	OdTypeStopMarket         = "stop_market"
+	OdTypeStopLoss           = "stop_loss"
+	OdTypeStopLossLimit      = "stop_loss_limit"
+	OdTypeTakeProfit         = "take_profit"
+	OdTypeTakeProfitLimit    = "take_profit_limit"
+	OdTypeTakeProfitMarket   = "take_profit_market"
+	OdTypeTrailingStopMarket = "trailing_stop_market"
 )
 
 const (

@@ -272,8 +272,8 @@ func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	}
 	orderType := strings.ToLower(o.Type)
 	postOnly := false
-	if orderType == "limit_maker" {
-		orderType = "limit"
+	if orderType == banexg.OdTypeLimitMaker {
+		orderType = banexg.OdTypeLimit
 		postOnly = true
 	}
 	timeInForce := o.TimeInForce
