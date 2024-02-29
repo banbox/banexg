@@ -14,6 +14,13 @@ func New(code int, err error) *Error {
 	return &Error{Code: code, Msg: err.Error(), Stack: CallStack(3, 30)}
 }
 
+func (e *Error) Short() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("[%d] %s", e.Code, e.Msg)
+}
+
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
