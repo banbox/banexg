@@ -5,7 +5,6 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"strconv"
 	"strings"
 )
@@ -222,7 +221,7 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 
 func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -235,7 +234,7 @@ func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes
 
 func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, *errs.Error) {
 	var data = new(T)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}

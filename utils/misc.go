@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/banbox/banexg/log"
 	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/decoder"
 	"go.uber.org/zap"
 	"math/rand"
 	"net/url"
@@ -138,7 +140,7 @@ func SafeMapVal[T any](items map[string]string, key string, defVal T) (result T,
 		case reflect.String:
 			result = any(text).(T)
 		default:
-			err = sonic.UnmarshalString(text, &result)
+			err = UnmarshalString(text, &result)
 		}
 		if err != nil {
 			return defVal, err
@@ -222,11 +224,27 @@ func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
 		// 初始化目标类型的值
 		var val T
 		// 解析数据
-		err := sonic.Unmarshal(b, &val)
+		err := Unmarshal(b, &val)
 		if err != nil {
 			log.Error("Error unmarshalling chan", zap.Error(err))
 			continue // or handle the error as necessary
 		}
 		outChan <- val
 	}
+}
+
+/*
+UnmarshalString
+替代sonic.UnmarshalString，默认函数在将int64的长整数反序列化时，转为float64，导致精度损失，这里强制使用int64解码
+*/
+func UnmarshalString(text string, out interface{}) error {
+	dc := decoder.NewDecoder(text)
+	dc.UseInt64()
+	return dc.Decode(out)
+}
+
+func Unmarshal(data []byte, out interface{}) error {
+	dc := decoder.NewStreamDecoder(bytes.NewReader(data))
+	dc.UseInt64()
+	return dc.Decode(out)
 }

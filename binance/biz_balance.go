@@ -5,7 +5,6 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"math"
 	"strconv"
 	"strings"
@@ -172,7 +171,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 	var posList = make([]IAccPosition, 0)
 	if marketType == banexg.MarketLinear {
 		var res = LinearAccPositions{}
-		err := sonic.UnmarshalString(rsp.Content, &res)
+		err := utils.UnmarshalString(rsp.Content, &res)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -184,7 +183,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 		}
 	} else {
 		var res = InverseAccPositions{}
-		err := sonic.UnmarshalString(rsp.Content, &res)
+		err := utils.UnmarshalString(rsp.Content, &res)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -319,7 +318,7 @@ func (p *InversePosition) GetNotional() string {
 func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
 	var data = make([]T, 0)
 	// fmt.Println(rsp.Content)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -481,7 +480,7 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 }
 
 func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {
-	err := sonic.UnmarshalString(content, data)
+	err := utils.UnmarshalString(content, data)
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "unmarshal fail: %v", err)
 	}

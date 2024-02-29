@@ -254,7 +254,7 @@ func CheckWsError(msg map[string]string) *errs.Error {
 	if ok {
 		var err = &errs.Error{}
 		errData, _ := sonic.Marshal(errRaw)
-		_ = sonic.Unmarshal(errData, err)
+		_ = utils.Unmarshal(errData, err)
 		return err
 	}
 	status, ok := msg["status"]
@@ -385,6 +385,7 @@ func (c *WsClient) read() {
 
 func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
+	log.Debug("receive ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
 	// fmt.Printf("receive %s\n", msgText)
 	msg, err := NewWsMsg(msgText)
 	if err != nil {
@@ -415,7 +416,7 @@ func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {
 	var err_ error
 	if strings.HasPrefix(msgText, "{") {
 		var msg = make(map[string]interface{})
-		err_ = sonic.UnmarshalString(msgText, &msg)
+		err_ = utils.UnmarshalString(msgText, &msg)
 		if err_ == nil {
 			var obj = utils.MapValStr(msg)
 			event, _ := utils.SafeMapVal(obj, "e", "")
@@ -424,7 +425,7 @@ func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {
 		}
 	} else if strings.HasPrefix(msgText, "[") {
 		var msgs = make([]map[string]interface{}, 0)
-		err_ = sonic.UnmarshalString(msgText, &msgs)
+		err_ = utils.UnmarshalString(msgText, &msgs)
 		if err_ == nil && len(msgs) > 0 {
 			var event string
 			var itemList = make([]map[string]string, len(msgs))

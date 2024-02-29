@@ -7,8 +7,6 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/decoder"
 	"go.uber.org/zap"
 	"maps"
 	"net/http"
@@ -164,7 +162,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			return nil, errs.NewMsg(errs.CodeInvalidResponse, "FetchCurrencies api fail: %s", res.Content)
 		}
 		var currList []*BnbCurrency
-		err := sonic.UnmarshalString(res.Content, &currList)
+		err := utils.UnmarshalString(res.Content, &currList)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -240,7 +238,7 @@ func makeGetRetryWait(e *Binance) func(e *errs.Error) int {
 				return 3
 			} else if strings.Contains(msg, "Please try again") {
 				// 立即重试
-				return 0
+				return 1
 			}
 		}
 		return -1
@@ -424,7 +422,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				continue
 			}
 			var res BnbMarketRsp
-			err := sonic.UnmarshalString(rsp.Content, &res)
+			err := utils.UnmarshalString(rsp.Content, &res)
 			if err != nil {
 				log.Error("Unmarshal bnb market fail", zap.String("text", rsp.Content))
 				continue
@@ -442,7 +440,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 
 func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
-	err := sonic.UnmarshalString(rsp.Content, &klines)
+	err := utils.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "decode option kline fail %v", err)
 	}
@@ -467,10 +465,7 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 
 func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
-	dc := decoder.NewDecoder(rsp.Content)
-	dc.UseInt64()
-	err := dc.Decode(&klines)
-	//errs := sonic.UnmarshalString(rsp.Content, &klines)
+	err := utils.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "parse bnb ohlcv fail: %v", err)
 	}
@@ -635,7 +630,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 		return nil, rsp.Error
 	}
 	var res = make(map[string]interface{})
-	err2 := sonic.UnmarshalString(rsp.Content, &res)
+	err2 := utils.UnmarshalString(rsp.Content, &res)
 	if err2 != nil {
 		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "%s decode rsp fail: %v", e.Name, err2)
 	}
@@ -665,7 +660,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 		return rsp.Error
 	}
 	var res = make([]LinearSymbolLvgBrackets, 0)
-	err2 := sonic.UnmarshalString(rsp.Content, &res)
+	err2 := utils.UnmarshalString(rsp.Content, &res)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
@@ -736,7 +731,7 @@ func (e *Binance) CalcMaintMargin(symbol string, cost float64) float64 {
 
 func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *banexg.HttpRes) (map[string]*SymbolLvgBrackets, *errs.Error) {
 	var data = make([]T, 0)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}

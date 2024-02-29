@@ -747,6 +747,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			if rsp.Error.Code == errs.CodeNetFail {
 				// 网络错误等待3s重试
 				sleep = 3
+				log.Warn(fmt.Sprintf("net fail, retry after: %v", sleep))
 				continue
 			} else if rsp.Error.Code == 429 || rsp.Error.Code == 418 {
 				// 请求过于频繁，随机休息
@@ -767,6 +768,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 				// 子交易所根据错误信息返回睡眠时间
 				sleep = e.GetRetryWait(rsp.Error)
 				if sleep >= 0 {
+					log.Info(fmt.Sprintf("server err, retry after: %v", sleep))
 					continue
 				}
 			}

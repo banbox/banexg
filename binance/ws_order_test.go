@@ -74,7 +74,7 @@ func (c *MockWsConn) ReadMsg() ([]byte, error) {
 		if ok {
 			log.Info("receive msg", zap.String("msg", string(data)))
 			var msgRaw map[string]interface{}
-			_ = sonic.Unmarshal(data, &msgRaw)
+			_ = utils.Unmarshal(data, &msgRaw)
 			msg := utils.MapValStr(msgRaw)
 			method, _ := utils.SafeMapVal(msg, "method", "")
 			id, _ := utils.SafeMapVal(msg, "id", 0)

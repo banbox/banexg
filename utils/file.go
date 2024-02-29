@@ -61,5 +61,5 @@ func ReadJsonFile(path string, obj interface{}) error {
 	if err != nil {
 		return err
 	}
-	return sonic.Unmarshal(data, obj)
+	return Unmarshal(data, obj)
 }

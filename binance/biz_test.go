@@ -493,9 +493,9 @@ func TestParseLinearPositionRisk(t *testing.T) {
 	pos.Info = nil
 	text, _ := sonic.MarshalString(pos)
 	var out = map[string]interface{}{}
-	_ = sonic.UnmarshalString(text, &out)
+	_ = utils.UnmarshalString(text, &out)
 	var expect = map[string]interface{}{}
-	_ = sonic.UnmarshalString(expectStr, &expect)
+	_ = utils.UnmarshalString(expectStr, &expect)
 	for k, v := range expect {
 		if outv, ok := out[k]; ok {
 			if outv != v {

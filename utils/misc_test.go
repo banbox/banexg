@@ -1,0 +1,43 @@
+package utils
+
+import (
+	"fmt"
+	"github.com/banbox/banexg/log"
+	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
+	"math"
+	"testing"
+)
+
+func TestSonicUnmarshal(t *testing.T) {
+	// sonic默认反序列化json中的number时，使用float64，对于一些大的int64的值，会导致精度损失，这里是测试哪些类型会有精度损失
+	// 使用utils.UnmarshalString替换后，大部分类型都解决了，只有math.MaxUint64由于溢出，依然有问题
+	runSonicItem("MaxInt64", math.MaxInt64)
+	runSonicItem("MinInt64", math.MinInt64)
+	runSonicItem("MaxInt32", math.MaxInt32)
+	runSonicItem("MinInt32", math.MinInt32)
+	runSonicItem("MaxFloat64", math.MaxFloat64)
+	runSonicItem("MaxFloat32", math.MaxFloat32)
+	uintVal := uint64(math.MaxUint64)
+	runSonicItem("MaxUint64", uintVal)
+}
+
+func runSonicItem[T comparable](name string, val T) {
+	text, err := sonic.MarshalString(val)
+	if err != nil {
+		panic(fmt.Sprintf("marshal %v fail: %v", name, err))
+	}
+	textWrap := fmt.Sprintf("{\"val\":%v}", text)
+	var res = make(map[string]interface{})
+	// err2 := sonic.UnmarshalString(textWrap, &res)
+	err2 := UnmarshalString(textWrap, &res)
+	if err2 != nil {
+		log.Error("unmarshal fail", zap.String("name", name), zap.Error(err2))
+	}
+	input := fmt.Sprintf("%v", val)
+	output := fmt.Sprintf("%v", res["val"])
+	if input != output {
+		log.Error("unmarshal wrong", zap.String("name", name), zap.String("input", input),
+			zap.String("text", text), zap.String("output", output))
+	}
+}

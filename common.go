@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"sort"
 	"strconv"
@@ -98,7 +97,7 @@ func (a *Asset) IsEmpty() bool {
 
 func (ob *OrderBook) SetSide(text string, isBuy bool) {
 	var arr = make([][2]string, 0)
-	err := sonic.UnmarshalString(text, &arr)
+	err := utils.UnmarshalString(text, &arr)
 	if err != nil {
 		log.Error("unmarshal od book side fail", zap.Error(err))
 		return

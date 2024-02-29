@@ -478,6 +478,7 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	if res.Cost == 0 {
 		res.Cost = res.Price * res.Amount
 	}
+	res.Order, _ = utils.SafeMapVal(msg, "i", "")
 	res.Maker, _ = utils.SafeMapVal(msg, "m", false)
 	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
 	feeCurr, _ := utils.SafeMapVal(msg, "N", "")

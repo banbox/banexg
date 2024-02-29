@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
-	"github.com/bytedance/sonic"
+	"github.com/banbox/banexg/utils"
 	"strconv"
 )
 
@@ -45,7 +45,7 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]in
 
 func parseOrderBook[T IBnbOrderBook](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.OrderBook, *errs.Error) {
 	var data = new(T)
-	err := sonic.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
