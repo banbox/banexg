@@ -192,6 +192,35 @@ func (b *OrderBook) LimitPrice(side string, depth float64) float64 {
 	return lastPrice
 }
 
+/*
+SumVolTo
+get sum volume between current price and target price
+second return val is rate filled
+*/
+func (b *OrderBook) SumVolTo(side string, price float64) (float64, float64) {
+	book := b.Asks
+	dirt := float64(1)
+	if side == OdSideBuy {
+		book = b.Bids
+		dirt = float64(-1)
+	}
+	if len(book.Rows) == 0 {
+		return 0, 1
+	}
+	volSum := float64(0)
+	lastPrice := float64(0)
+	firstPrice := book.Rows[0][0]
+	for _, row := range book.Rows {
+		lastPrice = row[0]
+		priceDiff := row[0] - price
+		if priceDiff*dirt >= 0 {
+			return volSum, 1
+		}
+		volSum += row[1]
+	}
+	return volSum, (lastPrice - firstPrice) / (price - firstPrice)
+}
+
 func (k *Kline) Clone() *Kline {
 	return &Kline{
 		Time:   k.Time,
