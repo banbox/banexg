@@ -192,6 +192,17 @@ func (b *OrderBook) LimitPrice(side string, depth float64) float64 {
 	return lastPrice
 }
 
+func (k *Kline) Clone() *Kline {
+	return &Kline{
+		Time:   k.Time,
+		Open:   k.Open,
+		High:   k.High,
+		Low:    k.Low,
+		Close:  k.Close,
+		Volume: k.Volume,
+	}
+}
+
 func EnsureArrStr(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
