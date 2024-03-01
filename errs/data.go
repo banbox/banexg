@@ -37,3 +37,7 @@ var (
 	NotImplement         = NewMsg(CodeNotImplement, "method not implement")
 	InvalidTimeFrame     = NewMsg(CodeInvalidTimeFrame, "invalid timeframe")
 )
+
+var (
+	PrintErr func(e error) string // print string for common error
+)

@@ -229,7 +229,7 @@ func makeGetRetryWait(e *Binance) func(e *errs.Error) int {
 			// 无需重试
 			return -1
 		}
-		msg := err.Msg
+		msg := err.Message()
 		if err.Code/100 == 5 && strings.Contains(msg, "Request occur unknown error") {
 			return 2
 		}
@@ -442,7 +442,7 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
 	err := utils.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
-		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "decode option kline fail %v", err)
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "decode option kline fail")
 	}
 	var res = make([]*banexg.Kline, len(klines))
 	for i, bar := range klines {
@@ -467,7 +467,7 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 	var klines = make([][]interface{}, 0)
 	err := utils.UnmarshalString(rsp.Content, &klines)
 	if err != nil {
-		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "parse bnb ohlcv fail: %v", err)
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "parse bnb ohlcv fail")
 	}
 	if len(klines) == 0 {
 		return nil, nil
@@ -632,7 +632,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	var res = make(map[string]interface{})
 	err2 := utils.UnmarshalString(rsp.Content, &res)
 	if err2 != nil {
-		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "%s decode rsp fail: %v", e.Name, err2)
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "%s decode rsp fail", e.Name)
 	}
 	return res, nil
 }

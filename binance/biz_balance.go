@@ -482,7 +482,7 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {
 	err := utils.UnmarshalString(content, data)
 	if err != nil {
-		return nil, errs.NewMsg(errs.CodeUnmarshalFail, "unmarshal fail: %v", err)
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = banexg.Balances{
 		Info:   data,

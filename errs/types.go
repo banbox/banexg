@@ -1,8 +1,9 @@
 package errs
 
 type Error struct {
-	Code  int    `json:"code"`
-	Msg   string `json:"msg"`
-	Stack string `json:"stack"`
+	Code  int
+	msg   string
+	Stack string
+	err   error
 	Data  interface{}
 }

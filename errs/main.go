@@ -6,26 +6,50 @@ import (
 	"strings"
 )
 
+func NewFull(code int, err error, format string, a ...any) *Error {
+	return &Error{Code: code, err: err, msg: fmt.Sprintf(format, a...), Stack: CallStack(3, 30)}
+}
+
 func NewMsg(code int, format string, a ...any) *Error {
-	return &Error{Code: code, Msg: fmt.Sprintf(format, a...), Stack: CallStack(3, 30)}
+	return &Error{Code: code, msg: fmt.Sprintf(format, a...), Stack: CallStack(3, 30)}
 }
 
 func New(code int, err error) *Error {
-	return &Error{Code: code, Msg: err.Error(), Stack: CallStack(3, 30)}
+	return &Error{Code: code, err: err, Stack: CallStack(3, 30)}
 }
 
 func (e *Error) Short() string {
 	if e == nil {
 		return ""
 	}
-	return fmt.Sprintf("[%d] %s", e.Code, e.Msg)
+	return fmt.Sprintf("[%d] %s", e.Code, e.Message())
 }
 
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
-	return fmt.Sprintf("[%d] %s\n%s", e.Code, e.Msg, e.Stack)
+	return fmt.Sprintf("[%d] %s\n%s", e.Code, e.Message(), e.Stack)
+}
+
+func (e *Error) Message() string {
+	if e.err == nil {
+		return e.msg
+	}
+	var errMsg string
+	if PrintErr != nil {
+		errMsg = PrintErr(e.err)
+	} else {
+		errMsg = e.err.Error()
+	}
+	if e.msg == "" {
+		return errMsg
+	}
+	return fmt.Sprintf("%s %s", e.msg, errMsg)
+}
+
+func (e *Error) Unwrap() error {
+	return e.err
 }
 
 func CallStack(skip, maxNum int) string {

@@ -558,7 +558,7 @@ func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, pri
 	}
 	market, err := e.GetMarket(symbol)
 	if err != nil {
-		return nil, errs.NewMsg(errs.CodeParamInvalid, "get market fail: %v", err)
+		return nil, errs.NewFull(errs.CodeParamInvalid, err, "get market fail")
 	}
 	feeSide := market.FeeSide
 	if feeSide == "" {
