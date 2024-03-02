@@ -8,6 +8,7 @@ const (
 	CodeMissingApiKey
 	CodeCredsRequired
 	CodeSignFail
+	CodeRunTime
 	CodeNotImplement
 	CodeMarketNotLoad
 	CodeNoMarketForPair

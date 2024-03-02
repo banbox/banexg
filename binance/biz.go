@@ -714,9 +714,12 @@ func (e *Binance) GetMaintMarginPct(symbol string, notional float64) float64 {
 	return maintMarginPct
 }
 
-func (e *Binance) CalcMaintMargin(symbol string, cost float64) float64 {
+func (e *Binance) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {
+	if len(e.LeverageBrackets) == 0 {
+		return 0, errs.NewMsg(errs.CodeRunTime, "LeverageBrackets not load")
+	}
 	info, ok := e.LeverageBrackets[symbol]
-	maintMargin := float64(0)
+	maintMargin := float64(-1)
 	if ok && len(info.Brackets) > 0 {
 		for _, row := range info.Brackets {
 			if cost < row.Floor {
@@ -726,7 +729,10 @@ func (e *Binance) CalcMaintMargin(symbol string, cost float64) float64 {
 			}
 		}
 	}
-	return maintMargin
+	if maintMargin < 0 {
+		return 0, errs.NewMsg(errs.CodeParamInvalid, "cost invalid")
+	}
+	return maintMargin, nil
 }
 
 func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *banexg.HttpRes) (map[string]*SymbolLvgBrackets, *errs.Error) {

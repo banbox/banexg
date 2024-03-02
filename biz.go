@@ -547,8 +547,8 @@ func (e *Exchange) GetLeverage(symbol string, notional float64) (int, int) {
 	return 0, 0
 }
 
-func (e *Exchange) CalcMaintMargin(symbol string, cost float64) float64 {
-	return 0
+func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {
+	return 0, nil
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
