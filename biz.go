@@ -979,6 +979,7 @@ func (e *Exchange) parseOptCreds() {
 				Creds:        &Credential{ApiKey: apiKey, Secret: apiSecret},
 				MarBalances:  map[string]*Balances{},
 				MarPositions: map[string][]*Position{},
+				Leverages:    map[string]int{},
 				Data:         map[string]interface{}{},
 			}
 		}
@@ -996,6 +997,7 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 		},
 		MarPositions: map[string][]*Position{},
 		MarBalances:  map[string]*Balances{},
+		Leverages:    map[string]int{},
 		Data:         current,
 	}
 }

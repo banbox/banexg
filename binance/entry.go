@@ -909,8 +909,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 				"transfer":                       banexg.HasOk,
 				"withdraw":                       banexg.HasOk,
 			},
-			CredKeys:  map[string]bool{"ApiKey": true, "Secret": true},
-			Leverages: map[string]int{},
+			CredKeys: map[string]bool{"ApiKey": true, "Secret": true},
 		},
 		newOrderRespType: map[string]string{
 			banexg.OdTypeMarket: "FULL",

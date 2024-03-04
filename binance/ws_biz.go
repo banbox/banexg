@@ -744,7 +744,9 @@ func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[str
 		log.Error("no market found for AccountConfigUpdate", zap.String("symbol", marketId))
 		return
 	}
-	e.Leverages[market.Symbol] = leverage
+	if acc, ok := e.Accounts[client.AccName]; ok {
+		acc.Leverages[market.Symbol] = leverage
+	}
 	item := banexg.AccountConfig{Symbol: market.Symbol, Leverage: leverage}
 	banexg.WriteOutChan(e.Exchange, client.Prefix("accConfig"), item, false)
 }

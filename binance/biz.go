@@ -680,7 +680,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 	return nil
 }
 
-func (e *Binance) GetLeverage(symbol string, notional float64) (int, int) {
+func (e *Binance) GetLeverage(symbol string, notional float64, account string) (int, int) {
 	info, ok := e.LeverageBrackets[symbol]
 	maxVal := 0
 	if ok && len(info.Brackets) > 0 {
@@ -692,7 +692,13 @@ func (e *Binance) GetLeverage(symbol string, notional float64) (int, int) {
 			break
 		}
 	}
-	leverage, _ := e.Leverages[symbol]
+	if account == "" {
+		account = e.DefAccName
+	}
+	var leverage int
+	if acc, ok := e.Accounts[account]; ok {
+		leverage, _ = acc.Leverages[symbol]
+	}
 	return leverage, maxVal
 }
 

@@ -13,7 +13,7 @@ type BanExchange interface {
 	FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error)
 	FetchTickerPrice(symbol string, params *map[string]interface{}) (map[string]float64, *errs.Error)
 	LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error
-	GetLeverage(symbol string, notional float64) (int, int)
+	GetLeverage(symbol string, notional float64, account string) (int, int)
 	CheckSymbols(symbols ...string) ([]string, []string)
 
 	FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error)

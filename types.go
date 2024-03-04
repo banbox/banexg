@@ -68,7 +68,6 @@ type Exchange struct {
 	TimeInForce   string // GTC/IOC/FOK
 
 	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
-	Leverages  map[string]int                // 币种当前的杠杆倍数
 	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
 
 	WSClients  map[string]*WsClient           // accName@url: websocket clients
@@ -97,6 +96,7 @@ type Account struct {
 	Creds        *Credential
 	MarPositions map[string][]*Position // marketType: Position List
 	MarBalances  map[string]*Balances   // marketType: Balances
+	Leverages    map[string]int         // 币种当前的杠杆倍数
 	Data         map[string]interface{}
 }
 
