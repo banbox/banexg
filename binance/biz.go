@@ -154,6 +154,11 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			return nil, errs.SandboxApiNotSupport
 		}
 		tryNum := e.GetRetryNum("FetchCurr", 1)
+		if params == nil {
+			params = &map[string]interface{}{banexg.ParamAccount: ":first"}
+		} else if utils.GetMapVal(*params, banexg.ParamAccount, "") == "" {
+			(*params)[banexg.ParamAccount] = ":first"
+		}
 		res := e.RequestApiRetry(context.Background(), "sapiGetCapitalConfigGetall", params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error

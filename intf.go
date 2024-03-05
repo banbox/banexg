@@ -17,9 +17,9 @@ type BanExchange interface {
 	CheckSymbols(symbols ...string) ([]string, []string)
 
 	FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error)
-	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
 	FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, *errs.Error)
 
+	FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error)
 	FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error)
 	FetchAccountPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error)
 	FetchPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error)

@@ -926,14 +926,17 @@ func (e *Exchange) GetAccName(params *map[string]interface{}) string {
 }
 
 func (e *Exchange) GetAccount(id string) (*Account, *errs.Error) {
-	if id == "" {
+	isCmd := strings.HasPrefix(id, ":")
+	if id == "" || isCmd {
 		if e.DefAccName != "" {
 			id = e.DefAccName
-		} else if len(e.Accounts) == 1 {
+		} else if len(e.Accounts) == 1 || id == ":first" {
 			for key := range e.Accounts {
 				id = key
-				e.DefAccName = key
 				break
+			}
+			if len(e.Accounts) == 1 {
+				e.DefAccName = id
 			}
 		} else {
 			return nil, errs.NewMsg(errs.CodeAccKeyError, "ParamAccount or DefAccName must be specified")
