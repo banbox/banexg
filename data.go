@@ -86,6 +86,7 @@ const (
 	OptWsConn          = "WsConn"
 	OptAuthRefreshSecs = "AuthRefreshSecs"
 	OptPositionMethod  = "PositionMethod"
+	OptDebugWS         = "DebugWS"
 )
 
 const (

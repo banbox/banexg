@@ -29,6 +29,7 @@ type Exchange struct {
 	Has       map[string]int         // 是否定义了某个API
 	Options   map[string]interface{} // 用户传入的配置
 	Proxy     *url.URL
+	DebugWS   bool // 是否输出WS调试信息
 
 	CredKeys   map[string]bool     // cred keys required for exchange
 	Accounts   map[string]*Account // name: account

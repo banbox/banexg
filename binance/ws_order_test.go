@@ -169,7 +169,7 @@ mainFor:
 				log.Info("read out chan fail, break")
 				break mainFor
 			}
-			book = &tmp
+			book = tmp
 		}
 	}
 	if book == nil {

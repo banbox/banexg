@@ -210,7 +210,7 @@ func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg
 	return listenKey, client, err
 }
 
-func (e *Binance) WatchBalance(params *map[string]interface{}) (chan banexg.Balances, *errs.Error) {
+func (e *Binance) WatchBalance(params *map[string]interface{}) (chan *banexg.Balances, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -226,10 +226,10 @@ func (e *Binance) WatchBalance(params *map[string]interface{}) (chan banexg.Bala
 	acc.MarBalances[client.MarketType] = balances
 	args := utils.SafeParams(params)
 	chanKey := client.Prefix("balance")
-	create := func(cap int) chan banexg.Balances { return make(chan banexg.Balances, cap) }
+	create := func(cap int) chan *banexg.Balances { return make(chan *banexg.Balances, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
-	out <- *balances
+	out <- balances
 	return out, nil
 }
 
@@ -263,13 +263,13 @@ watches historical candlestick data containing the open, high, low, and close pr
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan banexg.PairTFKline, *errs.Error) {
+func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareOHLCVSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
 	}
 
-	create := func(cap int) chan banexg.PairTFKline { return make(chan banexg.PairTFKline, cap) }
+	create := func(cap int) chan *banexg.PairTFKline { return make(chan *banexg.PairTFKline, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
@@ -405,7 +405,7 @@ func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
 	} else {
 		trade.Side = banexg.OdSideBuy
 	}
-	banexg.WriteOutChan(e.Exchange, chanKey, *trade, true)
+	banexg.WriteOutChan(e.Exchange, chanKey, trade, true)
 }
 
 type WsKline struct {
@@ -470,7 +470,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 			Volume: v,
 		},
 	}
-	banexg.WriteOutChan(e.Exchange, chanKey, *kline, true)
+	banexg.WriteOutChan(e.Exchange, chanKey, kline, true)
 }
 
 func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
@@ -576,7 +576,7 @@ func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) 
 		log.Error("invalid balance update", zap.String("event", event))
 	}
 	chanKey := client.Prefix("balance")
-	banexg.WriteOutChan(e.Exchange, chanKey, *balances, true)
+	banexg.WriteOutChan(e.Exchange, chanKey, balances, true)
 }
 
 type ContractAsset struct {
@@ -693,7 +693,7 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 		return
 	}
 	if updBalance {
-		banexg.WriteOutChan(e.Exchange, client.Prefix("balance"), *balances, true)
+		banexg.WriteOutChan(e.Exchange, client.Prefix("balance"), balances, true)
 	}
 	if updPosition {
 		positions = acc.MarPositions[client.MarketType]
@@ -723,7 +723,7 @@ func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]stri
 		trade.Fee.Currency = e.SafeCurrencyCode(trade.Fee.Currency)
 	}
 
-	banexg.WriteOutChan(e.Exchange, client.Prefix("mytrades"), trade, false)
+	banexg.WriteOutChan(e.Exchange, client.Prefix("mytrades"), &trade, false)
 }
 
 func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[string]string) {
@@ -738,7 +738,7 @@ func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[str
 		return
 	}
 	marketId := utils.GetMapVal(data, "s", "")
-	leverage := utils.GetMapVal(data, "l", 0)
+	leverage := int(utils.GetMapVal(data, "l", int64(0)))
 	market := e.GetMarketById(marketId, client.MarketType)
 	if market == nil {
 		log.Error("no market found for AccountConfigUpdate", zap.String("symbol", marketId))
@@ -747,6 +747,6 @@ func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[str
 	if acc, ok := e.Accounts[client.AccName]; ok {
 		acc.Leverages[market.Symbol] = leverage
 	}
-	item := banexg.AccountConfig{Symbol: market.Symbol, Leverage: leverage}
+	item := &banexg.AccountConfig{Symbol: market.Symbol, Leverage: leverage}
 	banexg.WriteOutChan(e.Exchange, client.Prefix("accConfig"), item, false)
 }

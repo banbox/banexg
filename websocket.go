@@ -22,6 +22,7 @@ type WsClient struct {
 	URL        string
 	AccName    string
 	MarketType string
+	Debug      bool
 	Send       chan []byte
 	control    chan int              // 用于内部同步控制命令
 	JobInfos   map[string]*WsJobInfo // request id: Sub Data
@@ -87,9 +88,10 @@ var (
 )
 
 func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose,
-	params *map[string]interface{}) (*WsClient, *errs.Error) {
+	params *map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	var result = &WsClient{
 		URL:       reqUrl,
+		Debug:     debug,
 		Send:      make(chan []byte, 1024),
 		JobInfos:  make(map[string]*WsJobInfo),
 		OnMessage: onMsg,
@@ -141,7 +143,7 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
 	}
-	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, &params)
+	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, &params, e.DebugWS)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +387,9 @@ func (c *WsClient) read() {
 
 func (c *WsClient) handleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
-	log.Debug("receive ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
+	if c.Debug {
+		log.Debug("receive ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
+	}
 	// fmt.Printf("receive %s\n", msgText)
 	msg, err := NewWsMsg(msgText)
 	if err != nil {

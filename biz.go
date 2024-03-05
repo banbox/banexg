@@ -60,6 +60,7 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
 	utils.SetFieldBy(&e.ContractType, e.Options, OptContractType, "")
 	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
+	utils.SetFieldBy(&e.DebugWS, e.Options, OptDebugWS, false)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}

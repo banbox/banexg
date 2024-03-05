@@ -56,7 +56,7 @@ watches information on open orders with bid(buy) and ask(sell) prices, volumes a
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
 */
-func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan banexg.OrderBook, *errs.Error) {
+func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan *banexg.OrderBook, *errs.Error) {
 	/*
 		# todo add support for <levels>-snapshots(depth)
 		# https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#partial-book-depth-streams        # <symbol>@depth<levels>@100ms or <symbol>@depth<levels>(1000ms)
@@ -117,7 +117,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 		# 8. If the quantity is 0, remove the price level.
 		# 9. Receiving an event that removes a price level that is not in your local order book can happen and is normal.
 	*/
-	create := func(cap int) chan banexg.OrderBook { return make(chan banexg.OrderBook, cap) }
+	create := func(cap int) chan *banexg.OrderBook { return make(chan *banexg.OrderBook, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
@@ -188,13 +188,13 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 	return chanKey, args, err
 }
 
-func (e *Binance) WatchTrades(symbols []string, params *map[string]interface{}) (chan banexg.Trade, *errs.Error) {
+func (e *Binance) WatchTrades(symbols []string, params *map[string]interface{}) (chan *banexg.Trade, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareWatchTrades("SUBSCRIBE", symbols, params)
 	if err != nil {
 		return nil, err
 	}
 
-	create := func(cap int) chan banexg.Trade { return make(chan banexg.Trade, cap) }
+	create := func(cap int) chan *banexg.Trade { return make(chan *banexg.Trade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
 	return out, nil
@@ -256,14 +256,14 @@ WatchMyTrades
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns dict[]: a list of [trade structures]{@link https://docs.ccxt.com/#/?id=trade-structure
 */
-func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan banexg.MyTrade, *errs.Error) {
+func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan *banexg.MyTrade, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
 	}
 	args := utils.SafeParams(params)
 	chanKey := client.Prefix("mytrades")
-	create := func(cap int) chan banexg.MyTrade { return make(chan banexg.MyTrade, cap) }
+	create := func(cap int) chan *banexg.MyTrade { return make(chan *banexg.MyTrade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
 	return out, nil
@@ -327,7 +327,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 			if valid {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
+					banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -336,15 +336,17 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 	} else {
 		// contract
 		// 4. Drop any event where u is < lastUpdateId in the snapshot
-		log.Debug("depth msg", zap.Int64("nonce", nonce), zap.Int64("u", u), zap.Int64("U", U),
-			zap.Int64("pu", pu))
+		if e.DebugWS {
+			log.Debug("depth msg", zap.Int64("nonce", nonce), zap.Int64("u", u), zap.Int64("U", U),
+				zap.Int64("pu", pu))
+		}
 		if u >= nonce {
 			// 5. The first processed event should have U <= lastUpdateId AND u >= lastUpdateId
 			// 6. While listening to the stream, each new event's pu should be equal to the previous event's u, otherwise initialize the process from step 3
 			if U <= nonce || pu == nonce {
 				e.handleOrderBookMsg(msg, book)
 				if nonce < book.Nonce {
-					banexg.WriteOutChan(e.Exchange, chanKey, *book, true)
+					banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 				}
 			} else {
 				err = errors.New("out of date")
@@ -454,7 +456,7 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			}
 		}
 	}
-	banexg.WriteOutChan(e.Exchange, info.MsgHash, *book, true)
+	banexg.WriteOutChan(e.Exchange, info.MsgHash, book, true)
 	return nil
 }
 

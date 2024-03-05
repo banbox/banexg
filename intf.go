@@ -32,18 +32,18 @@ type BanExchange interface {
 	SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error)
 	CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
 
-	WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan OrderBook, *errs.Error)
+	WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan *OrderBook, *errs.Error)
 	UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error
-	WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan PairTFKline, *errs.Error)
+	WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan *PairTFKline, *errs.Error)
 	UnWatchOHLCVs(jobs [][2]string, params *map[string]interface{}) *errs.Error
 	WatchMarkPrices(symbols []string, params *map[string]interface{}) (chan map[string]float64, *errs.Error)
 	UnWatchMarkPrices(symbols []string, params *map[string]interface{}) *errs.Error
-	WatchTrades(symbols []string, params *map[string]interface{}) (chan Trade, *errs.Error)
+	WatchTrades(symbols []string, params *map[string]interface{}) (chan *Trade, *errs.Error)
 	UnWatchTrades(symbols []string, params *map[string]interface{}) *errs.Error
-	WatchMyTrades(params *map[string]interface{}) (chan MyTrade, *errs.Error)
-	WatchBalance(params *map[string]interface{}) (chan Balances, *errs.Error)
+	WatchMyTrades(params *map[string]interface{}) (chan *MyTrade, *errs.Error)
+	WatchBalance(params *map[string]interface{}) (chan *Balances, *errs.Error)
 	WatchPositions(params *map[string]interface{}) (chan []*Position, *errs.Error)
-	WatchAccountConfig(params *map[string]interface{}) (chan AccountConfig, *errs.Error)
+	WatchAccountConfig(params *map[string]interface{}) (chan *AccountConfig, *errs.Error)
 
 	PrecAmount(m *Market, amount float64) (float64, *errs.Error)
 	PrecPrice(m *Market, price float64) (float64, *errs.Error)
