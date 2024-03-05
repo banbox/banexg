@@ -6,7 +6,7 @@ import (
 	"github.com/banbox/banexg/utils"
 )
 
-func (e *Binance) WatchAccountConfig(params *map[string]interface{}) (chan *banexg.AccountConfig, *errs.Error) {
+func (e *Binance) WatchAccountConfig(params map[string]interface{}) (chan *banexg.AccountConfig, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err

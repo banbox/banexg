@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*banexg.OrderBook, *errs.Error) {
+func (e *Binance) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*banexg.OrderBook, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params *map[string]in
 		method = "publicGetDepth"
 	}
 	tryNum := e.GetRetryNum("FetchOrderBook", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

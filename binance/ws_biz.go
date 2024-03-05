@@ -88,7 +88,7 @@ type AuthRes struct {
 }
 
 func makeAuthenticate(e *Binance) banexg.FuncAuth {
-	return func(params *map[string]interface{}) (*banexg.Account, *errs.Error) {
+	return func(params map[string]interface{}) (*banexg.Account, *errs.Error) {
 		zeroVal := int64(0)
 		args := utils.SafeParams(params)
 		marketType, _ := e.GetArgsMarketType(args, "")
@@ -117,7 +117,7 @@ func makeAuthenticate(e *Binance) banexg.FuncAuth {
 		} else if marketType == banexg.MarketMargin {
 			method = "sapiPostUserDataStream"
 		}
-		rsp := e.RequestApiRetry(context.Background(), method, &args, 1)
+		rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 		if rsp.Error != nil {
 			return nil, rsp.Error
 		}
@@ -140,7 +140,7 @@ func makeAuthenticate(e *Binance) banexg.FuncAuth {
 	}
 }
 
-func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]interface{}) {
+func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]interface{}) {
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
 	lastTimeKey := marketType + "lastAuthTime"
@@ -179,7 +179,7 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]int
 			args["symbol"] = marketId
 		}
 	}
-	rsp := e.RequestApiRetry(context.Background(), method, &args, 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
 		log.Error("refresh listenKey fail", zap.Error(rsp.Error))
 		return
@@ -193,7 +193,7 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params *map[string]int
 	})
 }
 
-func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg.WsClient, *errs.Error) {
+func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.WsClient, *errs.Error) {
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
 		return "", nil, err
@@ -210,7 +210,7 @@ func (e *Binance) getAuthClient(params *map[string]interface{}) (string, *banexg
 	return listenKey, client, err
 }
 
-func (e *Binance) WatchBalance(params *map[string]interface{}) (chan *banexg.Balances, *errs.Error) {
+func (e *Binance) WatchBalance(params map[string]interface{}) (chan *banexg.Balances, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ func (e *Binance) WatchBalance(params *map[string]interface{}) (chan *banexg.Bal
 	return out, nil
 }
 
-func (e *Binance) WatchPositions(params *map[string]interface{}) (chan []*banexg.Position, *errs.Error) {
+func (e *Binance) WatchPositions(params map[string]interface{}) (chan []*banexg.Position, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -263,7 +263,7 @@ watches historical candlestick data containing the open, high, low, and close pr
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
+func (e *Binance) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareOHLCVSub("SUBSCRIBE", jobs, params)
 	if err != nil {
 		return nil, err
@@ -275,7 +275,7 @@ func (e *Binance) WatchOHLCVs(jobs [][2]string, params *map[string]interface{}) 
 	return out, nil
 }
 
-func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params *map[string]interface{}) *errs.Error {
+func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
 	chanKey, symbols, _, err := e.prepareOHLCVSub("UNSUBSCRIBE", jobs, params)
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params *map[string]interface{}
 	return nil
 }
 
-func (e *Binance) WatchMarkPrices(symbols []string, params *map[string]interface{}) (chan map[string]float64, *errs.Error) {
+func (e *Binance) WatchMarkPrices(symbols []string, params map[string]interface{}) (chan map[string]float64, *errs.Error) {
 	chanKey, args, err := e.prepareMarkPrices("SUBSCRIBE", symbols, params)
 	if err != nil {
 		return nil, err
@@ -295,7 +295,7 @@ func (e *Binance) WatchMarkPrices(symbols []string, params *map[string]interface
 	return out, nil
 }
 
-func (e *Binance) UnWatchMarkPrices(symbols []string, params *map[string]interface{}) *errs.Error {
+func (e *Binance) UnWatchMarkPrices(symbols []string, params map[string]interface{}) *errs.Error {
 	chanKey, _, err := e.prepareMarkPrices("UNSUBSCRIBE", symbols, params)
 	if err != nil {
 		return err
@@ -304,7 +304,7 @@ func (e *Binance) UnWatchMarkPrices(symbols []string, params *map[string]interfa
 	return nil
 }
 
-func (e *Binance) prepareMarkPrices(method string, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareMarkPrices(method string, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -473,7 +473,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	banexg.WriteOutChan(e.Exchange, chanKey, kline, true)
 }
 
-func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(jobs) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}

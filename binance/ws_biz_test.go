@@ -116,7 +116,7 @@ func TestWatchMarkPrices(t *testing.T) {
 	exg := getBinance(nil)
 	exg.MarketType = banexg.MarketLinear
 	symbols := []string{"BTC/USDT:USDT", "ETH/USDT:USDT"}
-	out, err := exg.WatchMarkPrices(symbols, &map[string]interface{}{
+	out, err := exg.WatchMarkPrices(symbols, map[string]interface{}{
 		banexg.ParamInterval: "1s",
 	})
 	// 监听所有币种，3s更新:

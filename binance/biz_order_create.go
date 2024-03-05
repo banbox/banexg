@@ -37,7 +37,7 @@ CreateOrder 提交订单到交易所
 	:param boolean [params.test]: *spot only* whether to use the test endpoint or not, default is False
 	:returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
+func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price float64, params map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -268,7 +268,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		}
 	}
 	tryNum := e.GetRetryNum("CreateOrder", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

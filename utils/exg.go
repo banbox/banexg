@@ -29,10 +29,10 @@ func PrecisionFromString(input string) float64 {
 	return 0
 }
 
-func SafeParams(params *map[string]interface{}) map[string]interface{} {
+func SafeParams(params map[string]interface{}) map[string]interface{} {
 	result := map[string]interface{}{}
 	if params != nil {
-		for k, v := range *params {
+		for k, v := range params {
 			result[k] = v
 		}
 	}

@@ -7,10 +7,10 @@ import (
 	"sync"
 )
 
-type FuncSign = func(api Entry, params *map[string]interface{}) *HttpReq
-type FuncFetchCurr = func(params *map[string]interface{}) (CurrencyMap, *errs.Error)
-type FuncFetchMarkets = func(marketTypes []string, params *map[string]interface{}) (MarketMap, *errs.Error)
-type FuncAuth = func(params *map[string]interface{}) (*Account, *errs.Error)
+type FuncSign = func(api Entry, params map[string]interface{}) *HttpReq
+type FuncFetchCurr = func(params map[string]interface{}) (CurrencyMap, *errs.Error)
+type FuncFetchMarkets = func(marketTypes []string, params map[string]interface{}) (MarketMap, *errs.Error)
+type FuncAuth = func(params map[string]interface{}) (*Account, *errs.Error)
 
 type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
 type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)

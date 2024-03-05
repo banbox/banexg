@@ -22,7 +22,7 @@ func TestFetchOrders(t *testing.T) {
 	since := int64(1708511530259)
 	for _, item := range cases {
 		text, _ := sonic.MarshalString(item)
-		res, err := exg.FetchOrders(symbol, since, 0, &item)
+		res, err := exg.FetchOrders(symbol, since, 0, item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
@@ -43,7 +43,7 @@ func TestFetchOpenOrders(t *testing.T) {
 	since := int64(1702991965921)
 	for _, item := range cases {
 		text, _ := sonic.MarshalString(item)
-		res, err := exg.FetchOpenOrders(symbol, since, 0, &item)
+		res, err := exg.FetchOpenOrders(symbol, since, 0, item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
@@ -52,7 +52,7 @@ func TestFetchOpenOrders(t *testing.T) {
 	}
 }
 
-func printCreateOrder(symbol string, odType string, side string, amount float64, price float64, params *map[string]interface{}) {
+func printCreateOrder(symbol string, odType string, side string, amount float64, price float64, params map[string]interface{}) {
 	exg := getBinance(nil)
 	res, err := exg.CreateOrder(symbol, odType, side, amount, price, params)
 	if err != nil {
@@ -67,7 +67,7 @@ func printCreateOrder(symbol string, odType string, side string, amount float64,
 }
 
 func TestBinance_CreateOrder(t *testing.T) {
-	args := &map[string]interface{}{
+	args := map[string]interface{}{
 		banexg.ParamPositionSide: "LONG",
 	}
 	symbol := "ETH/USDT:USDT"

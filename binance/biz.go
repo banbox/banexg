@@ -50,9 +50,9 @@ func (e *Binance) Init() *errs.Error {
 }
 
 func makeSign(e *Binance) banexg.FuncSign {
-	return func(api banexg.Entry, args *map[string]interface{}) *banexg.HttpReq {
+	return func(api banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
-		accID := e.GetAccName(&params)
+		accID := e.GetAccName(params)
 		path := api.Path
 		hostKey := api.Host
 		url := e.Hosts.GetHost(hostKey) + "/" + path
@@ -145,7 +145,7 @@ fetches all available currencies on an exchange
 :returns dict: an associative dictionary of currencies
 */
 func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
-	return func(params *map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
+	return func(params map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
 		if !e.HasApi("fetchCurrencies") {
 			return nil, errs.ApiNotSupport
 		}
@@ -155,9 +155,9 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 		}
 		tryNum := e.GetRetryNum("FetchCurr", 1)
 		if params == nil {
-			params = &map[string]interface{}{banexg.ParamAccount: ":first"}
-		} else if utils.GetMapVal(*params, banexg.ParamAccount, "") == "" {
-			(*params)[banexg.ParamAccount] = ":first"
+			params = map[string]interface{}{banexg.ParamAccount: ":first"}
+		} else if utils.GetMapVal(params, banexg.ParamAccount, "") == "" {
+			params[banexg.ParamAccount] = ":first"
 		}
 		res := e.RequestApiRetry(context.Background(), "sapiGetCapitalConfigGetall", params, tryNum)
 		if res.Error != nil {
@@ -395,7 +395,7 @@ retrieves data on all markets for binance
 :returns dict[]: an array of objects representing market data
 */
 func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
-	return func(marketTypes []string, params *map[string]interface{}) (banexg.MarketMap, *errs.Error) {
+	return func(marketTypes []string, params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 		var ctx = context.Background()
 		var ch = make(chan *banexg.HttpRes)
 		doReq := func(key string) {
@@ -523,7 +523,7 @@ fetches historical candlestick data containing the open, high, low, and close pr
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
+func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -582,7 +582,7 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 		method = "dapiPublicGetKlines"
 	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -608,7 +608,7 @@ set the level of leverage for a market
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: response from the exchange
 */
-func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error) {
+func (e *Binance) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	if symbol == "" {
 		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for %v.SetLeverage", e.Name)
 	}
@@ -630,7 +630,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	args["symbol"] = market.ID
 	args["leverage"] = leverage
 	tryNum := e.GetRetryNum("SetLeverage", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -642,7 +642,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params *map[string]in
 	return res, nil
 }
 
-func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error {
+func (e *Binance) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
 	if len(e.LeverageBrackets) > 0 && !reload {
 		return nil
 	}
@@ -660,7 +660,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params *map[string]interface
 		return errs.NewMsg(errs.CodeUnsupportMarket, "LoadLeverageBrackets support linear/inverse contracts only")
 	}
 	retryNum := e.GetRetryNum("LoadLeverageBrackets", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, retryNum)
 	if rsp.Error != nil {
 		return rsp.Error
 	}

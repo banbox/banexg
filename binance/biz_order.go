@@ -13,7 +13,7 @@ import (
 FetchOrders 获取自己的订单
 symbol: 必填，币种
 */
-func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params *map
 		args["limit"] = limit
 	}
 	tryNum := e.GetRetryNum("FetchOrders", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -87,7 +87,7 @@ fetch all unfilled currently open orders
 :param str [params.marginMode]: 'cross' or 'isolated', for spot margin trading
 :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	var args map[string]interface{}
 	var marketType string
 	if symbol != "" {
@@ -126,7 +126,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		}
 	}
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -169,7 +169,7 @@ cancels an open order
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
 */
-func (e *Binance) CancelOrder(id string, symbol string, params *map[string]interface{}) (*banexg.Order, *errs.Error) {
+func (e *Binance) CancelOrder(id string, symbol string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -200,7 +200,7 @@ func (e *Binance) CancelOrder(id string, symbol string, params *map[string]inter
 		}
 	}
 	tryNum := e.GetRetryNum("CancelOrder", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

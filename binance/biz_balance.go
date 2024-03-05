@@ -26,7 +26,7 @@ query for balance and get the amount of funds available for trading or funds loc
 :param str[]|None [params.symbols]: unified market symbols, only used in isolated margin mode
 :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
 */
-func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances, *errs.Error) {
+func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args)
 	if err != nil {
@@ -63,7 +63,7 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 		method = "sapiPostAssetGetFundingAsset"
 	}
 	tryNum := e.GetRetryNum("FetchBalance", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -88,7 +88,7 @@ func (e *Binance) FetchBalance(params *map[string]interface{}) (*banexg.Balances
 	}
 }
 
-func (e *Binance) FetchPositions(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+func (e *Binance) FetchPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
 	method := utils.GetMapVal(e.Options, banexg.OptPositionMethod, "positionRisk")
 	method = utils.PopMapVal(args, banexg.ParamMethod, method)
@@ -101,7 +101,7 @@ func (e *Binance) FetchPositions(symbols []string, params *map[string]interface{
 	}
 }
 
-func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+func (e *Binance) FetchPositionsRisk(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -120,7 +120,7 @@ func (e *Binance) FetchPositionsRisk(symbols []string, params *map[string]interf
 		return nil, err
 	}
 	retryNum := e.GetRetryNum("FetchPositionsRisk", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, retryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -140,7 +140,7 @@ FetchAccountPositions
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: data on account positions
 */
-func (e *Binance) FetchAccountPositions(symbols []string, params *map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+func (e *Binance) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -159,7 +159,7 @@ func (e *Binance) FetchAccountPositions(symbols []string, params *map[string]int
 		return nil, err
 	}
 	retryNum := e.GetRetryNum("FetchAccountPositions", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, retryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, retryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

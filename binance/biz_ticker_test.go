@@ -39,7 +39,7 @@ func TestFetchTicker3(t *testing.T) {
 
 func TestFetchTickers(t *testing.T) {
 	exg := getBinance(nil)
-	tickers, err := exg.FetchTickers(nil, &map[string]interface{}{
+	tickers, err := exg.FetchTickers(nil, map[string]interface{}{
 		"market": banexg.MarketLinear,
 	})
 	if err != nil {
@@ -53,7 +53,7 @@ func TestFetchTickers(t *testing.T) {
 
 func TestFetchTickerPrice(t *testing.T) {
 	exg := getBinance(nil)
-	prices, err := exg.FetchTickerPrice("", &map[string]interface{}{
+	prices, err := exg.FetchTickerPrice("", map[string]interface{}{
 		"market": banexg.MarketLinear,
 	})
 	if err != nil {

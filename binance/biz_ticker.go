@@ -20,7 +20,7 @@ fetches price tickers for multiple markets, statistical information calculated o
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
 */
-func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
+func (e *Binance) FetchTickers(symbols []string, params map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -38,7 +38,7 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 		method = "publicGetTicker24hr"
 	}
 	tryNum := e.GetRetryNum("FetchTickers", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -54,7 +54,7 @@ func (e *Binance) FetchTickers(symbols []string, params *map[string]interface{})
 	}
 }
 
-func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*banexg.Ticker, *errs.Error) {
+func (e *Binance) FetchTicker(symbol string, params map[string]interface{}) (*banexg.Ticker, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 		}
 	}
 	tryNum := e.GetRetryNum("FetchTicker", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -107,7 +107,7 @@ func (e *Binance) FetchTicker(symbol string, params *map[string]interface{}) (*b
 FetchTickerPrice
 symbol为空表示获取所有，不为空获取单个
 */
-func (e *Binance) FetchTickerPrice(symbol string, params *map[string]interface{}) (map[string]float64, *errs.Error) {
+func (e *Binance) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args)
 	if err != nil {
@@ -132,7 +132,7 @@ func (e *Binance) FetchTickerPrice(symbol string, params *map[string]interface{}
 		args["symbol"] = market.ID
 	}
 	tryNum := e.GetRetryNum("GetTickerPrice", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, &args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}

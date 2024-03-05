@@ -56,7 +56,7 @@ watches information on open orders with bid(buy) and ask(sell) prices, volumes a
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
 */
-func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[string]interface{}) (chan *banexg.OrderBook, *errs.Error) {
+func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *banexg.OrderBook, *errs.Error) {
 	/*
 		# todo add support for <levels>-snapshots(depth)
 		# https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#partial-book-depth-streams        # <symbol>@depth<levels>@100ms or <symbol>@depth<levels>(1000ms)
@@ -123,7 +123,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params *map[strin
 	return out, nil
 }
 
-func (e *Binance) UnWatchOrderBooks(symbols []string, params *map[string]interface{}) *errs.Error {
+func (e *Binance) UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error {
 	chanKey, _, err := e.prepareBookArgs("UNSUBSCRIBE", nil, symbols, params)
 	if err != nil {
 		return err
@@ -144,7 +144,7 @@ func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *er
 	}
 	return exgParams, nil
 }
-func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob, symbols []string, params *map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
 	}
@@ -188,7 +188,7 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 	return chanKey, args, err
 }
 
-func (e *Binance) WatchTrades(symbols []string, params *map[string]interface{}) (chan *banexg.Trade, *errs.Error) {
+func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (chan *banexg.Trade, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareWatchTrades("SUBSCRIBE", symbols, params)
 	if err != nil {
 		return nil, err
@@ -200,7 +200,7 @@ func (e *Binance) WatchTrades(symbols []string, params *map[string]interface{}) 
 	return out, nil
 }
 
-func (e *Binance) UnWatchTrades(symbols []string, params *map[string]interface{}) *errs.Error {
+func (e *Binance) UnWatchTrades(symbols []string, params map[string]interface{}) *errs.Error {
 	chanKey, symbols, _, err := e.prepareWatchTrades("UNSUBSCRIBE", symbols, params)
 
 	if err != nil {
@@ -210,7 +210,7 @@ func (e *Binance) UnWatchTrades(symbols []string, params *map[string]interface{}
 	return nil
 }
 
-func (e *Binance) prepareWatchTrades(method string, symbols []string, params *map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareWatchTrades(method string, symbols []string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
@@ -256,7 +256,7 @@ WatchMyTrades
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns dict[]: a list of [trade structures]{@link https://docs.ccxt.com/#/?id=trade-structure
 */
-func (e *Binance) WatchMyTrades(params *map[string]interface{}) (chan *banexg.MyTrade, *errs.Error) {
+func (e *Binance) WatchMyTrades(params map[string]interface{}) (chan *banexg.MyTrade, *errs.Error) {
 	_, client, err := e.getAuthClient(params)
 	if err != nil {
 		return nil, err
@@ -418,7 +418,7 @@ func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]str
 func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string, info *banexg.WsJobInfo) *errs.Error {
 	// 3. Get a depth snapshot from https://www.binance.com/api/v1/depth?symbol=BNBBTC&limit=1000 .
 	// default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
-	book, err := e.FetchOrderBook(symbol, info.Limit, &info.Params)
+	book, err := e.FetchOrderBook(symbol, info.Limit, info.Params)
 	if err != nil {
 		return err
 	}

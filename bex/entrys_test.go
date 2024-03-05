@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func getExchange(name string, param *map[string]interface{}) map[string]interface{} {
+func getExchange(name string, param map[string]interface{}) map[string]interface{} {
 	args := utils.SafeParams(param)
 	local := make(map[string]interface{})
 	localpath := name + "/local.json"
@@ -23,7 +23,7 @@ func getExchange(name string, param *map[string]interface{}) map[string]interfac
 func TestNewExg(t *testing.T) {
 	exgName := "binance"
 	args := getExchange(exgName, nil)
-	exg, err := New(exgName, &args)
+	exg, err := New(exgName, args)
 	if err != nil {
 		panic(err)
 	}

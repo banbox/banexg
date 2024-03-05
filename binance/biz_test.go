@@ -306,7 +306,7 @@ func TestFetchBalances(t *testing.T) {
 	}
 	for _, item := range cases {
 		text, _ := sonic.MarshalString(item)
-		res, err := exg.FetchBalance(&item)
+		res, err := exg.FetchBalance(item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}

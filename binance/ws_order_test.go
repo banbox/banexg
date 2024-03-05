@@ -141,7 +141,7 @@ func TestWatchOrderBookOut(t *testing.T) {
 		Path:    "testdata/ws_odbook_msg.log",
 		msgChan: make(chan []byte, 10),
 	}
-	exg := getBinance(&map[string]interface{}{
+	exg := getBinance(map[string]interface{}{
 		banexg.OptWsConn: conn,
 	})
 	// 模拟网络请求

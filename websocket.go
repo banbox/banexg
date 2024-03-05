@@ -88,7 +88,7 @@ var (
 )
 
 func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose,
-	params *map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
+	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	var result = &WsClient{
 		URL:       reqUrl,
 		Debug:     debug,
@@ -143,7 +143,7 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
 	}
-	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, &params, e.DebugWS)
+	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, params, e.DebugWS)
 	if err != nil {
 		return nil, err
 	}

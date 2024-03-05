@@ -96,7 +96,7 @@ func (e *Exchange) SafeCurrencyCode(currId string) string {
 	return e.SafeCurrency(currId).Code
 }
 
-func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
+func doLoadMarkets(e *Exchange, params map[string]interface{}) {
 	var markets MarketMap
 	var currencies CurrencyMap
 	var err *errs.Error
@@ -115,7 +115,7 @@ func doLoadMarkets(e *Exchange, params *map[string]interface{}) {
 	e.MarketsWait <- markets
 }
 
-func (e *Exchange) fetchMarketsCurrs(params *map[string]interface{}) (MarketMap, CurrencyMap, *errs.Error) {
+func (e *Exchange) fetchMarketsCurrs(params map[string]interface{}) (MarketMap, CurrencyMap, *errs.Error) {
 	var markets MarketMap
 	var currencies CurrencyMap
 	var err *errs.Error
@@ -310,7 +310,7 @@ func (e *Exchange) getAllCareMarkets() []string {
 	return res
 }
 
-func (e *Exchange) LoadMarkets(reload bool, params *map[string]interface{}) (MarketMap, *errs.Error) {
+func (e *Exchange) LoadMarkets(reload bool, params map[string]interface{}) (MarketMap, *errs.Error) {
 	if reload || e.Markets == nil {
 		if e.MarketsWait == nil {
 			e.MarketsWait = make(chan interface{})
@@ -496,51 +496,51 @@ func (e *Exchange) CheckSymbols(symbols ...string) ([]string, []string) {
 	return valids, fails
 }
 
-func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params *map[string]interface{}) ([]*Kline, *errs.Error) {
+func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*Kline, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchBalance(params *map[string]interface{}) (*Balances, *errs.Error) {
+func (e *Exchange) FetchBalance(params map[string]interface{}) (*Balances, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchPositions(symbols []string, params *map[string]interface{}) ([]*Position, *errs.Error) {
+func (e *Exchange) FetchPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchTicker(symbol string, params *map[string]interface{}) (*Ticker, *errs.Error) {
+func (e *Exchange) FetchTicker(symbol string, params map[string]interface{}) (*Ticker, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchTickers(symbols []string, params *map[string]interface{}) ([]*Ticker, *errs.Error) {
+func (e *Exchange) FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error) {
+func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params *map[string]interface{}) ([]*Order, *errs.Error) {
+func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) FetchOrderBook(symbol string, limit int, params *map[string]interface{}) (*OrderBook, *errs.Error) {
+func (e *Exchange) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*OrderBook, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params *map[string]interface{}) (*Order, *errs.Error) {
+func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params map[string]interface{}) (*Order, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) CancelOrder(id string, symbol string, params *map[string]interface{}) (*Order, *errs.Error) {
+func (e *Exchange) CancelOrder(id string, symbol string, params map[string]interface{}) (*Order, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) SetLeverage(leverage int, symbol string, params *map[string]interface{}) (map[string]interface{}, *errs.Error) {
+func (e *Exchange) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	return nil, errs.NotImplement
 }
 
-func (e *Exchange) LoadLeverageBrackets(reload bool, params *map[string]interface{}) *errs.Error {
+func (e *Exchange) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
 	return errs.NotImplement
 }
 
@@ -553,7 +553,7 @@ func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
-	params *map[string]interface{}) (*Fee, *errs.Error) {
+	params map[string]interface{}) (*Fee, *errs.Error) {
 	if odType == OdTypeMarket && isMaker {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "maker only is invalid for market order")
 	}
@@ -659,7 +659,7 @@ func (e *Exchange) setReqHeaders(head *http.Header) {
 	}
 }
 
-func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[string]interface{}) *HttpRes {
+func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[string]interface{}) *HttpRes {
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
@@ -734,7 +734,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params *map[
 	return &result
 }
 
-func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params *map[string]interface{}, retryNum int) *HttpRes {
+func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {
 	tryNum := retryNum + 1
 	var rsp *HttpRes
 	var sleep = 0
@@ -841,7 +841,7 @@ func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*M
 LoadArgsMarket
 LoadMarkets && GetArgsMarket
 */
-func (e *Exchange) LoadArgsMarket(symbol string, params *map[string]interface{}) (map[string]interface{}, *Market, *errs.Error) {
+func (e *Exchange) LoadArgsMarket(symbol string, params map[string]interface{}) (map[string]interface{}, *Market, *errs.Error) {
 	var args = utils.SafeParams(params)
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
@@ -918,11 +918,11 @@ func (e *Exchange) GetRetryNum(key string, defVal int) int {
 	return defVal
 }
 
-func (e *Exchange) GetAccName(params *map[string]interface{}) string {
+func (e *Exchange) GetAccName(params map[string]interface{}) string {
 	if params == nil {
 		return e.DefAccName
 	}
-	return utils.PopMapVal(*params, ParamAccount, e.DefAccName)
+	return utils.PopMapVal(params, ParamAccount, e.DefAccName)
 }
 
 func (e *Exchange) GetAccount(id string) (*Account, *errs.Error) {

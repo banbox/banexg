@@ -13,7 +13,7 @@ func init() {
 	}
 }
 
-func New(name string, options *map[string]interface{}) (banexg.BanExchange, *errs.Error) {
+func New(name string, options map[string]interface{}) (banexg.BanExchange, *errs.Error) {
 	fn, ok := newExgs[name]
 	if !ok {
 		return nil, errs.NewMsg(errs.CodeBadExgName, "invalid exg name: %s", name)
