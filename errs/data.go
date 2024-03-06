@@ -25,11 +25,13 @@ const (
 	CodeInvalidTimeFrame
 	CodePrecDecFail
 	CodeBadExgName
+	CodeIOWriteFail
+	CodeIOReadFail
+	CodeInvalidData
+	CodeExpired
 )
 
 var (
-	MissingApiKey        = NewMsg(CodeMissingApiKey, "ApiKey missing")
-	CredsRequired        = NewMsg(CodeCredsRequired, "credential fields missing")
 	ApiNotSupport        = NewMsg(CodeApiNotSupport, "api not support")
 	SandboxApiNotSupport = NewMsg(CodeSandboxApiNotSupport, "sandbox api not support")
 	UnsupportMarket      = NewMsg(CodeUnsupportMarket, "unsupported market type")

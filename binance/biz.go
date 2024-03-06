@@ -59,26 +59,30 @@ func makeSign(e *Binance) banexg.FuncSign {
 		headers := http.Header{}
 		query := make([]string, 0)
 		body := ""
+		isPrivate := false
 		if path == "historicalTrades" {
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("historicalTrades requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: err}
+				return &banexg.HttpReq{Error: err, Private: true}
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
+			isPrivate = true
 		} else if path == "userDataStream" || path == "listenKey" {
 			//v1 special case for userDataStream
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("userDataStream requires `apiKey`", zap.String("id", e.ID))
-				return &banexg.HttpReq{Error: err}
+				return &banexg.HttpReq{Error: err, Private: true}
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			headers.Add("Content-Type", "application/x-www-form-urlencoded")
+			isPrivate = true
 		} else if _, ok := secretApis[hostKey]; ok || (hostKey == "sapi" && path != "system/status") {
+			isPrivate = true
 			creds, err := e.GetAccountCreds(accID)
 			if err != nil {
-				return &banexg.HttpReq{Error: err}
+				return &banexg.HttpReq{Error: err, Private: true}
 			}
 			extendParams := map[string]interface{}{
 				"timestamp": e.Nonce(),
@@ -121,7 +125,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			queryText := strings.Join(query, "&")
 			sign, err = utils.Signature(queryText, secret, method, hash, digest)
 			if err != nil {
-				return &banexg.HttpReq{Error: err}
+				return &banexg.HttpReq{Error: err, Private: true}
 			}
 			query = append(query, "signature="+sign)
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
@@ -134,7 +138,8 @@ func makeSign(e *Binance) banexg.FuncSign {
 		} else if len(params) > 0 {
 			url += "?" + utils.UrlEncodeMap(params, true)
 		}
-		return &banexg.HttpReq{AccName: accID, Url: url, Method: api.Method, Headers: headers, Body: body}
+		return &banexg.HttpReq{AccName: accID, Url: url, Method: api.Method, Headers: headers, Body: body,
+			Private: isPrivate}
 	}
 }
 
@@ -199,8 +204,8 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 				}
 				precisionTick := utils.PrecisionFromString(net.WithdrawIntegerMultiple)
 				if precisionTick != 0 {
-					if curr.Precision == 0 || float64(precisionTick) > curr.Precision {
-						curr.Precision = float64(precisionTick)
+					if curr.Precision == 0 || precisionTick > curr.Precision {
+						curr.Precision = precisionTick
 					}
 				}
 				curr.Networks[i] = &banexg.ChainNetwork{
@@ -209,7 +214,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 					Name:      net.Name,
 					Active:    net.DepositEnable || net.WithdrawEnable,
 					Fee:       withDrawFee,
-					Precision: float64(precisionTick),
+					Precision: precisionTick,
 					Deposit:   net.DepositEnable,
 					Withdraw:  net.WithdrawEnable,
 					Info:      net,

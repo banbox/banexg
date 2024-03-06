@@ -137,11 +137,12 @@ type FeeTierItem struct {
 }
 
 type Entry struct {
-	Path   string
-	Host   string
-	Method string
-	Cost   float64
-	More   map[string]interface{}
+	Path      string
+	Host      string
+	Method    string
+	Cost      float64
+	More      map[string]interface{}
+	CacheSecs int
 }
 
 type Credential struct {
@@ -157,14 +158,15 @@ type HttpReq struct {
 	Method  string
 	Headers http.Header
 	Body    string
+	Private bool // 此请求需要认证信息
 	Error   *errs.Error
 }
 
 type HttpRes struct {
-	AccName string
-	Status  int
-	Headers http.Header
-	Content string
+	AccName string      `json:"acc_name"`
+	Status  int         `json:"status"`
+	Headers http.Header `json:"headers"`
+	Content string      `json:"content"`
 	Error   *errs.Error
 }
 

@@ -1,8 +1,14 @@
 package utils
 
 import (
+	"fmt"
+	"github.com/banbox/banexg/errs"
 	"github.com/bytedance/sonic"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func WriteFile(path string, data []byte) error {
@@ -62,4 +68,49 @@ func ReadJsonFile(path string, obj interface{}) error {
 		return err
 	}
 	return Unmarshal(data, obj)
+}
+
+func WriteCacheFile(key, content string, expSecs int) *errs.Error {
+	path := filepath.Join(os.TempDir(), "banexg_"+key)
+	file, err := os.Create(path)
+	if err != nil {
+		return errs.New(errs.CodeIOWriteFail, err)
+	}
+	expireAt := int64(0)
+	if expSecs > 0 {
+		expireAt = time.Now().UnixMilli() + int64(expSecs)*1000
+	}
+	_, err = file.WriteString(fmt.Sprintf("%v\n", expireAt))
+	if err != nil {
+		return errs.New(errs.CodeIOWriteFail, err)
+	}
+	_, err = file.WriteString(content)
+	if err != nil {
+		return errs.New(errs.CodeIOWriteFail, err)
+	}
+	err = file.Close()
+	if err != nil {
+		return errs.New(errs.CodeIOWriteFail, err)
+	}
+	return nil
+}
+
+func ReadCacheFile(key string) (string, *errs.Error) {
+	path := filepath.Join(os.TempDir(), "banexg_"+key)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", errs.New(errs.CodeIOReadFail, err)
+	}
+	fileText := string(data)
+	sepIdx := strings.Index(fileText, "\n")
+	expireMS, err := strconv.ParseInt(fileText[:sepIdx], 10, 64)
+	if err != nil {
+		return "", errs.New(errs.CodeInvalidData, err)
+	}
+	if expireMS > 0 && expireMS < time.Now().UnixMilli() {
+		stamp := time.UnixMilli(expireMS)
+		expDate := stamp.Format("2006-01-02 15:04:05")
+		return "", errs.NewMsg(errs.CodeExpired, "expired at: %v", expDate)
+	}
+	return fileText[sepIdx+1:], nil
 }

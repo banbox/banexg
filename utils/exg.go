@@ -2,29 +2,29 @@ package utils
 
 import (
 	"github.com/banbox/banexg/errs"
-	"regexp"
+	"math"
 	"strconv"
+	"strings"
 )
 
+/*
+PrecisionFromString
+1e-4 -> 4
+0.000001 -> 6
+100 -> 0
+*/
 func PrecisionFromString(input string) float64 {
-	//support string formats like '1e-4'
-	matched, _ := regexp.MatchString("e", input)
-	if matched {
-		re := regexp.MustCompile(`\de`)
-		numStr := re.ReplaceAllString(input, "")
-		num, _ := strconv.ParseFloat(numStr, 64)
-		return num * -1
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return 0
 	}
-	//support integer formats (without dot) like '1', '10' etc [Note: bug in decimalToPrecision, so this should not be used atm]
-	// if not ('.' in str):
-	//     return len(str) * -1
-	//default strings like '0.0001'
-	parts := regexp.MustCompile(`0+$`).Split(input, -1)
-	if matched, _ := regexp.MatchString(`\.`, input); matched {
-		innerParts := regexp.MustCompile(`\.`).Split(parts[0], -1)
-		if len(innerParts) > 1 {
-			return float64(len(innerParts[1]))
-		}
+	val, err := strconv.ParseFloat(input, 64)
+	if err != nil {
+		return 0
+	}
+	prec := math.Round(math.Log10(val))
+	if prec < 0 {
+		return prec * -1
 	}
 	return 0
 }

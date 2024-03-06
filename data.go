@@ -87,6 +87,7 @@ const (
 	OptAuthRefreshSecs = "AuthRefreshSecs"
 	OptPositionMethod  = "PositionMethod"
 	OptDebugWS         = "DebugWS"
+	OptApiCaches       = "ApiCaches"
 )
 
 const (

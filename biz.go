@@ -7,6 +7,7 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/bytedance/sonic"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"
@@ -54,6 +55,19 @@ func (e *Exchange) Init() *errs.Error {
 	retries := utils.GetMapVal(e.Options, OptRetries, map[string]int{})
 	for k, v := range retries {
 		e.Retries[k] = v
+	}
+	// 更新api缓存时间
+	apiCaches := utils.GetMapVal(e.Options, OptApiCaches, map[string]int{})
+	var failCaches []string
+	for k, v := range apiCaches {
+		if api, ok := e.Apis[k]; ok {
+			api.CacheSecs = v
+		} else {
+			failCaches = append(failCaches, k)
+		}
+	}
+	if len(failCaches) > 0 {
+		log.Error("invalid api keys for OptApiCaches", zap.Strings("keys", failCaches))
 	}
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
@@ -197,14 +211,14 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 				curr := Currency{
 					ID:        market.BaseID,
 					Code:      market.Base,
-					Precision: float64(market.Precision.Base),
+					Precision: market.Precision.Base,
 				}
 				if curr.ID == "" {
 					curr.ID = market.Base
 				}
 				if curr.Precision == 0 {
 					if market.Precision.Amount > 0 {
-						curr.Precision = float64(market.Precision.Amount)
+						curr.Precision = market.Precision.Amount
 					} else {
 						curr.Precision = defCurrPrecision
 					}
@@ -215,14 +229,14 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 				curr := Currency{
 					ID:        market.QuoteID,
 					Code:      market.Quote,
-					Precision: float64(market.Precision.Quote),
+					Precision: market.Precision.Quote,
 				}
 				if curr.ID == "" {
 					curr.ID = market.Quote
 				}
 				if curr.Precision == 0 {
 					if market.Precision.Price > 0 {
-						curr.Precision = float64(market.Precision.Price)
+						curr.Precision = market.Precision.Price
 					} else {
 						curr.Precision = defCurrPrecision
 					}
@@ -665,6 +679,22 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
 		return &HttpRes{Error: errs.ApiNotSupport}
 	}
+	// 检查是否有缓存
+	if api.CacheSecs > 0 {
+		cacheText, err := utils.ReadCacheFile(endpoint + ".json")
+		if err != nil {
+			log.Debug("read api cache fail", zap.String("url", api.Path), zap.String("err", err.Short()))
+		} else {
+			var res = &HttpRes{}
+			err_ := utils.UnmarshalString(cacheText, res)
+			if err_ != nil {
+				log.Warn("unmarshal api cache fail", zap.String("url", api.Path), zap.Error(err_))
+			} else {
+				return res
+			}
+		}
+	}
+	// 检查是否需要限流等待
 	if e.EnableRateLimit == BoolTrue {
 		e.rateM.Lock()
 		elapsed := e.MilliSeconds() - e.lastRequestMS
@@ -705,6 +735,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	if err != nil {
 		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
 	}
+	defer rsp.Body.Close()
 	var result = HttpRes{AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header}
 	rspData, err := io.ReadAll(rsp.Body)
 	if err != nil {
@@ -722,15 +753,20 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 		if result.Status == 429 || result.Status == 418 {
 			result.Error.Data = rsp.Header.Get("Retry-After")
 		}
-	}
-	defer func() {
-		cerr := rsp.Body.Close()
-		// Only overwrite the retured error if the original error was nil and an
-		// error occurred while closing the body.
-		if err == nil && cerr != nil {
-			err = cerr
+	} else if api.CacheSecs > 0 {
+		if sign.Private {
+			log.Warn("cache private api result is not recommend:" + sign.Url)
 		}
-	}()
+		cacheText, err_ := sonic.MarshalString(&result)
+		if err_ != nil {
+			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
+		} else {
+			err2 := utils.WriteCacheFile(endpoint+".json", cacheText, api.CacheSecs)
+			if err2 != nil {
+				log.Error("write api rsp cache fail", zap.String("url", sign.Url), zap.Error(err2))
+			}
+		}
+	}
 	return &result
 }
 
