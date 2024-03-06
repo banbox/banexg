@@ -14,7 +14,7 @@ func NewTextCore(enc zapcore.Encoder, ws zapcore.WriteSyncer, enab zapcore.Level
 	}
 }
 
-// textIOCore is a copy of zapcore.ioCore that only accept *textEncoder
+// textIOCore is a copy of zapcore.ioCore that only accept *TextEncoder
 // it can be removed after https://github.com/uber-go/zap/pull/685 be merged
 type textIOCore struct {
 	zapcore.LevelEnabler
@@ -24,9 +24,9 @@ type textIOCore struct {
 
 func (c *textIOCore) With(fields []zapcore.Field) zapcore.Core {
 	clone := c.clone()
-	// it's different to ioCore, here call textEncoder#addFields to fix https://github.com/pingcap/log/issues/3
+	// it's different to ioCore, here call TextEncoder#addFields to fix https://github.com/pingcap/log/issues/3
 	switch e := clone.enc.(type) {
-	case *textEncoder:
+	case *TextEncoder:
 		e.addFields(fields)
 	case zapcore.ObjectEncoder:
 		for _, field := range fields {

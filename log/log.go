@@ -51,7 +51,7 @@ func InitLogger(cfg *Config, opts ...zap.Option) (*zap.Logger, *ZapProperties, e
 	debugCfg := *cfg
 	debugCfg.Level = "debug"
 	outputsWriter := zap.CombineWriteSyncers(outputs...)
-	debugL, r, err := InitLoggerWithWriteSyncer(&debugCfg, outputsWriter, opts...)
+	debugL, r, err := InitLoggerWithWriteSyncer(&debugCfg, outputsWriter, cfg.Handlers, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -65,13 +65,17 @@ func InitLogger(cfg *Config, opts ...zap.Option) (*zap.Logger, *ZapProperties, e
 }
 
 // InitLoggerWithWriteSyncer initializes a zap logger with specified  write syncer.
-func InitLoggerWithWriteSyncer(cfg *Config, output zapcore.WriteSyncer, opts ...zap.Option) (*zap.Logger, *ZapProperties, error) {
+func InitLoggerWithWriteSyncer(cfg *Config, output zapcore.WriteSyncer, handlers []zapcore.Core, opts ...zap.Option) (*zap.Logger, *ZapProperties, error) {
 	level := zap.NewAtomicLevel()
 	err := level.UnmarshalText([]byte(cfg.Level))
 	if err != nil {
 		return nil, nil, fmt.Errorf("initLoggerWithWriteSyncer UnmarshalText cfg.Level errs:%w", err)
 	}
 	core := NewTextCore(newZapTextEncoder(cfg), output, level)
+	if len(handlers) > 0 {
+		handlers = append([]zapcore.Core{core}, handlers...)
+		core = zapcore.NewTee(handlers...)
+	}
 	opts = append(cfg.buildOptions(output), opts...)
 	lg := zap.New(core, opts...)
 	r := &ZapProperties{
@@ -212,7 +216,7 @@ func SetupLogger(cfg *Config) {
 	}
 }
 
-func Setup(debug bool, logFile string) {
+func Setup(debug bool, logFile string, handlers ...zapcore.Core) {
 	if debug && len(logFile) == 0 {
 		return
 	}
@@ -227,10 +231,11 @@ func Setup(debug bool, logFile string) {
 		}
 	}
 	SetupLogger(&Config{
-		Stdout: true,
-		Format: "text",
-		Level:  level,
-		File:   file,
+		Stdout:   true,
+		Format:   "text",
+		Level:    level,
+		File:     file,
+		Handlers: handlers,
 	})
 }
 

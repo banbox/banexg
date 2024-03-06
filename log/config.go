@@ -53,6 +53,8 @@ type Config struct {
 	//
 	// Values configured here are per-second. See zapcore.NewSampler for details.
 	Sampling *zap.SamplingConfig `toml:"sampling" json:"sampling"`
+	// custom log handlers
+	Handlers []zapcore.Core
 }
 
 // ZapProperties records some information about zap.
