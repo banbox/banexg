@@ -9,6 +9,24 @@ import (
 	"testing"
 )
 
+func TestFetchOrder(t *testing.T) {
+	exg := getBinance(nil)
+	cases := map[string]map[string]interface{}{
+		"281077600438": {"market": banexg.MarketLinear},
+	}
+
+	symbol := "BTC/USDT:USDT"
+	for orderId, item := range cases {
+		text, _ := sonic.MarshalString(item)
+		res, err := exg.FetchOrder(symbol, orderId, item)
+		if err != nil {
+			panic(fmt.Errorf("%s Error: %v", text, err))
+		}
+		resText, _ := sonic.MarshalString(res)
+		t.Logf("%s result: %s", text, resText)
+	}
+}
+
 func TestFetchOrders(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{

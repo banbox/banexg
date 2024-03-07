@@ -9,6 +9,59 @@ import (
 	"strings"
 )
 
+func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	args["symbol"] = market.ID
+	args["orderId"] = orderId
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	method := "privateGetOrder"
+	if market.Option {
+		method = "eapiPrivateGetOrder"
+	} else if market.Linear {
+		method = "fapiPrivateGetOrder"
+	} else if market.Inverse {
+		method = "dapiPrivateGetOrder"
+	} else if market.Type == banexg.MarketMargin || marginMode != "" {
+		method = "sapiGetMarginOrder"
+		if marginMode == "isolated" {
+			args["isIsolated"] = true
+		}
+	}
+	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
+	if clientOrderId != "" {
+		if market.Option {
+			args["clientOrderId"] = clientOrderId
+		} else {
+			args["origClientOrderId"] = clientOrderId
+		}
+	}
+	tryNum := e.GetRetryNum("FetchOrder", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var mapSymbol = func(mid string) string {
+		return market.Symbol
+	}
+	switch method {
+	case "privateGetOrder":
+		return parseOrder[*SpotOrder](mapSymbol, rsp)
+	case "eapiPrivateGetOrder":
+		return parseOrder[*OptionOrder](mapSymbol, rsp)
+	case "fapiPrivateGetOrder":
+		return parseOrder[*FutureOrder](mapSymbol, rsp)
+	case "dapiPrivateGetOrder":
+		return parseOrder[*InverseOrder](mapSymbol, rsp)
+	case "sapiGetMarginOrder":
+		return parseOrder[*MarginOrder](mapSymbol, rsp)
+	default:
+		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
+	}
+}
+
 /*
 FetchOrders 获取自己的订单
 symbol: 必填，币种
