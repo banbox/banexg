@@ -32,7 +32,7 @@ func (e *Binance) Init() *errs.Error {
 	if err != nil {
 		return err
 	}
-	utils.SetFieldBy(&e.RecvWindow, e.Options, OptRecvWindow, 10000)
+	utils.SetFieldBy(&e.RecvWindow, e.Options, OptRecvWindow, 30000)
 	if e.CareMarkets == nil || len(e.CareMarkets) == 0 {
 		e.CareMarkets = DefCareMarkets
 	}
