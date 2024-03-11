@@ -707,7 +707,9 @@ func (e *Binance) GetLeverage(symbol string, notional float64, account string) (
 	}
 	var leverage int
 	if acc, ok := e.Accounts[account]; ok {
+		acc.LockLeverage.Lock()
 		leverage, _ = acc.Leverages[symbol]
+		acc.LockLeverage.Unlock()
 	}
 	return leverage, maxVal
 }

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -1021,6 +1022,10 @@ func (e *Exchange) parseOptCreds() {
 				MarPositions: map[string][]*Position{},
 				Leverages:    map[string]int{},
 				Data:         map[string]interface{}{},
+				LockBalance:  &sync.Mutex{},
+				LockPos:      &sync.Mutex{},
+				LockLeverage: &sync.Mutex{},
+				LockData:     &sync.Mutex{},
 			}
 		}
 	}
@@ -1039,6 +1044,10 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 		MarBalances:  map[string]*Balances{},
 		Leverages:    map[string]int{},
 		Data:         current,
+		LockBalance:  &sync.Mutex{},
+		LockPos:      &sync.Mutex{},
+		LockLeverage: &sync.Mutex{},
+		LockData:     &sync.Mutex{},
 	}
 }
 

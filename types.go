@@ -99,6 +99,10 @@ type Account struct {
 	MarBalances  map[string]*Balances   // marketType: Balances
 	Leverages    map[string]int         // 币种当前的杠杆倍数
 	Data         map[string]interface{}
+	LockPos      *sync.Mutex
+	LockBalance  *sync.Mutex
+	LockLeverage *sync.Mutex
+	LockData     *sync.Mutex
 }
 
 type ExgHosts struct {
