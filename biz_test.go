@@ -19,7 +19,7 @@ func TestSetOptions(t *testing.T) {
 	} else {
 		t.Errorf("Fail PrecisionMode, cur %v, expect: %v", e.PrecisionMode, PrecModeTickSize)
 	}
-	creds, err := e.GetAccountCreds("default")
+	_, creds, err := e.GetAccountCreds("default")
 	if err != nil {
 		panic(err)
 	}

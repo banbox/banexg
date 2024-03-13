@@ -756,7 +756,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 			zap.Int("len", len(result.Content)), bodyShort)
 	}
 	if result.Status >= 400 {
-		msg := fmt.Sprintf("%s  %v", req.URL, result.Content)
+		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
 		result.Error = errs.NewMsg(result.Status, msg)
 		if result.Status == 429 || result.Status == 418 {
 			result.Error.Data = rsp.Header.Get("Retry-After")
@@ -993,19 +993,19 @@ func (e *Exchange) GetAccount(id string) (*Account, *errs.Error) {
 	return acc, nil
 }
 
-func (e *Exchange) GetAccountCreds(id string) (*Credential, *errs.Error) {
+func (e *Exchange) GetAccountCreds(id string) (string, *Credential, *errs.Error) {
 	acc, err := e.GetAccount(id)
 	if err != nil {
-		return nil, err
+		return id, nil, err
 	}
 	if acc.Creds != nil {
 		err = acc.Creds.CheckFilled(e.CredKeys)
 		if err != nil {
-			return nil, err
+			return acc.Name, nil, err
 		}
-		return acc.Creds, nil
+		return acc.Name, acc.Creds, nil
 	}
-	return nil, errs.NewMsg(errs.CodeCredsRequired, "Creds not exits")
+	return acc.Name, nil, errs.NewMsg(errs.CodeCredsRequired, "Creds not exits")
 }
 
 func (e *Exchange) parseOptCreds() {

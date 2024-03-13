@@ -60,8 +60,10 @@ func makeSign(e *Binance) banexg.FuncSign {
 		query := make([]string, 0)
 		body := ""
 		isPrivate := false
+		var creds *banexg.Credential
+		var err *errs.Error
 		if path == "historicalTrades" {
-			creds, err := e.GetAccountCreds(accID)
+			accID, creds, err = e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("historicalTrades requires `apiKey`", zap.String("id", e.ID))
 				return &banexg.HttpReq{Error: err, Private: true}
@@ -70,7 +72,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			isPrivate = true
 		} else if path == "userDataStream" || path == "listenKey" {
 			//v1 special case for userDataStream
-			creds, err := e.GetAccountCreds(accID)
+			accID, creds, err = e.GetAccountCreds(accID)
 			if err != nil {
 				log.Panic("userDataStream requires `apiKey`", zap.String("id", e.ID))
 				return &banexg.HttpReq{Error: err, Private: true}
@@ -80,7 +82,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			isPrivate = true
 		} else if _, ok := secretApis[hostKey]; ok || (hostKey == "sapi" && path != "system/status") {
 			isPrivate = true
-			creds, err := e.GetAccountCreds(accID)
+			accID, creds, err = e.GetAccountCreds(accID)
 			if err != nil {
 				return &banexg.HttpReq{Error: err, Private: true}
 			}
