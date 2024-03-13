@@ -76,6 +76,7 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.ContractType, e.Options, OptContractType, "")
 	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
 	utils.SetFieldBy(&e.DebugWS, e.Options, OptDebugWS, false)
+	utils.SetFieldBy(&e.DebugAPI, e.Options, OptDebugAPI, false)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -684,7 +685,9 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	if api.CacheSecs > 0 {
 		cacheText, err := utils.ReadCacheFile(endpoint + ".json")
 		if err != nil {
-			log.Debug("read api cache fail", zap.String("url", api.Path), zap.String("err", err.Short()))
+			if e.DebugAPI {
+				log.Debug("read api cache fail", zap.String("url", api.Path), zap.String("err", err.Short()))
+			}
 		} else {
 			var res = &HttpRes{}
 			err_ := utils.UnmarshalString(cacheText, res)
@@ -730,8 +733,10 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	req.Header = sign.Headers
 	e.setReqHeaders(&req.Header)
 
-	log.Debug("request", zap.String(sign.Method, req.URL.String()),
-		zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
+	if e.DebugAPI {
+		log.Debug("request", zap.String(sign.Method, req.URL.String()),
+			zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
+	}
 	rsp, err := e.HttpClient.Do(req)
 	if err != nil {
 		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
@@ -746,8 +751,10 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	result.Content = string(rspData)
 	cutLen := min(len(result.Content), 3000)
 	bodyShort := zap.String("body", result.Content[:cutLen])
-	log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
-		zap.Int("len", len(result.Content)), bodyShort)
+	if e.DebugAPI {
+		log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
+			zap.Int("len", len(result.Content)), bodyShort)
+	}
 	if result.Status >= 400 {
 		msg := fmt.Sprintf("%s  %v", req.URL, result.Content)
 		result.Error = errs.NewMsg(result.Status, msg)
