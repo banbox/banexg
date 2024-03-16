@@ -52,7 +52,7 @@ func (e *Binance) Init() *errs.Error {
 func makeSign(e *Binance) banexg.FuncSign {
 	return func(api banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
-		accID := e.GetAccName(params)
+		accID := e.PopAccName(params)
 		path := api.Path
 		hostKey := api.Host
 		url := e.Hosts.GetHost(hostKey) + "/" + path

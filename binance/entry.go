@@ -921,7 +921,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 	exg.FetchMarkets = makeFetchMarkets(exg)
 	exg.OnWsMsg = makeHandleWsMsg(exg)
 	exg.GetRetryWait = makeGetRetryWait(exg)
-	exg.Authenticate = makeAuthenticate(exg)
+	exg.AuthWS = exg.postListenKey
 	err := exg.Init()
 	return exg, err
 }

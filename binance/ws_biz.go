@@ -87,59 +87,53 @@ type AuthRes struct {
 	ListenKey string `json:"listenKey"`
 }
 
-func makeAuthenticate(e *Binance) banexg.FuncAuth {
-	return func(params map[string]interface{}) (*banexg.Account, *errs.Error) {
-		zeroVal := int64(0)
-		args := utils.SafeParams(params)
-		marketType, _ := e.GetArgsMarketType(args, "")
-		lastTimeKey := marketType + "lastAuthTime"
-		authField := marketType + banexg.MidListenKey
-		lastAuthTime := utils.GetMapVal(e.Options, lastTimeKey, zeroVal)
-		authRefreshSecs := utils.GetMapVal(e.Options, banexg.OptAuthRefreshSecs, 1200)
-		refreshDuration := int64(authRefreshSecs * 1000)
-		curTime := e.MilliSeconds()
-		if curTime-lastAuthTime <= refreshDuration {
-			return nil, nil
-		}
-		marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-		method := "publicPostUserDataStream"
-		if marketType == banexg.MarketLinear {
-			method = "fapiPrivatePostListenKey"
-		} else if marketType == banexg.MarketInverse {
-			method = "dapiPrivatePostListenKey"
-		} else if marginMode == banexg.MarginIsolated {
-			method = "sapiPostUserDataStreamIsolated"
-			marketId, err := e.GetMarketIDByArgs(args, true)
-			if err != nil {
-				return nil, err
-			}
-			args["symbol"] = marketId
-		} else if marketType == banexg.MarketMargin {
-			method = "sapiPostUserDataStream"
-		}
-		rsp := e.RequestApiRetry(context.Background(), method, args, 1)
-		if rsp.Error != nil {
-			return nil, rsp.Error
-		}
-		acc, err := e.GetAccount(rsp.AccName)
-		if err != nil {
-			return nil, err
-		}
-		var res = AuthRes{}
-		err2 := utils.UnmarshalString(rsp.Content, &res)
-		if err2 != nil {
-			return nil, errs.New(errs.CodeUnmarshalFail, err2)
-		}
-		acc.LockData.Lock()
-		acc.Data[lastTimeKey] = curTime
-		acc.Data[authField] = res.ListenKey
-		acc.LockData.Unlock()
-		refreshAfter := time.Duration(authRefreshSecs) * time.Second
-		time.AfterFunc(refreshAfter, func() {
-			e.keepAliveListenKey(acc, params)
-		})
-		return acc, nil
+func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface{}) *errs.Error {
+	zeroVal := int64(0)
+	args := utils.SafeParams(params)
+	marketType, _ := e.GetArgsMarketType(args, "")
+	lastTimeKey := marketType + "lastAuthTime"
+	authField := marketType + banexg.MidListenKey
+	lastAuthTime := utils.GetMapVal(acc.Data, lastTimeKey, zeroVal)
+	authRefreshSecs := utils.GetMapVal(e.Options, banexg.OptAuthRefreshSecs, 1200)
+	refreshDuration := int64(authRefreshSecs * 1000)
+	curTime := e.MilliSeconds()
+	if curTime-lastAuthTime <= refreshDuration {
+		return nil
 	}
+	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
+	method := "publicPostUserDataStream"
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivatePostListenKey"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivatePostListenKey"
+	} else if marginMode == banexg.MarginIsolated {
+		method = "sapiPostUserDataStreamIsolated"
+		marketId, err := e.GetMarketIDByArgs(args, true)
+		if err != nil {
+			return err
+		}
+		args["symbol"] = marketId
+	} else if marketType == banexg.MarketMargin {
+		method = "sapiPostUserDataStream"
+	}
+	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
+	if rsp.Error != nil {
+		return rsp.Error
+	}
+	var res = AuthRes{}
+	err2 := utils.UnmarshalString(rsp.Content, &res)
+	if err2 != nil {
+		return errs.New(errs.CodeUnmarshalFail, err2)
+	}
+	acc.LockData.Lock()
+	acc.Data[lastTimeKey] = curTime
+	acc.Data[authField] = res.ListenKey
+	acc.LockData.Unlock()
+	refreshAfter := time.Duration(authRefreshSecs) * time.Second
+	time.AfterFunc(refreshAfter, func() {
+		e.keepAliveListenKey(acc, params)
+	})
+	return nil
 }
 
 func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]interface{}) {
@@ -187,6 +181,17 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
+		msgShort := rsp.Error.Short()
+		if strings.Contains(msgShort, ":-1125") {
+			// {\"code\":-1125,\"msg\":\"This listenKey does not exist.\"}
+			err := e.postListenKey(acc, params)
+			if err != nil {
+				log.Error("post new listenKey fail", zap.Error(err))
+				return
+			}
+			success = true
+			return
+		}
 		log.Error("refresh listenKey fail", zap.Error(rsp.Error))
 		return
 	}
@@ -206,7 +211,11 @@ func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.
 	if err != nil {
 		return "", nil, err
 	}
-	acc, err := e.Authenticate(params)
+	acc, err := e.GetAccount(e.GetAccName(params))
+	if err != nil {
+		return "", nil, err
+	}
+	err = e.AuthWS(acc, params)
 	if err != nil {
 		return "", nil, err
 	}

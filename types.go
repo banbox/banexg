@@ -10,7 +10,7 @@ import (
 type FuncSign = func(api Entry, params map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params map[string]interface{}) (CurrencyMap, *errs.Error)
 type FuncFetchMarkets = func(marketTypes []string, params map[string]interface{}) (MarketMap, *errs.Error)
-type FuncAuth = func(params map[string]interface{}) (*Account, *errs.Error)
+type FuncAuthWS = func(acc *Account, params map[string]interface{}) *errs.Error
 
 type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
 type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)
@@ -83,7 +83,7 @@ type Exchange struct {
 	Sign            FuncSign
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
-	Authenticate    FuncAuth
+	AuthWS          FuncAuthWS
 	GetRetryWait    func(e *errs.Error) int // 根据错误信息计算重试间隔秒数，<0表示无需重试
 
 	OnWsMsg   FuncOnWsMsg

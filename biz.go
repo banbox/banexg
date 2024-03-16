@@ -962,11 +962,18 @@ func (e *Exchange) GetRetryNum(key string, defVal int) int {
 	return defVal
 }
 
-func (e *Exchange) GetAccName(params map[string]interface{}) string {
+func (e *Exchange) PopAccName(params map[string]interface{}) string {
 	if params == nil {
 		return e.DefAccName
 	}
 	return utils.PopMapVal(params, ParamAccount, e.DefAccName)
+}
+
+func (e *Exchange) GetAccName(params map[string]interface{}) string {
+	if params == nil {
+		return e.DefAccName
+	}
+	return utils.GetMapVal(params, ParamAccount, e.DefAccName)
 }
 
 func (e *Exchange) GetAccount(id string) (*Account, *errs.Error) {
