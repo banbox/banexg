@@ -2,6 +2,7 @@ package banexg
 
 import (
 	"fmt"
+	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
@@ -240,4 +241,75 @@ func EnsureArrStr(text string) string {
 		return text
 	}
 	return strings.Join([]string{"[", text, "]"}, "")
+}
+
+/*
+MergeMyTrades
+将WatchMyTrades收到的同Symbol+Order的交易，合并为Order
+此方法未更新状态，请调用exchange.MergeMyTrades
+*/
+func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
+	if len(trades) == 0 {
+		return nil, nil
+	}
+	first := trades[0]
+	od := &Order{
+		ID:                  first.Order,
+		ClientOrderID:       first.ClientID,
+		Datetime:            utils.ISO8601(first.Timestamp),
+		Timestamp:           first.Timestamp,
+		LastTradeTimestamp:  first.Timestamp,
+		LastUpdateTimestamp: first.Timestamp,
+		Status:              "",
+		Symbol:              first.Symbol,
+		Type:                first.Type,
+		PositionSide:        first.PosSide,
+		Side:                first.Side,
+		Price:               first.Price,
+		Average:             first.Average,
+		Amount:              first.Amount,
+		Filled:              first.Filled,
+		Remaining:           0,
+		Cost:                first.Cost,
+		ReduceOnly:          first.ReduceOnly,
+		Trades:              make([]*Trade, 0, len(trades)),
+		Fee:                 &Fee{},
+	}
+	od.Trades = append(od.Trades, &first.Trade)
+	if first.Fee != nil {
+		od.Fee.Cost = first.Fee.Cost
+		od.Fee.Currency = first.Fee.Currency
+		od.Fee.IsMaker = first.Fee.IsMaker
+		od.Fee.Rate = first.Fee.Rate
+	}
+	for _, trade := range trades[1:] {
+		if trade.Symbol != od.Symbol || trade.Order != od.ID || trade.Side != od.Side {
+			msg := fmt.Sprintf("all trades to merge must be same pair, orderId, side, %s %s %s %s %s %s",
+				trade.Symbol, od.Symbol, trade.Order, od.ID, trade.Side, od.Side)
+			return nil, errs.NewMsg(errs.CodeParamInvalid, msg)
+		}
+		if trade.Timestamp < od.Timestamp {
+			od.Timestamp = trade.Timestamp
+			od.Datetime = utils.ISO8601(trade.Timestamp)
+		} else {
+			od.LastTradeTimestamp = trade.Timestamp
+			od.LastUpdateTimestamp = trade.Timestamp
+		}
+		od.Amount += trade.Amount
+		od.Filled += trade.Filled
+		od.Cost += trade.Cost
+		od.ReduceOnly = od.ReduceOnly && trade.ReduceOnly
+		od.Trades = append(od.Trades, &trade.Trade)
+		if trade.Fee != nil {
+			od.Fee.Cost += trade.Fee.Cost
+			od.Fee.Currency = trade.Fee.Currency
+			od.Fee.IsMaker = trade.Fee.IsMaker
+			od.Fee.Rate = trade.Fee.Rate
+		}
+	}
+	if od.Filled > 0 {
+		od.Average = od.Cost / od.Filled
+		od.Price = od.Average
+	}
+	return od, nil
 }

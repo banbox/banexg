@@ -272,6 +272,46 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	}
 }
 
+func (e *Binance) MergeMyTrades(trades []*banexg.MyTrade) (*banexg.Order, *errs.Error) {
+	od, err := banexg.MergeMyTrades(trades)
+	if err != nil {
+		return od, err
+	}
+	var resStatus string
+	var resStatusVal int
+	for _, trade := range trades {
+		var status string
+		var statusVal int
+		switch trade.State {
+		case "NEW":
+			status = banexg.OdStatusOpen
+			statusVal = 1
+		case "REJECTED":
+			status = banexg.OdStatusRejected
+			statusVal = -1
+		case "PARTIALLY_FILLED":
+			status = banexg.OdStatusOpen
+			statusVal = 2
+		case "FILLED":
+			status = banexg.OdStatusClosed
+			statusVal = 6
+		case "EXPIRED_IN_MATCH":
+		case "EXPIRED":
+			status = banexg.OdStatusExpired
+			statusVal = 9
+		case "CANCELED":
+			status = banexg.OdStatusCanceled
+			statusVal = 10
+		}
+		if statusVal >= resStatusVal {
+			resStatus = status
+			resStatusVal = statusVal
+		}
+	}
+	od.Status = resStatus
+	return od, nil
+}
+
 func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
 	err := utils.UnmarshalString(rsp.Content, &data)
