@@ -1,6 +1,7 @@
 package banexg
 
 import (
+	"fmt"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -33,7 +34,9 @@ type WsClient struct {
 }
 
 type WebSocket struct {
-	Conn *websocket.Conn
+	Conn   *websocket.Conn
+	url    string
+	dialer *websocket.Dialer
 }
 
 func (ws *WebSocket) Close() error {
@@ -49,14 +52,27 @@ func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
 func (ws *WebSocket) ReadMsg() ([]byte, error) {
 	for {
 		msgType, msgRaw, err := ws.Conn.ReadMessage()
-		if err != nil || msgType == websocket.TextMessage {
-			return msgRaw, err
+		if err != nil {
+			var errText = err.Error()
+			if strings.Contains(errText, "EOF") {
+				log.Info(fmt.Sprintf("ws EOF closed, try reconnecting..., err: %T", err))
+				conn, _, err_ := ws.dialer.Dial(ws.url, http.Header{})
+				if err_ != nil {
+					return nil, err_
+				}
+				ws.Conn = conn
+				log.Info("ws reconnect success")
+				return ws.ReadMsg()
+			}
+			return nil, err
+		} else if msgType == websocket.TextMessage {
+			return msgRaw, nil
 		}
 	}
 }
 
 func newWebSocket(reqUrl string, args map[string]interface{}) (*WebSocket, error) {
-	var dialer websocket.Dialer
+	var dialer = &websocket.Dialer{}
 	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
 	var defProxy *url.URL
 	var proxy = utils.GetMapVal(args, ParamProxy, defProxy)
@@ -67,7 +83,7 @@ func newWebSocket(reqUrl string, args map[string]interface{}) (*WebSocket, error
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
 	}
-	return &WebSocket{Conn: conn}, nil
+	return &WebSocket{Conn: conn, dialer: dialer, url: reqUrl}, nil
 }
 
 var (
