@@ -208,6 +208,48 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	}
 }
 
+func (e *Binance) EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*banexg.Order, *errs.Error) {
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
+	args["symbol"] = market.ID
+	args["side"] = strings.ToUpper(side)
+	args["quantity"] = amount
+	args["price"] = price
+	if clientOrderId != "" {
+		args["origClientOrderId"] = clientOrderId
+	} else {
+		args["orderId"] = orderId
+	}
+	var method string
+	if market.Option {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "EditOrder not available in option market")
+	} else if market.Linear {
+		method = "fapiPrivatePutOrder"
+	} else if market.Inverse {
+		method = "dapiPrivatePutOrder"
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "EditOrder not available in spot/margin market")
+	}
+	tryNum := e.GetRetryNum("EditOrder", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var mapSymbol = func(mid string) string {
+		return market.Symbol
+	}
+	if method == "fapiPrivatePutOrder" {
+		return parseOrder[*FutureOrder](mapSymbol, rsp)
+	} else if method == "dapiPrivatePutOrder" {
+		return parseOrder[*InverseOrder](mapSymbol, rsp)
+	} else {
+		return nil, errs.NewMsg(errs.CodeRunTime, "invalid method for EditOrder: %s", method)
+	}
+}
+
 /*
 CancelOrder
 cancels an open order

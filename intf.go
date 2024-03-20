@@ -26,7 +26,8 @@ type BanExchange interface {
 	FetchPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error)
 	FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error)
 
-	CreateOrder(symbol, odType, side string, amount float64, price float64, params map[string]interface{}) (*Order, *errs.Error)
+	CreateOrder(symbol, odType, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error)
+	EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error)
 	CancelOrder(id string, symbol string, params map[string]interface{}) (*Order, *errs.Error)
 
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
