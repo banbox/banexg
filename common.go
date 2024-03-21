@@ -252,6 +252,9 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 	if len(trades) == 0 {
 		return nil, nil
 	}
+	sort.Slice(trades, func(i, j int) bool {
+		return trades[i].Timestamp < trades[j].Timestamp
+	})
 	first := trades[0]
 	od := &Order{
 		ID:                  first.Order,
@@ -283,21 +286,21 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 		od.Fee.Rate = first.Fee.Rate
 	}
 	for _, trade := range trades[1:] {
+		if trade.Amount == 0 {
+			continue
+		}
 		if trade.Symbol != od.Symbol || trade.Order != od.ID || trade.Side != od.Side {
 			msg := fmt.Sprintf("all trades to merge must be same pair, orderId, side, %s %s %s %s %s %s",
 				trade.Symbol, od.Symbol, trade.Order, od.ID, trade.Side, od.Side)
 			return nil, errs.NewMsg(errs.CodeParamInvalid, msg)
 		}
-		if trade.Timestamp < od.Timestamp {
-			od.Timestamp = trade.Timestamp
-			od.Datetime = utils.ISO8601(trade.Timestamp)
-		} else {
-			od.LastTradeTimestamp = trade.Timestamp
-			od.LastUpdateTimestamp = trade.Timestamp
-		}
+		od.LastTradeTimestamp = trade.Timestamp
+		od.LastUpdateTimestamp = trade.Timestamp
 		od.Amount += trade.Amount
-		od.Filled += trade.Filled
+		od.Filled = trade.Filled
 		od.Cost += trade.Cost
+		od.Average = trade.Average
+		od.Price = trade.Average
 		od.ReduceOnly = od.ReduceOnly && trade.ReduceOnly
 		od.Trades = append(od.Trades, &trade.Trade)
 		if trade.Fee != nil {
@@ -307,7 +310,8 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 			od.Fee.Rate = trade.Fee.Rate
 		}
 	}
-	if od.Filled > 0 {
+
+	if od.Average == 0 && od.Filled > 0 {
 		od.Average = od.Cost / od.Filled
 		od.Price = od.Average
 	}

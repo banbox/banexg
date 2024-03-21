@@ -477,9 +477,6 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.Price, _ = utils.SafeMapVal(msg, "L", zeroFlt)
 	res.Amount, _ = utils.SafeMapVal(msg, "l", zeroFlt)
 	res.Cost, _ = utils.SafeMapVal(msg, "Y", zeroFlt)
-	if res.Cost == 0 {
-		res.Cost = res.Price * res.Amount
-	}
 	res.Order, _ = utils.SafeMapVal(msg, "i", "")
 	res.Maker, _ = utils.SafeMapVal(msg, "m", false)
 	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
@@ -491,10 +488,13 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	}
 	odType, _ := utils.SafeMapVal(msg, "o", "")
 	res.Type = strings.ToLower(odType)
+	res.State, _ = utils.SafeMapVal(msg, "X", "")
+	if res.Cost == 0 && (res.State == "PARTIALLY_FILLED" || res.State == "FILLED") {
+		res.Cost = res.Price * res.Amount
+	}
 	res.Filled, _ = utils.SafeMapVal(msg, "z", zeroFlt)
 	res.ClientID, _ = utils.SafeMapVal(msg, "c", "")
 	res.Average, _ = utils.SafeMapVal(msg, "ap", zeroFlt)
-	res.State, _ = utils.SafeMapVal(msg, "X", "")
 	posSide, _ := utils.SafeMapVal(msg, "ps", "")
 	res.PosSide = strings.ToLower(posSide)
 	res.ReduceOnly, _ = utils.SafeMapVal(msg, "R", false)

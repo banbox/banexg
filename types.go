@@ -400,11 +400,11 @@ type Trade struct {
 	ID        string      `json:"id"`        // 交易ID
 	Symbol    string      `json:"symbol"`    // 币种ID
 	Side      string      `json:"side"`      // buy/sell
-	Type      string      `json:"type"`      //market/limit
-	Amount    float64     `json:"amount"`    // 数量
+	Type      string      `json:"type"`      // market/limit
+	Amount    float64     `json:"amount"`    // 当前交易的数量
 	Price     float64     `json:"price"`     // 价格
-	Cost      float64     `json:"cost"`      // 总花费
-	Order     string      `json:"order"`     // 订单号
+	Cost      float64     `json:"cost"`      // 当前交易花费
+	Order     string      `json:"order"`     // 当前交易所属订单号
 	Timestamp int64       `json:"timestamp"` // 时间戳
 	Maker     bool        `json:"maker"`     // 是否maker
 	Fee       *Fee        `json:"fee"`       // 手续费
@@ -413,7 +413,7 @@ type Trade struct {
 
 type MyTrade struct {
 	Trade
-	Filled     float64     `json:"filled"`     // 累计成交量
+	Filled     float64     `json:"filled"`     // 订单累计成交量（不止当前交易）
 	ClientID   string      `json:"clientID"`   // 客户端订单ID
 	Average    float64     `json:"average"`    // 平均成交价格
 	State      string      `json:"state"`      // 状态
