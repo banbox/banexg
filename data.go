@@ -89,6 +89,7 @@ const (
 	OptDebugWS         = "DebugWS"
 	OptDebugAPI        = "DebugAPI"
 	OptApiCaches       = "ApiCaches"
+	OptFees            = "Fees"
 )
 
 const (

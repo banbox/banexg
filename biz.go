@@ -70,6 +70,9 @@ func (e *Exchange) Init() *errs.Error {
 	if len(failCaches) > 0 {
 		log.Error("invalid api keys for OptApiCaches", zap.Strings("keys", failCaches))
 	}
+	// 更新手续费比率
+	fees := utils.GetMapVal(e.Options, OptFees, map[string]map[string]float64{})
+	e.SetFees(fees)
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
 	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
@@ -105,6 +108,44 @@ func (e *Exchange) SafeCurrency(currId string) *Currency {
 	return &Currency{
 		ID:   currId,
 		Code: code,
+	}
+}
+
+func (e *Exchange) SetFees(fees map[string]map[string]float64) {
+	if len(fees) == 0 {
+		return
+	}
+	if e.Fees == nil {
+		e.Fees = &ExgFee{}
+	}
+	for market, feeMap := range fees {
+		var target *TradeFee
+		if market == "linear" {
+			if e.Fees.Linear == nil {
+				e.Fees.Linear = &TradeFee{}
+			}
+			target = e.Fees.Linear
+		} else if market == "inverse" {
+			if e.Fees.Inverse == nil {
+				e.Fees.Inverse = &TradeFee{}
+			}
+			target = e.Fees.Inverse
+		} else {
+			if e.Fees.Main == nil {
+				e.Fees.Main = &TradeFee{}
+			}
+			target = e.Fees.Main
+		}
+		for field, rate := range feeMap {
+			field = strings.ToLower(field)
+			if field == "taker" {
+				target.Taker = rate
+			} else if field == "maker" {
+				target.Maker = rate
+			} else {
+				log.Warn("unknown fee Field, expect: maker/taker", zap.String("val", field))
+			}
+		}
 	}
 }
 

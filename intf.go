@@ -30,6 +30,7 @@ type BanExchange interface {
 	EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error)
 	CancelOrder(id string, symbol string, params map[string]interface{}) (*Order, *errs.Error)
 
+	SetFees(fees map[string]map[string]float64)
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
 	SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
 	CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
