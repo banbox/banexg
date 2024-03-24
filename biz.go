@@ -799,6 +799,11 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	if result.Status >= 400 {
 		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
 		result.Error = errs.NewMsg(result.Status, msg)
+		var resData = make(map[string]interface{})
+		err = utils.UnmarshalString(result.Content, &resData)
+		if err == nil {
+			result.Error.BizCode = int(utils.GetMapVal(resData, "code", int64(0)))
+		}
 		if result.Status == 429 || result.Status == 418 {
 			result.Error.Data = rsp.Header.Get("Retry-After")
 		}
