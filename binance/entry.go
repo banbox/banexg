@@ -77,7 +77,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 					FeeSide:    "quote",
 					TierBased:  true,
 					Percentage: true,
-					Taker:      0.0004,
+					Taker:      0.0005,
 					Maker:      0.0002,
 					Tiers: &banexg.FeeTiers{
 						Taker: []*banexg.FeeTierItem{
@@ -616,11 +616,11 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 				"fapiPrivateGetAdlQuantile":                                   {Path: "adlQuantile", Host: HostFApiPrivate, Method: "GET", Cost: 5},
 				"fapiPrivateGetPmAccountInfo":                                 {Path: "pmAccountInfo", Host: HostFApiPrivate, Method: "GET", Cost: 5},
 				"fapiPrivateGetOrderAmendment":                                {Path: "orderAmendment", Host: HostFApiPrivate, Method: "GET", Cost: 1},
-				"fapiPrivateGetIncomeAsyn":                                    {Path: "income/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1000},
+				"fapiPrivateGetIncomeAsyn":                                    {Path: "income/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1500},
 				"fapiPrivateGetIncomeAsynId":                                  {Path: "income/asyn/id", Host: HostFApiPrivate, Method: "GET", Cost: 10},
-				"fapiPrivateGetOrderAsyn":                                     {Path: "order/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1000},
+				"fapiPrivateGetOrderAsyn":                                     {Path: "order/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1500},
 				"fapiPrivateGetOrderAsynId":                                   {Path: "order/asyn/id", Host: HostFApiPrivate, Method: "GET", Cost: 10},
-				"fapiPrivateGetTradeAsyn":                                     {Path: "trade/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1000},
+				"fapiPrivateGetTradeAsyn":                                     {Path: "trade/asyn", Host: HostFApiPrivate, Method: "GET", Cost: 1500},
 				"fapiPrivateGetTradeAsynId":                                   {Path: "trade/asyn/id", Host: HostFApiPrivate, Method: "GET", Cost: 10},
 				"fapiPrivatePostBatchOrders":                                  {Path: "batchOrders", Host: HostFApiPrivate, Method: "POST", Cost: 5},
 				"fapiPrivatePostPositionSideDual":                             {Path: "positionSide/dual", Host: HostFApiPrivate, Method: "POST", Cost: 1},
