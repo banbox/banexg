@@ -314,46 +314,6 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	}
 }
 
-func (e *Binance) MergeMyTrades(trades []*banexg.MyTrade) (*banexg.Order, *errs.Error) {
-	od, err := banexg.MergeMyTrades(trades)
-	if err != nil {
-		return od, err
-	}
-	var resStatus string
-	var resStatusVal int
-	for _, trade := range trades {
-		var status string
-		var statusVal int
-		switch trade.State {
-		case "NEW":
-			status = banexg.OdStatusOpen
-			statusVal = 1
-		case "REJECTED":
-			status = banexg.OdStatusRejected
-			statusVal = -1
-		case "PARTIALLY_FILLED":
-			status = banexg.OdStatusOpen
-			statusVal = 2
-		case "FILLED":
-			status = banexg.OdStatusClosed
-			statusVal = 6
-		case "EXPIRED_IN_MATCH":
-		case "EXPIRED":
-			status = banexg.OdStatusExpired
-			statusVal = 9
-		case "CANCELED":
-			status = banexg.OdStatusCanceled
-			statusVal = 10
-		}
-		if statusVal >= resStatusVal {
-			resStatus = status
-			resStatusVal = statusVal
-		}
-	}
-	od.Status = resStatus
-	return od, nil
-}
-
 func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
 	err := utils.UnmarshalString(rsp.Content, &data)
@@ -379,9 +339,9 @@ func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes)
 
 var orderStateMap = map[string]string{
 	OdStatusNew:             banexg.OdStatusOpen,
-	OdStatusPartiallyFilled: banexg.OdStatusOpen,
 	OdStatusAccept:          banexg.OdStatusOpen,
-	OdStatusFilled:          banexg.OdStatusClosed,
+	OdStatusPartiallyFilled: banexg.OdStatusPartFilled,
+	OdStatusFilled:          banexg.OdStatusFilled,
 	OdStatusCanceled:        banexg.OdStatusCanceled,
 	OdStatusCancelled:       banexg.OdStatusCanceled,
 	OdStatusPendingCancel:   banexg.OdStatusCanceling,
@@ -401,7 +361,7 @@ func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	status := mapOrderStatus(o.Status)
 	filled, _ := strconv.ParseFloat(o.ExecutedQty, 64)
 	lastTradeTimestamp := int64(0)
-	if filled > 0 && status == banexg.OdStatusOpen || status == banexg.OdStatusClosed {
+	if filled > 0 && status == banexg.OdStatusOpen || status == banexg.OdStatusFilled {
 		lastTradeTimestamp = o.UpdateTime
 	}
 	orderType := strings.ToLower(o.Type)

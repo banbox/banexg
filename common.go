@@ -246,7 +246,6 @@ func EnsureArrStr(text string) string {
 /*
 MergeMyTrades
 将WatchMyTrades收到的同Symbol+Order的交易，合并为Order
-此方法未更新状态，请调用exchange.MergeMyTrades
 */
 func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 	if len(trades) == 0 {
@@ -285,6 +284,7 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 		od.Fee.IsMaker = first.Fee.IsMaker
 		od.Fee.Rate = first.Fee.Rate
 	}
+	var statusDone bool
 	for _, trade := range trades[1:] {
 		if trade.Amount == 0 {
 			continue
@@ -309,6 +309,10 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 			od.Fee.IsMaker = trade.Fee.IsMaker
 			od.Fee.Rate = trade.Fee.Rate
 		}
+		if !statusDone {
+			od.Status = trade.State
+			statusDone = IsOrderDone(trade.State)
+		}
 	}
 
 	if od.Average == 0 && od.Filled > 0 {
@@ -316,4 +320,8 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 		od.Price = od.Average
 	}
 	return od, nil
+}
+
+func IsOrderDone(status string) bool {
+	return status == OdStatusFilled || status == OdStatusCanceled || status == OdStatusExpired || status == OdStatusRejected
 }

@@ -488,8 +488,9 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	}
 	odType, _ := utils.SafeMapVal(msg, "o", "")
 	res.Type = strings.ToLower(odType)
-	res.State, _ = utils.SafeMapVal(msg, "X", "")
-	if res.Cost == 0 && (res.State == "PARTIALLY_FILLED" || res.State == "FILLED") {
+	odState, _ := utils.SafeMapVal(msg, "X", "")
+	res.State = mapOrderStatus(odState)
+	if res.Cost == 0 && (res.State == banexg.OdStatusPartFilled || res.State == banexg.OdStatusFilled) {
 		res.Cost = res.Price * res.Amount
 	}
 	res.Filled, _ = utils.SafeMapVal(msg, "z", zeroFlt)

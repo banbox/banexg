@@ -115,12 +115,13 @@ const (
 )
 
 const (
-	OdStatusOpen      = "open"
-	OdStatusClosed    = "closed"
-	OdStatusCanceled  = "canceled"
-	OdStatusCanceling = "canceling"
-	OdStatusRejected  = "rejected"
-	OdStatusExpired   = "expired"
+	OdStatusOpen       = "open"
+	OdStatusPartFilled = "part_filled"
+	OdStatusFilled     = "filled"
+	OdStatusCanceled   = "canceled"
+	OdStatusCanceling  = "canceling"
+	OdStatusRejected   = "rejected"
+	OdStatusExpired    = "expired"
 )
 
 // 此处订单类型全部使用币安订单类型小写
