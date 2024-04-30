@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -19,24 +20,26 @@ import (
 )
 
 type WsClient struct {
-	Conn       WsConn
-	URL        string
-	AccName    string
-	MarketType string
-	Debug      bool
-	Send       chan []byte
-	control    chan int              // 用于内部同步控制命令
-	JobInfos   map[string]*WsJobInfo // request id: Sub Data
-	ChanCaps   map[string]int        // msgHash: cap size of cache msg
-	OnMessage  func(client *WsClient, msg *WsMsg)
-	OnError    func(client *WsClient, err *errs.Error)
-	OnClose    func(client *WsClient, err *errs.Error)
+	Conn          WsConn
+	URL           string
+	AccName       string
+	MarketType    string
+	Debug         bool
+	Send          chan []byte
+	control       chan int              // 用于内部同步控制命令
+	JobInfos      map[string]*WsJobInfo // request id: Sub Data
+	ChanCaps      map[string]int        // msgHash: cap size of cache msg
+	SubscribeKeys map[string]bool       // 订阅的key，用于重连后恢复订阅
+	OnMessage     func(client *WsClient, msg *WsMsg)
+	OnError       func(client *WsClient, err *errs.Error)
+	OnClose       func(client *WsClient, err *errs.Error)
 }
 
 type WebSocket struct {
-	Conn   *websocket.Conn
-	url    string
-	dialer *websocket.Dialer
+	Conn        *websocket.Conn
+	url         string
+	dialer      *websocket.Dialer
+	onReConnect func() *errs.Error
 }
 
 func (ws *WebSocket) Close() error {
@@ -55,13 +58,19 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 		if err != nil {
 			var errText = err.Error()
 			if strings.Contains(errText, "EOF") {
-				log.Info(fmt.Sprintf("ws EOF closed, try reconnecting..., err: %T", err))
+				log.Info(fmt.Sprintf("ws EOF closed, try reconnecting: %s, err: %T", ws.url, err))
 				conn, _, err_ := ws.dialer.Dial(ws.url, http.Header{})
 				if err_ != nil {
 					return nil, err_
 				}
 				ws.Conn = conn
 				log.Info("ws reconnect success")
+				if ws.onReConnect != nil {
+					err2 := ws.onReConnect()
+					if err2 != nil {
+						log.Error("OnReConnect fail", zap.Error(err2))
+					}
+				}
 				return ws.ReadMsg()
 			}
 			return nil, err
@@ -71,7 +80,7 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 	}
 }
 
-func newWebSocket(reqUrl string, args map[string]interface{}) (*WebSocket, error) {
+func newWebSocket(reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*WebSocket, error) {
 	var dialer = &websocket.Dialer{}
 	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
 	var defProxy *url.URL
@@ -83,7 +92,7 @@ func newWebSocket(reqUrl string, args map[string]interface{}) (*WebSocket, error
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
 	}
-	return &WebSocket{Conn: conn, dialer: dialer, url: reqUrl}, nil
+	return &WebSocket{Conn: conn, dialer: dialer, url: reqUrl, onReConnect: onReConnect}, nil
 }
 
 var (
@@ -106,14 +115,15 @@ var (
 func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose,
 	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	var result = &WsClient{
-		URL:       reqUrl,
-		Debug:     debug,
-		Send:      make(chan []byte, 1024),
-		JobInfos:  make(map[string]*WsJobInfo),
-		OnMessage: onMsg,
-		OnError:   onErr,
-		OnClose:   onClose,
-		control:   make(chan int, 1),
+		URL:           reqUrl,
+		Debug:         debug,
+		Send:          make(chan []byte, 1024),
+		JobInfos:      make(map[string]*WsJobInfo),
+		SubscribeKeys: make(map[string]bool),
+		OnMessage:     onMsg,
+		OnError:       onErr,
+		OnClose:       onClose,
+		control:       make(chan int, 1),
 	}
 	args := utils.SafeParams(params)
 	result.ChanCaps = DefChanCaps
@@ -125,7 +135,26 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 	conn = utils.GetMapVal(args, OptWsConn, conn)
 	if conn == nil {
 		var err error
-		conn, err = newWebSocket(reqUrl, args)
+		conn, err = newWebSocket(reqUrl, args, func() *errs.Error {
+			if len(result.SubscribeKeys) == 0 {
+				return nil
+			}
+			var subParams = make([]string, 0, len(result.SubscribeKeys))
+			for key := range result.SubscribeKeys {
+				subParams = append(subParams, key)
+			}
+			var req = map[string]interface{}{
+				"method": "SUBSCRIBE",
+				"params": subParams,
+				"id":     90000 + rand.Intn(10000),
+			}
+			err2 := result.Write(req, nil)
+			if err2 == nil {
+				log.Info("subscribe after reconnect success", zap.Int("num", len(subParams)),
+					zap.String("url", reqUrl))
+			}
+			return err2
+		})
 		if err != nil {
 			return nil, errs.New(errs.CodeConnectFail, err)
 		}
@@ -430,6 +459,21 @@ func (c *WsClient) handleRawMsg(msgRaw []byte) {
 func (c *WsClient) Prefix(key string) string {
 	var arr = []string{c.AccName, "@", c.URL, "#", key}
 	return strings.Join(arr, "")
+}
+
+func (c *WsClient) UpdateSubs(isSub bool, keys []string) string {
+	method := "SUBSCRIBE"
+	if !isSub {
+		method = "UNSUBSCRIBE"
+		for _, key := range keys {
+			delete(c.SubscribeKeys, key)
+		}
+	} else {
+		for _, key := range keys {
+			c.SubscribeKeys[key] = true
+		}
+	}
+	return method
 }
 
 func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {

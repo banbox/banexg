@@ -287,7 +287,7 @@ watches historical candlestick data containing the open, high, low, and close pr
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
 func (e *Binance) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
-	chanKey, symbols, args, err := e.prepareOHLCVSub("SUBSCRIBE", jobs, params)
+	chanKey, symbols, args, err := e.prepareOHLCVSub(true, jobs, params)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func (e *Binance) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (
 }
 
 func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
-	chanKey, symbols, _, err := e.prepareOHLCVSub("UNSUBSCRIBE", jobs, params)
+	chanKey, symbols, _, err := e.prepareOHLCVSub(false, jobs, params)
 	if err != nil {
 		return err
 	}
@@ -308,7 +308,7 @@ func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{})
 }
 
 func (e *Binance) WatchMarkPrices(symbols []string, params map[string]interface{}) (chan map[string]float64, *errs.Error) {
-	chanKey, args, err := e.prepareMarkPrices("SUBSCRIBE", symbols, params)
+	chanKey, args, err := e.prepareMarkPrices(true, symbols, params)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (e *Binance) WatchMarkPrices(symbols []string, params map[string]interface{
 }
 
 func (e *Binance) UnWatchMarkPrices(symbols []string, params map[string]interface{}) *errs.Error {
-	chanKey, _, err := e.prepareMarkPrices("UNSUBSCRIBE", symbols, params)
+	chanKey, _, err := e.prepareMarkPrices(false, symbols, params)
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func (e *Binance) UnWatchMarkPrices(symbols []string, params map[string]interfac
 	return nil
 }
 
-func (e *Binance) prepareMarkPrices(method string, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -360,6 +360,7 @@ func (e *Binance) prepareMarkPrices(method string, symbols []string, params map[
 			subParams = append(subParams, market.LowercaseID+"@markPrice"+intv)
 		}
 	}
+	method := client.UpdateSubs(isSub, subParams)
 	var request = map[string]interface{}{
 		"method": method,
 		"params": subParams,
@@ -496,7 +497,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	banexg.WriteOutChan(e.Exchange, chanKey, kline, true)
 }
 
-func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareOHLCVSub(isSub bool, jobs [][2]string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(jobs) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
@@ -526,6 +527,7 @@ func (e *Binance) prepareOHLCVSub(method string, jobs [][2]string, params map[st
 		symbols = append(symbols, row[0])
 	}
 	chanKey := client.Prefix(msgHash)
+	method := client.UpdateSubs(isSub, subParams)
 	var request = map[string]interface{}{
 		"method": method,
 		"params": subParams,

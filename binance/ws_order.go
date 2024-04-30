@@ -81,7 +81,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string
 		}
 		return jobInfo, nil
 	}
-	chanKey, args, err := e.prepareBookArgs("SUBSCRIBE", getJobFn, symbols, params)
+	chanKey, args, err := e.prepareBookArgs(true, getJobFn, symbols, params)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string
 }
 
 func (e *Binance) UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error {
-	chanKey, _, err := e.prepareBookArgs("UNSUBSCRIBE", nil, symbols, params)
+	chanKey, _, err := e.prepareBookArgs(false, nil, symbols, params)
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *er
 	}
 	return exgParams, nil
 }
-func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
 	}
@@ -178,6 +178,7 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 	if err != nil {
 		return "", nil, err
 	}
+	method := client.UpdateSubs(isSub, exgParams)
 	var request = map[string]interface{}{
 		"method": method,
 		"params": exgParams,
@@ -189,7 +190,7 @@ func (e *Binance) prepareBookArgs(method string, getJobInfo banexg.FuncGetWsJob,
 }
 
 func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (chan *banexg.Trade, *errs.Error) {
-	chanKey, symbols, args, err := e.prepareWatchTrades("SUBSCRIBE", symbols, params)
+	chanKey, symbols, args, err := e.prepareWatchTrades(true, symbols, params)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +202,7 @@ func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (
 }
 
 func (e *Binance) UnWatchTrades(symbols []string, params map[string]interface{}) *errs.Error {
-	chanKey, symbols, _, err := e.prepareWatchTrades("UNSUBSCRIBE", symbols, params)
+	chanKey, symbols, _, err := e.prepareWatchTrades(false, symbols, params)
 
 	if err != nil {
 		return err
@@ -210,7 +211,7 @@ func (e *Binance) UnWatchTrades(symbols []string, params map[string]interface{})
 	return nil
 }
 
-func (e *Binance) prepareWatchTrades(method string, symbols []string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
@@ -236,6 +237,7 @@ func (e *Binance) prepareWatchTrades(method string, symbols []string, params map
 		pairs = append(pairs, symbol)
 	}
 	chanKey := client.Prefix(msgHash)
+	method := client.UpdateSubs(isSub, subParams)
 	var request = map[string]interface{}{
 		"method": method,
 		"params": subParams,
