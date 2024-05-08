@@ -5,16 +5,47 @@ import (
 	"io"
 )
 
+/*
+交易所接口
+需要实现的方法：
+FetchTicker
+FetchTickers
+FetchTickerPrice
+LoadLeverageBrackets
+GetLeverage
+
+FetchOHLCV
+FetchOrderBook
+
+FetchOrder
+FetchOrders
+FetchBalance
+FetchAccountPositions
+FetchPositions
+FetchOpenOrders
+
+CreateOrder
+EditOrder
+CancelOrder
+
+SetLeverage
+CalcMaintMargin
+
+Close
+*/
+
 type BanExchange interface {
 	LoadMarkets(reload bool, params map[string]interface{}) (MarketMap, *errs.Error)
 	GetCurMarkets() MarketMap
 	GetMarket(symbol string) (*Market, *errs.Error)
+	MapMarket(rawID string, year int) (*Market, *errs.Error)
 	FetchTicker(symbol string, params map[string]interface{}) (*Ticker, *errs.Error)
 	FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error)
 	FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error)
 	LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error
 	GetLeverage(symbol string, notional float64, account string) (int, int)
 	CheckSymbols(symbols ...string) ([]string, []string)
+	Info() *ExgInfo
 
 	FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*Kline, *errs.Error)
 	FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*OrderBook, *errs.Error)

@@ -7,7 +7,7 @@ import (
 
 type Binance struct {
 	*banexg.Exchange
-	RecvWindow       int
+	RecvWindow       int // 允许的和服务器最大毫秒时间差
 	newOrderRespType map[string]string
 	streamBySubHash  map[string]string // subHash: stream
 	streamIndex      int

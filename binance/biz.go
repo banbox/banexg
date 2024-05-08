@@ -46,6 +46,8 @@ func (e *Binance) Init() *errs.Error {
 	}
 	e.streamBySubHash = map[string]string{}
 	e.wsRequestId = map[string]int{}
+	e.ExgInfo.NoHoliday = true
+	e.ExgInfo.FullDay = true
 	return nil
 }
 

@@ -31,6 +31,7 @@ type Exchange struct {
 	Proxy     *url.URL
 	DebugWS   bool // 是否输出WS调试信息
 	DebugAPI  bool // 是否输出API请求测试信息
+	ExgInfo   *ExgInfo
 
 	CredKeys   map[string]bool     // cred keys required for exchange
 	Accounts   map[string]*Account // name: account
@@ -91,6 +92,12 @@ type Exchange struct {
 	OnWsClose FuncOnWsClose
 
 	Flags map[string]string
+}
+
+type ExgInfo struct {
+	NoHoliday bool // true表示365天全年开放
+	FullDay   bool // true表示一天24小时可交易
+	Min1mHole int  // 1分钟K线空洞的最小间隔，少于此认为正常无交易而非空洞
 }
 
 type Account struct {
@@ -235,6 +242,7 @@ type Market struct {
 	BaseID         string        `json:"baseId"`
 	QuoteID        string        `json:"quoteId"`
 	SettleID       string        `json:"settleId"`
+	ExgReal        string        `json:"exgReal"`
 	Type           string        `json:"type"` // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
 	Spot           bool          `json:"spot"`
 	Margin         bool          `json:"margin"`
@@ -252,6 +260,8 @@ type Market struct {
 	ExpiryDatetime string        `json:"expiryDatetime"`
 	Strike         float64       `json:"strike"`
 	OptionType     string        `json:"optionType"`
+	DayTimes       [][2]int64    `json:"dayTimes"`   // 日盘交易时间
+	NightTimes     [][2]int64    `json:"nightTimes"` // 夜盘交易时间
 	Precision      *Precision    `json:"precision"`
 	Limits         *MarketLimits `json:"limits"`
 	Created        int64         `json:"created"`

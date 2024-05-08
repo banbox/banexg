@@ -89,6 +89,7 @@ func (e *Exchange) Init() *errs.Error {
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarkPrices = map[string]map[string]float64{}
 	e.KeyTimeStamps = map[string]int64{}
+	e.ExgInfo = &ExgInfo{Min1mHole: 1}
 	return nil
 }
 
@@ -445,6 +446,14 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 	return nil, errs.NoMarketForPair
 }
 
+func (e *Exchange) MapMarket(exgSID string, year int) (*Market, *errs.Error) {
+	mar := e.GetMarketById(exgSID, "")
+	if mar == nil {
+		return nil, errs.NoMarketForPair
+	}
+	return mar, nil
+}
+
 /*
 GetMarketID
 
@@ -553,6 +562,10 @@ func (e *Exchange) CheckSymbols(symbols ...string) ([]string, []string) {
 	return valids, fails
 }
 
+func (e *Exchange) Info() *ExgInfo {
+	return e.ExgInfo
+}
+
 func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*Kline, *errs.Error) {
 	return nil, errs.NotImplement
 }
@@ -607,6 +620,54 @@ func (e *Exchange) GetLeverage(symbol string, notional float64) (int, int) {
 
 func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {
 	return 0, nil
+}
+
+func (e *Exchange) WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error {
+	return errs.NotImplement
+}
+
+func (e *Exchange) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
+	return errs.NotImplement
+}
+
+func (e *Exchange) WatchMarkPrices(symbols []string, params map[string]interface{}) (chan map[string]float64, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) UnWatchMarkPrices(symbols []string, params map[string]interface{}) *errs.Error {
+	return errs.NotImplement
+}
+
+func (e *Exchange) WatchTrades(symbols []string, params map[string]interface{}) (chan *Trade, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) UnWatchTrades(symbols []string, params map[string]interface{}) *errs.Error {
+	return errs.NotImplement
+}
+
+func (e *Exchange) WatchMyTrades(params map[string]interface{}) (chan *MyTrade, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) WatchBalance(params map[string]interface{}) (chan *Balances, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) WatchPositions(params map[string]interface{}) (chan []*Position, *errs.Error) {
+	return nil, errs.NotImplement
+}
+
+func (e *Exchange) WatchAccountConfig(params map[string]interface{}) (chan *AccountConfig, *errs.Error) {
+	return nil, errs.NotImplement
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,

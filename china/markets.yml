@@ -1,0 +1,1139 @@
+goods:
+  - code: base
+    title: 模板
+    market: linear
+    exchange: SHFE
+    day_ranges:
+      - 01:00-02:15
+      - 02:30-03:30
+      - 05:30-07:00
+    night_ranges:
+      - 13:00-15:00
+  - code: base2
+    extend: base
+    night_ranges:
+      - 13:00-17:00
+  - code: base3
+    extend: base
+    exchange: DCE
+  - code: base4
+    extend: base
+    exchange: CZCE
+  - code: base5
+    extend: base
+    exchange: CZCE
+    night_ranges: []
+  - code: base6
+    extend: base
+    exchange: CFFEX
+    day_ranges:
+      - 01:30-03:30
+      - 05:00-07:00
+    night_ranges: []
+  - code: base7
+    extend: base
+    exchange: INE
+    night_ranges:
+      - 13:00-15:00
+
+  - code: CU
+    extend: base2
+    title: 铜
+    fee:
+      unit: pct
+      val: 0.00015
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: CU
+    extend: base2
+    title: 铜
+    market: option
+    fee:
+      unit: lot
+      val: 15
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: AL
+    extend: base2
+    title: 铝
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: AL
+    extend: base2
+    title: 铝
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: PB
+    extend: base2
+    title: 铅
+    fee:
+      unit: pct
+      val: 0.00012
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: ZN
+    extend: base2
+    title: 锌
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: ZN
+    extend: base2
+    title: 锌
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: SN
+    extend: base2
+    title: 锡
+    fee:
+      unit: lot
+      val: 3
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: NI
+    extend: base2
+    title: 镍
+    fee:
+      unit: lot
+      val: 3
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: SS
+    extend: base2
+    title: 不锈钢
+    fee:
+      unit: pct
+      val: 6
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 13
+  - code: AU
+    extend: base2
+    title: 黄金
+    night_ranges:
+      - 13:00-18:30
+    fee:
+      unit: lot
+      val: 30
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: AU
+    extend: base2
+    title: 黄金
+    market: option
+    night_ranges:
+      - 13:00-18:30
+    fee:
+      unit: lot
+      val: 6
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: AG
+    extend: base2
+    title: 白银
+    night_ranges:
+      - 13:00-18:30
+    fee:
+      unit: pct
+      val: 0.00015
+    price_tick: 15
+    limit_chg_pct: 10
+    margin_pct: 15
+  - code: AO
+    extend: base2
+    title: 氧化铝
+    fee:
+      unit: pct
+      val: 0.0001
+    price_tick: 20
+    limit_chg_pct: 7
+    margin_pct: 9
+  - code: RB
+    extend: base
+    title: 螺纹钢
+    fee:
+      unit: pct
+      val: 0.0003
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: HC
+    extend: base
+    title: 热轧卷板
+    fee:
+      unit: pct
+      val: 0.0003
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: BU
+    extend: base
+    title: 沥青
+    fee:
+      unit: pct
+      val: 0.0003
+    price_tick: 20
+    limit_chg_pct: 8
+    margin_pct: 18
+  - code: RU
+    extend: base
+    title: 天然橡胶
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: RU
+    extend: base
+    title: 天然橡胶
+    market: option
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: BR
+    extend: base
+    title: 合成橡胶
+    fee:
+      unit: pct
+      val: 0.000021
+    price_tick: 25
+    limit_chg_pct: 10
+    margin_pct: 12
+  - code: BR
+    extend: base
+    title: 合成橡胶
+    market: option
+    fee:
+      unit: pct
+      val: 0.000021
+    price_tick: 25
+    limit_chg_pct: 10
+    margin_pct: 12
+  - code: FU
+    extend: base
+    title: 燃料油
+    fee:
+      unit: pct
+      val: 0.00015
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: SP
+    extend: base
+    title: 纸浆
+    fee:
+      unit: pct
+      val: 0.00015
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: WR
+    extend: base
+    title: 线材
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.00012
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: A
+    extend: base3
+    title: 豆一
+    fee:
+      unit: lot
+      val: 6
+    price_tick: 10
+    limit_chg_pct: 8
+    margin_pct: 16
+  - code: B
+    extend: base3
+    title: 豆二
+    fee:
+      unit: lot
+      val: 3
+    price_tick: 10
+    limit_chg_pct: 8
+    margin_pct: 15
+  - code: M
+    extend: base3
+    title: 豆粕
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: M
+    extend: base3
+    title: 豆粕
+    market: option
+    fee:
+      unit: lot
+      val: 3
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: Y
+    extend: base3
+    title: 豆油
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: P
+    extend: base3
+    title: 棕榈油
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 8
+    margin_pct: 16
+  - code: P
+    extend: base3
+    title: 棕榈油
+    market: option
+    fee:
+      unit: lot
+      val: 1.5
+    price_tick: 20
+    limit_chg_pct: 8
+    margin_pct: 16
+  - code: I
+    extend: base3
+    title: 铁矿石
+    fee:
+      unit: pct
+      val: 0.00003
+    price_tick: 50
+    limit_chg_pct: 10
+    margin_pct: 18
+  - code: I
+    extend: base3
+    title: 铁矿石
+    market: option
+    fee:
+      unit: lot
+      val: 6
+    price_tick: 50
+    limit_chg_pct: 10
+    margin_pct: 18
+  - code: J
+    extend: base3
+    title: 焦炭
+    fee:
+      unit: pct
+      val: 0.000018
+    price_tick: 50
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: JM
+    extend: base3
+    title: 焦煤
+    fee:
+      unit: pct
+      val: 0.000018
+    price_tick: 30
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: C
+    extend: base3
+    title: 玉米
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: C
+    extend: base3
+    title: 玉米
+    market: option
+    fee:
+      unit: lot
+      val: 0.6
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: CS
+    extend: base3
+    title: 玉米淀粉
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 13
+  - code: L
+    extend: base3
+    title: 聚乙烯
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 9
+    margin_pct: 17
+  - code: L
+    extend: base3
+    title: 聚乙烯
+    market: option
+    fee:
+      unit: lot
+      val: 1.5
+    price_tick: 25
+    limit_chg_pct: 9
+    margin_pct: 17
+  - code: V
+    extend: base3
+    title: 聚氯乙烯
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 8
+    margin_pct: 16
+  - code: V
+    extend: base3
+    title: 聚氯乙烯
+    market: option
+    fee:
+      unit: lot
+      val: 1.5
+    price_tick: 25
+    limit_chg_pct: 8
+    margin_pct: 16
+  - code: PP
+    extend: base3
+    title: 聚丙烯
+    fee:
+      unit: pct
+      val: 0.000018
+    fee_ct:
+      val: 0
+    price_tick: 5
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: PP
+    extend: base3
+    title: 聚丙烯
+    market: option
+    fee:
+      unit: lot
+      val: 1.5
+    price_tick: 5
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: EG
+    extend: base3
+    title: 乙二醇
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 9
+    margin_pct: 17
+  - code: RR
+    extend: base3
+    title: 粳米
+    fee:
+      unit: lot
+      val: 0.6
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 12
+  - code: EB
+    extend: base3
+    title: 苯乙烯
+    fee:
+      unit: lot
+      val: 0.9
+    fee_ct:
+      val: 0
+    price_tick: 5
+    limit_chg_pct: 11
+    margin_pct: 18
+  - code: PG
+    extend: base3
+    title: 液化石油气
+    fee:
+      unit: lot
+      val: 18
+    fee_ct:
+      val: 0
+    price_tick: 20
+    limit_chg_pct: 10
+    margin_pct: 18
+  - code: PG
+    extend: base3
+    title: 液化石油气
+    market: option
+    fee:
+      unit: lot
+      val: 18
+    price_tick: 20
+    limit_chg_pct: 10
+    margin_pct: 18
+  - code: JD
+    extend: base3
+    title: 鸡蛋
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.00045
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: FB
+    extend: base3
+    title: 纤维板
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.0003
+    price_tick: 5
+    limit_chg_pct: 5
+    margin_pct: 15
+  - code: BB
+    extend: base3
+    title: 胶合板
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.0003
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 5
+    margin_pct: 42
+  - code: LH
+    extend: base3
+    title: 生猪
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.0002
+    price_tick: 80
+    limit_chg_pct: 8
+    margin_pct: 21
+  - code: RM
+    extend: base4
+    title: 菜粕
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: RM
+    extend: base4
+    title: 菜粕
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 13
+  - code: OI
+    extend: base4
+    alias: [RO]
+    title: 菜籽油
+    fee:
+      unit: lot
+      val: 6
+    fee_ct:
+      unit: lot
+      val: 3
+    price_tick: 10
+    limit_chg_pct: 5
+    margin_pct: 12
+  - code: CF
+    extend: base4
+    title: 一号棉花
+    fee:
+      unit: lot
+      val: 12.9
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: CF
+    extend: base4
+    title: 棉花
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: TA
+    extend: base4
+    title: 精对苯二甲酸
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 13
+  - code: TA
+    extend: base4
+    title: 精对苯二甲酸
+    market: option
+    fee:
+      unit: lot
+      val: 9
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 13
+  - code: SR
+    extend: base4
+    title: 白砂糖
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: SR
+    extend: base4
+    title: 白砂糖
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: MA
+    extend: base4
+    title: 甲醇
+    fee:
+      unit: lot
+      val: 4.5
+    fee_ct:
+      unit: lot
+      val: 18
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: MA
+    extend: base4
+    title: 甲醇
+    market: option
+    fee:
+      unit: lot
+      val: 1.5
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: FG
+    extend: base4
+    title: 玻璃
+    fee:
+      unit: lot
+      val: 9
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 12
+  - code: ZC
+    extend: base4
+    alias: [TC]
+    title: 动力煤
+    fee:
+      unit: lot
+      val: 90
+    price_tick: 20
+    limit_chg_pct: 4
+    margin_pct: 11
+  - code: ZC
+    extend: base4
+    alias: [TC]
+    title: 动力煤
+    market: option
+    fee:
+      unit: lot
+      val: 4.5
+    price_tick: 20
+    limit_chg_pct: 4
+    margin_pct: 11
+  - code: CY
+    extend: base4
+    title: 棉纱
+    fee:
+      unit: lot
+      val: 12
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: PF
+    extend: base4
+    title: 短纤
+    fee:
+      unit: lot
+      val: 9
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 13
+  - code: JR
+    extend: base5
+    title: 粳稻
+    fee:
+      unit: lot
+      val: 9
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 11
+  - code: RS
+    extend: base5
+    title: 菜籽
+    fee:
+      unit: lot
+      val: 6
+    price_tick: 10
+    limit_chg_pct: 10
+    margin_pct: 24
+  - code: PM
+    extend: base5
+    alias: [WT]
+    title: 普麦
+    fee:
+      unit: lot
+      val: 15
+    price_tick: 50
+    limit_chg_pct: 5
+    margin_pct: 11
+  - code: WH
+    extend: base5
+    alias: [WS]
+    title: 强麦
+    fee:
+      unit: lot
+      val: 15
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 12
+  - code: RI
+    extend: base5
+    alias: [ER]
+    title: 早籼稻
+    fee:
+      unit: lot
+      val: 7.5
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 11
+  - code: LR
+    extend: base5
+    title: 晚籼稻
+    fee:
+      unit: lot
+      val: 9
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 11
+  - code: SF
+    extend: base5
+    title: 硅铁
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: SM
+    extend: base5
+    title: 锰硅
+    fee:
+      unit: lot
+      val: 3
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 14
+  - code: AP
+    extend: base5
+    title: 苹果
+    fee:
+      unit: lot
+      val: 15
+    fee_ct:
+      unit: lot
+      val: 60
+    price_tick: 10
+    limit_chg_pct: 6
+    margin_pct: 15
+  - code: CJ
+    extend: base5
+    title: 红枣
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 25
+    limit_chg_pct: 6
+    margin_pct: 12
+  - code: UR
+    extend: base5
+    title: 尿素
+    fee:
+      unit: lot
+      val: 15
+    price_tick: 20
+    limit_chg_pct: 4
+    margin_pct: 10
+  - code: PK
+    extend: base5
+    title: 花生
+    fee:
+      unit: lot
+      val: 6
+    price_tick: 10
+    limit_chg_pct: 7
+    margin_pct: 15
+  - code: PX
+    extend: base5
+    title: 对二甲苯
+    fee:
+      unit: pct
+      val: 0.0001
+    price_tick: 10
+    limit_chg_pct: 4
+    margin_pct: 15
+  - code: SA
+    extend: base4
+    title: 纯碱
+    fee:
+      unit: lot
+      val: 10.5
+    price_tick: 20
+    limit_chg_pct: 5
+    margin_pct: 12
+  - code: SH
+    extend: base5
+    title: 烧碱
+    fee:
+      unit: pct
+      val: 0.0001
+    price_tick: 30
+    limit_chg_pct: 4
+    margin_pct: 15
+  - code: IF
+    extend: base6
+    title: 沪深300
+    fee:
+      unit: pct
+      val: 0.0001
+    fee_ct:
+      unit: pct
+      val: 0.000717
+    price_tick: 60
+    limit_chg_pct: 10
+    margin_pct: 14
+  - code: IH
+    extend: base6
+    title: 上证50
+    fee:
+      unit: pct
+      val: 0.0001
+    fee_ct:
+      unit: pct
+      val: 0.000717
+    price_tick: 60
+    limit_chg_pct: 10
+    margin_pct: 14
+  - code: IC
+    extend: base6
+    title: 中证500
+    fee:
+      unit: pct
+      val: 0.0001
+    fee_ct:
+      unit: pct
+      val: 0.000717
+    price_tick: 40
+    limit_chg_pct: 10
+    margin_pct: 16
+  - code: IO
+    extend: base6
+    title: 沪深300
+    fee:
+      unit: pct
+      val: 0.0001
+    fee_ct:
+      unit: pct
+      val: 0.000717
+    price_tick: 20
+    limit_chg_pct: 10
+    margin_pct: 15
+  - code: TS
+    extend: base6
+    title: 2年期国债
+    day_ranges:
+      - 01:15-03:30
+      - 05:00-07:15
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 100
+    limit_chg_pct: 0.5
+    margin_pct: 1
+  - code: TF
+    extend: base6
+    title: 5年期国债
+    day_ranges:
+      - 01:15-03:30
+      - 05:00-07:15
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 1.2
+    margin_pct: 2.2
+  - code: T
+    extend: base6
+    title: 10年期国债
+    day_ranges:
+      - 01:15-03:30
+      - 05:00-07:15
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 2
+    margin_pct: 3.5
+  - code: TL
+    extend: base6
+    title: 30年期国债
+    day_ranges:
+      - 01:15-03:30
+      - 05:00-07:15
+    fee:
+      unit: lot
+      val: 3
+    fee_ct:
+      val: 0
+    price_tick: 100
+    limit_chg_pct: 3.5
+    margin_pct: 3.5
+  - code: IM
+    extend: base6
+    title: 中证1000
+    day_ranges:
+      - 01:30-03:30
+      - 05:00-07:00
+    fee:
+      unit: pct
+      val: 0.000023
+    fee_ct:
+      unit: pct
+      val: 0.00023
+    price_tick: 40
+    limit_chg_pct: 10
+    margin_pct: 12
+  - code: SC
+    extend: base7
+    title: 原油
+    fee:
+      unit: lot
+      val: 60
+    fee_ct:
+      val: 0
+    price_tick: 100
+    limit_chg_pct: 8
+    margin_pct: 18
+  - code: SC
+    extend: base7
+    title: 原油
+    market: option
+    fee:
+      unit: lot
+      val: 30
+    fee_ct:
+      val: 0
+    price_tick: 100
+    limit_chg_pct: 8
+    margin_pct: 18
+  - code: NR
+    extend: base7
+    title: 20号胶
+    night_ranges:
+      - 13:00-15:00
+    fee:
+      unit: lot
+      val: 9
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: LU
+    extend: base7
+    title: 低硫燃料油
+    night_ranges:
+      - 13:00-15:00
+    fee:
+      unit: lot
+      val: 6
+    price_tick: 10
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: BC
+    extend: base7
+    title: 阴极铜
+    night_ranges:
+      - 13:00-17:00
+    fee:
+      unit: pct
+      val: 0.00002
+    fee_ct:
+      val: 0
+    price_tick: 50
+    limit_chg_pct: 8
+    margin_pct: 17
+  - code: EC
+    extend: base7
+    title: 集运指数
+    night_ranges: []
+    fee:
+      unit: pct
+      val: 0.0006
+    fee_ct:
+      unit: pct
+      val: 0.0012
+    price_tick: 5
+    limit_chg_pct: 16
+    margin_pct: 18
+  - code: SI
+    extend: base
+    title: 工业硅
+    exchange: GFEX
+    night_ranges: []
+    fee:
+      unit: ton
+      val: 10
+    price_tick: 25
+    limit_chg_pct: 4
+    margin_pct: 16
+  - code: LC
+    extend: base
+    title: 碳酸锂
+    exchange: GFEX
+    night_ranges: []
+    fee:
+      unit: ton
+      val: 51
+    price_tick: 50
+    limit_chg_pct: 4
+    margin_pct: 21
+
+
+
