@@ -9,6 +9,7 @@ import (
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
 	"maps"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -617,7 +618,7 @@ set the level of leverage for a market
 	:param dict [params]: extra parameters specific to the exchange API endpoint
 	:returns dict: response from the exchange
 */
-func (e *Binance) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
+func (e *Binance) SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	if symbol == "" {
 		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for %v.SetLeverage", e.Name)
 	}
@@ -637,7 +638,7 @@ func (e *Binance) SetLeverage(leverage int, symbol string, params map[string]int
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "%v SetLeverage supports linear and inverse contracts only", e.Name)
 	}
 	args["symbol"] = market.ID
-	args["leverage"] = leverage
+	args["leverage"] = int(math.Round(leverage))
 	tryNum := e.GetRetryNum("SetLeverage", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
@@ -694,7 +695,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params map[string]interface{
 	return nil
 }
 
-func (e *Binance) GetLeverage(symbol string, notional float64, account string) (int, int) {
+func (e *Binance) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
 	info, ok := e.LeverageBrackets[symbol]
 	maxVal := 0
 	if ok && len(info.Brackets) > 0 {
@@ -715,7 +716,7 @@ func (e *Binance) GetLeverage(symbol string, notional float64, account string) (
 		leverage, _ = acc.Leverages[symbol]
 		acc.LockLeverage.Unlock()
 	}
-	return leverage, maxVal
+	return float64(leverage), float64(maxVal)
 }
 
 /*

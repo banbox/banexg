@@ -43,7 +43,7 @@ type BanExchange interface {
 	FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error)
 	FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error)
 	LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error
-	GetLeverage(symbol string, notional float64, account string) (int, int)
+	GetLeverage(symbol string, notional float64, account string) (float64, float64)
 	CheckSymbols(symbols ...string) ([]string, []string)
 	Info() *ExgInfo
 
@@ -63,7 +63,7 @@ type BanExchange interface {
 
 	SetFees(fees map[string]map[string]float64)
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
-	SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
+	SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
 	CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
 
 	WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error)

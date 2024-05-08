@@ -1,4 +1,36 @@
-goods:
+exchanges:
+  SHFE:
+    title: 上海期货交易所
+    index: https://www.shfe.com.cn/
+    suffix: .SHF
+    case_lower: true
+    date_num: 4
+  INE:
+    title: 上海国际能源交易中心
+    index: https://www.ine.cn/
+    suffix: .INE
+    case_lower: true
+    date_num: 4
+  DCE:
+    title: 大连商品交易所
+    index: http://www.dce.com.cn/
+    suffix: .DCE
+    case_lower: true
+    date_num: 4
+    option_dash: true
+  CZCE:
+    title: 郑州商品交易所
+    index: http://www.czce.com.cn/
+    suffix: .ZCE
+    date_num: 3
+  CFFEX:
+    title: 中国金融期货交易所
+    index: http://www.cffex.com.cn/
+    suffix: .CFX
+    date_num: 4
+    option_dash: true
+
+contracts:
   - code: base
     title: 模板
     market: linear
@@ -1136,4 +1168,5 @@ goods:
     margin_pct: 21
 
 
+stocks: []
 

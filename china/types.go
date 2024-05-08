@@ -6,6 +6,16 @@ type China struct {
 	*banexg.Exchange
 }
 
+type Exchange struct {
+	Code       string `yaml:"code"`
+	Title      string `yaml:"title"`
+	IndexUrl   string `yaml:"index"`
+	Suffix     string `yaml:"suffix"`
+	CaseLower  bool   `yaml:"case_lower"`  // 品种ID是否小写
+	DateNum    int    `yaml:"date_num"`    // 年月显示后几位？4或3
+	OptionDash bool   `yaml:"option_dash"` // 期权C/P左右两侧是否有短横线
+}
+
 type ItemMarket struct {
 	Code        string   `yaml:"code"`
 	Title       string   `yaml:"title"`
@@ -28,5 +38,7 @@ type Fee struct {
 }
 
 type CnMarkets struct {
-	Goods []*ItemMarket `yaml:"goods"`
+	Exchanges map[string]*Exchange `yaml:"exchanges"`
+	Contracts []*ItemMarket        `yaml:"contracts"`
+	Stocks    []*ItemMarket        `yaml:"stocks"`
 }

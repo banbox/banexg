@@ -23,44 +23,103 @@ func (e *China) Init() *errs.Error {
 }
 
 var (
-	bases    = make(map[string]*ItemMarket)
-	items    = make(map[string]*ItemMarket)
-	lockMars = sync.Mutex{}
+	bases        = make(map[string]*ItemMarket)
+	ctMarkets    = make(map[string]*ItemMarket) // 期货品种代码对应的品种描述
+	stockMarkets = make(map[string]*ItemMarket)
+	ctExgs       = make(map[string]*Exchange)
+	lockMars     = sync.Mutex{}
 )
 
 //go:embed markets.yml
 var marketsData []byte
 
-func getItemMarkets() (map[string]*ItemMarket, *errs.Error) {
+func loadRawMarkets() *errs.Error {
+	if len(ctMarkets) > 0 {
+		return nil
+	}
 	lockMars.Lock()
 	defer lockMars.Unlock()
-	if len(items) > 0 {
-		return items, nil
+	if len(ctMarkets) > 0 {
+		return nil
 	}
 	cfg := CnMarkets{}
 	err := yaml.Unmarshal(marketsData, &cfg)
 	if err != nil {
-		return nil, errs.New(errs.CodeUnmarshalFail, err)
+		return errs.New(errs.CodeUnmarshalFail, err)
 	}
-	for _, item := range cfg.Goods {
+	for _, item := range cfg.Contracts {
 		item.Resolve(bases)
 		if strings.HasPrefix(item.Code, "base") {
 			bases[item.Code] = item
 		} else {
 			key := fmt.Sprintf("%s_%s", item.Market, strings.ToUpper(item.Code))
-			items[key] = item
+			ctMarkets[key] = item
 			if len(item.Alias) > 0 {
 				for _, alias := range item.Alias {
 					key = fmt.Sprintf("%s_%s", item.Market, strings.ToUpper(alias))
-					items[key] = item
+					ctMarkets[key] = item
 				}
 			}
 		}
 	}
-	return items, nil
+	for exgName, exg := range cfg.Exchanges {
+		exg.Code = exgName
+	}
+	ctExgs = cfg.Exchanges
+	return nil
+}
+
+func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
+	if len(e.Markets) > 0 && !reload {
+		return e.Markets, nil
+	}
+	err := loadRawMarkets()
+	if err != nil {
+		return nil, err
+	}
+	if e.Markets == nil {
+		e.Markets = make(banexg.MarketMap)
+	}
+	if e.MarketsById == nil {
+		e.MarketsById = make(banexg.MarketArrMap)
+	}
+	// 加载股票列表
+	for _, it := range stockMarkets {
+		if it.Market == banexg.MarketSpot {
+			market, err := parseMarket(it.Code, 0, false)
+			if err != nil {
+				return nil, err
+			}
+			e.Markets[it.Code] = market
+			e.MarketsById[market.ID] = []*banexg.Market{market}
+		}
+	}
+	// 期货期权代码需要传入
+	var symbols []string
+	if params != nil {
+		val, _ := params[banexg.ParamSymbols]
+		if val != nil {
+			symbols, _ = val.([]string)
+		}
+	}
+	if len(symbols) > 0 {
+		for _, symbol := range symbols {
+			market, err := parseMarket(symbol, 0, false)
+			if err != nil {
+				return nil, err
+			}
+			e.Markets[symbol] = market
+			e.MarketsById[market.ID] = []*banexg.Market{market}
+		}
+	}
+	return e.Markets, nil
 }
 
 func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error) {
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return nil, err
+	}
 	mar := e.GetMarketById(exgSID, "")
 	if mar != nil {
 		return mar, nil
@@ -75,11 +134,17 @@ func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error)
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "combine contract is invalid")
 		}
 	}
-	rawMars, err := getItemMarkets()
+	mar, err = parseMarket(exgSID, year, true)
 	if err != nil {
 		return nil, err
 	}
-	parts := utils.SplitParts(exgSID)
+	e.Markets[mar.Symbol] = mar
+	e.MarketsById[mar.ID] = []*banexg.Market{mar}
+	return mar, nil
+}
+
+func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Error) {
+	parts := utils.SplitParts(symbol)
 	if len(parts) == 0 || parts[0].Type != utils.StrStr {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "exchange symbol id must startsWith letters")
 	}
@@ -128,19 +193,22 @@ func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error)
 	}
 	code := strings.ToUpper(parts[0].Val)
 	key := fmt.Sprintf("%s_%s", market, code)
-	rawMar, ok := rawMars[key]
+	rawMar, ok := ctMarkets[key]
 	if !ok {
-		return nil, errs.NewMsg(errs.CodeParamInvalid, "symbol invalid: %s", exgSID)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "symbol invalid: %s", symbol)
 	}
-	var b strings.Builder
-	b.Grow(len(exgSID) + 1)
-	b.WriteString(strings.ToUpper(rawMar.Code))
-	for _, p := range parts[1:] {
-		b.WriteString(strings.ToUpper(p.Val))
+	var exgSID, stdSymbol string
+	var err *errs.Error
+	if isRaw {
+		stdSymbol, err = rawMar.ToStdSymbol(parts)
+	} else {
+		exgSID, err = rawMar.ToRawSymbol(parts)
 	}
-	stdSymbol := b.String()
+	if err != nil {
+		return nil, err
+	}
 	isOption := market == banexg.MarketOption
-	mar = &banexg.Market{
+	mar := &banexg.Market{
 		ID:          exgSID,
 		LowercaseID: strings.ToLower(exgSID),
 		Symbol:      stdSymbol,
@@ -169,14 +237,6 @@ func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error)
 			return nil, err
 		}
 	}
-	if e.MarketsById == nil {
-		e.MarketsById = make(banexg.MarketArrMap)
-	}
-	e.MarketsById[exgSID] = []*banexg.Market{mar}
-	if e.Markets == nil {
-		e.Markets = make(banexg.MarketMap)
-	}
-	e.Markets[mar.Symbol] = mar
 	return mar, nil
 }
 
@@ -196,7 +256,19 @@ func (e *China) LoadLeverageBrackets(reload bool, params map[string]interface{})
 	return errs.NotImplement
 }
 
-func (e *China) GetLeverage(symbol string, notional float64, account string) (int, int) {
+func (e *China) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
+	mar, exist := e.Markets[symbol]
+	if !exist {
+		return 0, 0
+	}
+	if mar.Type == banexg.MarketSpot {
+		return 1, 1
+	}
+	raw, _ := mar.Info.(*ItemMarket)
+	if raw != nil {
+		leverage := 1 / raw.MarginPct
+		return leverage, leverage
+	}
 	return 0, 0
 }
 
@@ -244,8 +316,8 @@ func (e *China) CancelOrder(id string, symbol string, params map[string]interfac
 	return nil, errs.NotImplement
 }
 
-func (e *China) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
-	return nil, errs.NotImplement
+func (e *China) SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
+	return nil, errs.ApiNotSupport
 }
 
 func (e *China) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {

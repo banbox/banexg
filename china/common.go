@@ -1,8 +1,12 @@
 package china
 
 import (
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
+	utils2 "github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
+	"strings"
 )
 
 func (m *ItemMarket) Resolve(bases map[string]*ItemMarket) {
@@ -41,4 +45,74 @@ func (m *ItemMarket) Resolve(bases map[string]*ItemMarket) {
 	if m.MarginPct == 0 && base.MarginPct != 0 {
 		m.MarginPct = base.MarginPct
 	}
+}
+
+func (m *ItemMarket) toSymbol(parts []*utils2.StrType, toStd bool) (string, *errs.Error) {
+	if len(parts) == 0 {
+		return "", errs.NewMsg(errs.CodeParamRequired, "parts is empty")
+	}
+	exchange := ctExgs[m.Exchange]
+	var b strings.Builder
+	if m.Market != banexg.MarketSpot {
+		// 期货、期权
+		p0, p1 := parts[0], parts[1]
+		if p0.Type != utils2.StrStr {
+			return "", errs.NewMsg(errs.CodeParamInvalid, "part0 should be str")
+		}
+		if toStd {
+			b.WriteString(strings.ToUpper(p0.Val))
+		} else if exchange.CaseLower {
+			b.WriteString(strings.ToLower(p0.Val))
+		} else {
+			b.WriteString(p0.Val)
+		}
+		if p1.Type != utils2.StrInt {
+			return "", errs.NewMsg(errs.CodeParamInvalid, "part1 should be int")
+		}
+		// 写入年月
+		if toStd {
+			b.WriteString(p1.Val)
+		} else {
+			b.WriteString(p1.Val[len(p1.Val)-exchange.DateNum:])
+		}
+		// 判断是否期权
+		if len(parts) == 4 && parts[2].Type == utils2.StrStr && len(parts[2].Val) == 1 && parts[3].Type == utils2.StrInt {
+			// 第三个是C/P，第四个是价格
+			if toStd {
+				b.WriteString(strings.ReplaceAll(parts[2].Val, "-", ""))
+			} else if exchange.OptionDash {
+				b.WriteString("-")
+				b.WriteString(parts[2].Val)
+				b.WriteString("-")
+			} else {
+				b.WriteString(parts[2].Val)
+			}
+			b.WriteString(parts[3].Val)
+		} else {
+			for _, p := range parts[2:] {
+				b.WriteString(p.Val)
+			}
+			if m.Market == banexg.MarketOption {
+				return "", errs.NewMsg(errs.CodeParamInvalid, "invalid option symbol: %s", b.String())
+			}
+		}
+		return b.String(), nil
+	}
+	return "", errs.NotImplement
+}
+
+/*
+ToStdSymbol
+转为标准Symbol，注意期货的年月需要提前归一化为4位数字
+*/
+func (m *ItemMarket) ToStdSymbol(parts []*utils2.StrType) (string, *errs.Error) {
+	return m.toSymbol(parts, true)
+}
+
+/*
+ToRawSymbol
+转为交易所Symbol
+*/
+func (m *ItemMarket) ToRawSymbol(parts []*utils2.StrType) (string, *errs.Error) {
+	return m.toSymbol(parts, false)
 }

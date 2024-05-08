@@ -24,6 +24,7 @@ const (
 	ParamTest               = "test"
 	ParamMarginMode         = "marginMode"
 	ParamSymbol             = "symbol"
+	ParamSymbols            = "symbols"
 	ParamPositionSide       = "positionSide"
 	ParamProxy              = "proxy"
 	ParamName               = "name"
