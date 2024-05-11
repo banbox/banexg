@@ -70,10 +70,11 @@ func (m *ItemMarket) toSymbol(parts []*utils2.StrType, toStd bool) (string, *err
 			return "", errs.NewMsg(errs.CodeParamInvalid, "part1 should be int")
 		}
 		// 写入年月
-		if toStd {
-			b.WriteString(p1.Val)
+		p1val := p1.Val
+		if toStd || (p1val == "000" || p1val == "888" || p1val == "999") {
+			b.WriteString(p1val)
 		} else {
-			b.WriteString(p1.Val[len(p1.Val)-exchange.DateNum:])
+			b.WriteString(p1val[len(p1val)-exchange.DateNum:])
 		}
 		// 判断是否期权
 		if len(parts) == 4 && parts[2].Type == utils2.StrStr && len(parts[2].Val) == 1 && parts[3].Type == utils2.StrInt {

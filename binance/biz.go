@@ -156,9 +156,6 @@ fetches all available currencies on an exchange
 */
 func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 	return func(params map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
-		if !e.HasApi("fetchCurrencies") {
-			return nil, errs.ApiNotSupport
-		}
 		if e.Hosts.TestNet {
 			//sandbox/testnet does not support sapi endpoints
 			return nil, errs.SandboxApiNotSupport

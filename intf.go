@@ -85,14 +85,13 @@ type BanExchange interface {
 	PrecFee(m *Market, fee float64) (float64, *errs.Error)
 	PrecMode() int
 
-	HasApi(key string) bool
+	HasApi(key, market string) bool
 	PriceOnePip(symbol string) (float64, *errs.Error)
 	IsContract(marketType string) bool
 	MilliSeconds() int64
 
 	GetAccount(id string) (*Account, *errs.Error)
 	SetMarketType(marketType, contractType string) *errs.Error
-	GetID() string
 	Close() *errs.Error
 }
 

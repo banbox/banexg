@@ -20,18 +20,13 @@ type FuncOnWsClose = func(client *WsClient, err *errs.Error)
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
 type Exchange struct {
-	ID        string   // 交易所ID
-	Name      string   // 显示名称
-	Countries []string // 可用国家
-	Hosts     *ExgHosts
-	Fees      *ExgFee
-	Apis      map[string]Entry       // 所有API的路径
-	Has       map[string]int         // 是否定义了某个API
-	Options   map[string]interface{} // 用户传入的配置
-	Proxy     *url.URL
-	DebugWS   bool // 是否输出WS调试信息
-	DebugAPI  bool // 是否输出API请求测试信息
-	ExgInfo   *ExgInfo
+	*ExgInfo
+	Hosts   *ExgHosts
+	Fees    *ExgFee
+	Apis    map[string]Entry          // 所有API的路径
+	Has     map[string]map[string]int // 是否定义了某个API
+	Options map[string]interface{}    // 用户传入的配置
+	Proxy   *url.URL
 
 	CredKeys   map[string]bool     // cred keys required for exchange
 	Accounts   map[string]*Account // name: account
@@ -63,13 +58,6 @@ type Exchange struct {
 	TimeDelay  int64 // 系统时钟延迟的毫秒数
 	HttpClient *http.Client
 
-	PrecisionMode int    // 2:PrecModeDecimalPlace  3:PrecModeSignifDigits  4:PrecModeTickSize
-	PrecPadZero   bool   // padding zero for precision
-	MarketType    string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
-	ContractType  string // MarketSwap/MarketFuture
-	MarginMode    string // MarginCross/MarginIsolated
-	TimeInForce   string // GTC/IOC/FOK
-
 	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
 
@@ -95,9 +83,22 @@ type Exchange struct {
 }
 
 type ExgInfo struct {
-	NoHoliday bool // true表示365天全年开放
-	FullDay   bool // true表示一天24小时可交易
-	Min1mHole int  // 1分钟K线空洞的最小间隔，少于此认为正常无交易而非空洞
+	ID        string   // 交易所ID
+	Name      string   // 显示名称
+	Countries []string // 可用国家
+	NoHoliday bool     // true表示365天全年开放
+	FullDay   bool     // true表示一天24小时可交易
+	Min1mHole int      // 1分钟K线空洞的最小间隔，少于此认为正常无交易而非空洞
+
+	DebugWS  bool // 是否输出WS调试信息
+	DebugAPI bool // 是否输出API请求测试信息
+
+	PrecisionMode int    // 2:PrecModeDecimalPlace  3:PrecModeSignifDigits  4:PrecModeTickSize
+	PrecPadZero   bool   // padding zero for precision
+	MarketType    string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
+	ContractType  string // MarketSwap/MarketFuture
+	MarginMode    string // MarginCross/MarginIsolated
+	TimeInForce   string // GTC/IOC/FOK
 }
 
 type Account struct {
@@ -256,7 +257,7 @@ type Market struct {
 	Taker          float64       `json:"taker"`
 	Maker          float64       `json:"maker"`
 	ContractSize   float64       `json:"contractSize"`
-	Expiry         int64         `json:"expiry"`
+	Expiry         int64         `json:"expiry"` // 过期的13毫秒数
 	ExpiryDatetime string        `json:"expiryDatetime"`
 	Strike         float64       `json:"strike"`
 	OptionType     string        `json:"optionType"`

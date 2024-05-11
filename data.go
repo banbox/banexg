@@ -3,6 +3,7 @@ package banexg
 import (
 	"github.com/banbox/banexg/utils"
 	"sync"
+	"time"
 )
 
 const (
@@ -164,6 +165,40 @@ const (
 	MidListenKey = "listenKey"
 )
 
+const (
+	ApiFetchTicker           = "FetchTicker"
+	ApiFetchTickers          = "FetchTickers"
+	ApiFetchTickerPrice      = "FetchTickerPrice"
+	ApiLoadLeverageBrackets  = "LoadLeverageBrackets"
+	ApiFetchCurrencies       = "FetchCurrencies"
+	ApiGetLeverage           = "GetLeverage"
+	ApiFetchOHLCV            = "FetchOHLCV"
+	ApiFetchOrderBook        = "FetchOrderBook"
+	ApiFetchOrder            = "FetchOrder"
+	ApiFetchOrders           = "FetchOrders"
+	ApiFetchBalance          = "FetchBalance"
+	ApiFetchAccountPositions = "FetchAccountPositions"
+	ApiFetchPositions        = "FetchPositions"
+	ApiFetchOpenOrders       = "FetchOpenOrders"
+	ApiCreateOrder           = "CreateOrder"
+	ApiEditOrder             = "EditOrder"
+	ApiCancelOrder           = "CancelOrder"
+	ApiSetLeverage           = "SetLeverage"
+	ApiCalcMaintMargin       = "CalcMaintMargin"
+	ApiWatchOrderBooks       = "WatchOrderBooks"
+	ApiUnWatchOrderBooks     = "UnWatchOrderBooks"
+	ApiWatchOHLCVs           = "WatchOHLCVs"
+	ApiUnWatchOHLCVs         = "UnWatchOHLCVs"
+	ApiWatchMarkPrices       = "WatchMarkPrices"
+	ApiUnWatchMarkPrices     = "UnWatchMarkPrices"
+	ApiWatchTrades           = "WatchTrades"
+	ApiUnWatchTrades         = "UnWatchTrades"
+	ApiWatchMyTrades         = "WatchMyTrades"
+	ApiWatchBalance          = "WatchBalance"
+	ApiWatchPositions        = "WatchPositions"
+	ApiWatchAccountConfig    = "WatchAccountConfig"
+)
+
 var (
 	AllMarketTypes = map[string]struct{}{
 		MarketSpot:    {},
@@ -185,4 +220,5 @@ var (
 	exgMarketTS         = map[string]int64{}       // when was markets cached
 	exgMarketExpireMins = 360                      // ttl minutes for markets cache
 	marketsLock         sync.RWMutex               // 访问缓存的读写锁
+	LocUTC, _           = time.LoadLocation("UTC")
 )

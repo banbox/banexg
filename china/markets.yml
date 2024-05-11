@@ -29,6 +29,13 @@ exchanges:
     suffix: .CFX
     date_num: 4
     option_dash: true
+  GFEX:
+    title: 广州期货交易所
+    index: http://www.gfex.com.cn/
+    suffix: .GFEX
+    case_lower: true
+    date_num: 4
+    option_dash: true
 
 contracts:
   - code: base

@@ -89,7 +89,7 @@ func (e *Exchange) Init() *errs.Error {
 	e.OrderBooks = map[string]*OrderBook{}
 	e.MarkPrices = map[string]map[string]float64{}
 	e.KeyTimeStamps = map[string]int64{}
-	e.ExgInfo = &ExgInfo{Min1mHole: 1}
+	e.ExgInfo.Min1mHole = 1
 	return nil
 }
 
@@ -189,7 +189,7 @@ func (e *Exchange) fetchMarketsCurrs(params map[string]interface{}) (MarketMap, 
 			return markets, currencies, nil
 		}
 	}
-	if e.HasApi("fetchCurrencies") {
+	if e.HasApi(ApiFetchCurrencies, "") {
 		currencies, err = e.FetchCurrencies(params)
 		if err != nil {
 			return nil, nil, err
@@ -930,10 +930,17 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 	return rsp
 }
 
-func (e *Exchange) HasApi(key string) bool {
-	val, ok := e.Has[key]
-	if ok && val != HasFail {
-		return true
+func (e *Exchange) HasApi(key, market string) bool {
+	items, hasMar := e.Has[market]
+	if hasMar && items != nil {
+		val, ok := items[key]
+		if ok {
+			return val != HasFail
+		}
+	}
+	if market != "" {
+		// 检测默认市场是否有api配置
+		return e.HasApi(key, "")
 	}
 	return false
 }

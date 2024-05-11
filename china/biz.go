@@ -149,29 +149,37 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "exchange symbol id must startsWith letters")
 	}
 	isActive, isFuture := true, false
+	expiry := int64(0) // 过期时间，13位毫秒
 	if len(parts) > 1 && parts[1].Type == utils.StrInt {
 		// 第二部分是数字，表示期货
 		var curTime = time.Now()
-		if len(parts[1].Val) == 3 {
+		p1val := parts[1].Val
+		if len(p1val) == 3 {
 			// 至少两部分，第二部分是3个数字，改为4个数字
-			var yearStr string
-			if year == 0 {
-				yearStr = curTime.Format("2006")
-			} else {
-				yearStr = strconv.Itoa(year)
+			p1num, _ := strconv.Atoi(p1val[1:])
+			if p1num >= 1 && p1num <= 12 {
+				var yearStr string
+				if year == 0 {
+					yearStr = curTime.Format("2006")
+				} else {
+					yearStr = strconv.Itoa(year)
+				}
+				parts[1].Val = yearStr[len(yearStr)-2:len(yearStr)-1] + p1val
+				p1val = parts[1].Val
 			}
-			parts[1].Val = yearStr[len(yearStr)-2:len(yearStr)-1] + parts[1].Val
 		}
-		if len(parts[1].Val) == 4 {
+		if len(p1val) == 4 {
 			isFuture = true
-			inYearMon, _ := strconv.Atoi(parts[1].Val)
+			inYearMon, _ := strconv.Atoi(p1val)
 			curYear, curMon, _ := curTime.Date()
 			curYearMon := curYear%100*100 + int(curMon)
 			maxYearMon := curYearMon + 200 // 合约编号最长是2年，大部分1年
 			monDiff := 0
+			expYear := curTime.Year()/100*100 + inYearMon/100
 			if inYearMon > maxYearMon {
 				// 超过未来2年的期货合约ID，认为是100年前的
 				monDiff = curYearMon + 10000 - inYearMon
+				expYear -= 100
 			} else {
 				monDiff = curYearMon - inYearMon
 			}
@@ -179,6 +187,13 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 				// 当前年月超过合约到期年月，已交割，不可交易
 				isActive = false
 			}
+			// 计算过期时间
+			expMon := time.Month(inYearMon%100 + 1)
+			expDt := time.Date(expYear, expMon, 1, 0, 0, 0, 0, defTimeLoc)
+			expiry = expDt.UnixMilli()
+		} else if len(p1val) == 3 && (p1val == "000" || p1val == "888" || p1val == "999") {
+			// 期货指数、主连
+			isFuture = true
 		}
 	}
 	market := banexg.MarketSpot
@@ -221,18 +236,18 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		Contract:    isFuture,
 		Active:      isActive,
 		Linear:      isFuture && !isOption,
+		Expiry:      expiry,
 		FeeSide:     "quote",
 		Info:        rawMar,
 	}
-	timeLoc, _ := time.LoadLocation("UTC")
 	if len(rawMar.DayRanges) > 0 {
-		mar.DayTimes, err = utils.ParseTimeRanges(rawMar.DayRanges, timeLoc)
+		mar.DayTimes, err = utils.ParseTimeRanges(rawMar.DayRanges, banexg.LocUTC)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if len(rawMar.NightRanges) > 0 {
-		mar.NightTimes, err = utils.ParseTimeRanges(rawMar.NightRanges, timeLoc)
+		mar.NightTimes, err = utils.ParseTimeRanges(rawMar.NightRanges, banexg.LocUTC)
 		if err != nil {
 			return nil, err
 		}
