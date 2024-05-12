@@ -405,10 +405,16 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 
 func (e *Exchange) GetCurMarkets() MarketMap {
 	result := make(MarketMap)
+	fltFut := e.IsContract(e.MarketType)
+	isSwap := e.ContractType == MarketSwap
 	for key, mar := range e.Markets {
-		if mar.Type == e.MarketType && mar.Active {
-			result[key] = mar
+		if !mar.Active || mar.Type != e.MarketType {
+			continue
 		}
+		if fltFut && isSwap && !mar.Swap {
+			continue
+		}
+		result[key] = mar
 	}
 	return result
 }
@@ -737,7 +743,7 @@ func (e *Exchange) PriceOnePip(symbol string) (float64, *errs.Error) {
 	if err != nil {
 		return 0, err
 	}
-	prec := float64(market.Precision.Price)
+	prec := market.Precision.Price
 	if e.PrecisionMode == PrecModeTickSize {
 		return prec, nil
 	}

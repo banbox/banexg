@@ -148,7 +148,7 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 	if len(parts) == 0 || parts[0].Type != utils.StrStr {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "exchange symbol id must startsWith letters")
 	}
-	isActive, isFuture := true, false
+	isActive, isFuture, isSwap := true, false, false
 	expiry := int64(0) // 过期时间，13位毫秒
 	if len(parts) > 1 && parts[1].Type == utils.StrInt {
 		// 第二部分是数字，表示期货
@@ -194,6 +194,7 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		} else if len(p1val) == 3 && (p1val == "000" || p1val == "888" || p1val == "999") {
 			// 期货指数、主连
 			isFuture = true
+			isSwap = true
 		}
 	}
 	market := banexg.MarketSpot
@@ -232,13 +233,21 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		Type:        market,
 		Spot:        market == banexg.MarketSpot,
 		Future:      isFuture,
+		Swap:        isSwap,
+		Combined:    isSwap,
 		Option:      isOption,
 		Contract:    isFuture,
 		Active:      isActive,
 		Linear:      isFuture && !isOption,
 		Expiry:      expiry,
 		FeeSide:     "quote",
-		Info:        rawMar,
+		Precision: &banexg.Precision{
+			Amount: 0,
+			Price:  2,
+			Base:   0,
+			Quote:  2,
+		},
+		Info: rawMar,
 	}
 	if len(rawMar.DayRanges) > 0 {
 		mar.DayTimes, err = utils.ParseTimeRanges(rawMar.DayRanges, banexg.LocUTC)
@@ -268,7 +277,7 @@ func (e *China) FetchTickerPrice(symbol string, params map[string]interface{}) (
 }
 
 func (e *China) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return nil
 }
 
 func (e *China) GetLeverage(symbol string, notional float64, account string) (float64, float64) {

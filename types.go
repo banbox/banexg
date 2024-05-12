@@ -37,29 +37,18 @@ type Exchange struct {
 	lastRequestMS   int64      // 上次请求的13位时间戳
 	rateM           sync.Mutex // 同步锁
 
-	UserAgent  string            // UserAgent of http request
-	ReqHeaders map[string]string // http headers for request exchange
-
 	MarketsWait chan interface{} // whether is loading markets
-	Markets     MarketMap        //cache for all markets
-	MarketsById MarketArrMap     // markets index by id
 	CareMarkets []string         // markets to be fetch: spot/linear/inverse/option
 
-	Symbols    []string
-	IDs        []string
-	TimeFrames map[string]string // map timeframe from common to specific
+	Symbols     []string
+	IDs         []string
+	TimeFrames  map[string]string // map timeframe from common to specific
+	CurrCodeMap map[string]string // common code maps
 
 	Retries map[string]int // retry nums for methods
 
-	CurrenciesById   CurrencyMap       // CurrencyMap index by id
-	CurrenciesByCode CurrencyMap       // CurrencyMap index by code
-	CurrCodeMap      map[string]string // common code maps
-
 	TimeDelay  int64 // 系统时钟延迟的毫秒数
 	HttpClient *http.Client
-
-	OrderBooks map[string]*OrderBook         // symbol: OrderBook update by wss
-	MarkPrices map[string]map[string]float64 // marketType: symbol: mark price
 
 	WSClients  map[string]*WsClient           // accName@url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints
@@ -92,6 +81,16 @@ type ExgInfo struct {
 
 	DebugWS  bool // 是否输出WS调试信息
 	DebugAPI bool // 是否输出API请求测试信息
+
+	UserAgent  string            // UserAgent of http request
+	ReqHeaders map[string]string // http headers for request exchange
+
+	CurrenciesById   CurrencyMap                   // CurrencyMap index by id
+	CurrenciesByCode CurrencyMap                   // CurrencyMap index by code
+	Markets          MarketMap                     // cache for all markets
+	MarketsById      MarketArrMap                  // markets index by id
+	OrderBooks       map[string]*OrderBook         // symbol: OrderBook update by wss
+	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
 
 	PrecisionMode int    // 2:PrecModeDecimalPlace  3:PrecModeSignifDigits  4:PrecModeTickSize
 	PrecPadZero   bool   // padding zero for precision
@@ -244,18 +243,19 @@ type Market struct {
 	QuoteID        string        `json:"quoteId"`
 	SettleID       string        `json:"settleId"`
 	ExgReal        string        `json:"exgReal"`
-	Type           string        `json:"type"` // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
-	Spot           bool          `json:"spot"`
-	Margin         bool          `json:"margin"`
-	Swap           bool          `json:"swap"`
-	Future         bool          `json:"future"`
-	Option         bool          `json:"option"`
-	Active         bool          `json:"active"`
-	Contract       bool          `json:"contract"`
-	Linear         bool          `json:"linear"`  // usd-based contract
-	Inverse        bool          `json:"inverse"` // coin-based contract
-	Taker          float64       `json:"taker"`
-	Maker          float64       `json:"maker"`
+	Type           string        `json:"type"`     // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
+	Combined       bool          `json:"combined"` // 是否是二次组合的数据
+	Spot           bool          `json:"spot"`     // 现货市场
+	Margin         bool          `json:"margin"`   // 保证金杠杆市场
+	Swap           bool          `json:"swap"`     // 期货永续合约市场
+	Future         bool          `json:"future"`   // 期货市场
+	Option         bool          `json:"option"`   // 期权市场
+	Active         bool          `json:"active"`   // 是否可交易
+	Contract       bool          `json:"contract"` // 是否是合约
+	Linear         bool          `json:"linear"`   // usd-based contract
+	Inverse        bool          `json:"inverse"`  // coin-based contract
+	Taker          float64       `json:"taker"`    // 吃单方费率
+	Maker          float64       `json:"maker"`    // 挂单方费率
 	ContractSize   float64       `json:"contractSize"`
 	Expiry         int64         `json:"expiry"` // 过期的13毫秒数
 	ExpiryDatetime string        `json:"expiryDatetime"`
