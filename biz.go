@@ -400,7 +400,7 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 			return 1 / math.Pow(10, precision), nil
 		}
 	}
-	return 0, errs.NoMarketForPair
+	return 0, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair")
 }
 
 func (e *Exchange) GetCurMarkets() MarketMap {
@@ -427,7 +427,7 @@ GetMarket 获取市场信息
 */
 func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 	if e.Markets == nil || len(e.Markets) == 0 {
-		return nil, errs.MarketNotLoad
+		return nil, errs.NewMsg(errs.CodeMarketNotLoad, "markets not loaded")
 	}
 	if mar, ok := e.Markets[symbol]; ok {
 		if mar.Spot && e.IsContract("") {
@@ -440,7 +440,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 			if mar, ok = e.Markets[futureSymbol]; ok {
 				return mar, nil
 			}
-			return nil, errs.NoMarketForPair
+			return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair")
 		}
 		return mar, nil
 	} else {
@@ -449,13 +449,13 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 			return market, nil
 		}
 	}
-	return nil, errs.NoMarketForPair
+	return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair")
 }
 
 func (e *Exchange) MapMarket(exgSID string, year int) (*Market, *errs.Error) {
 	mar := e.GetMarketById(exgSID, "")
 	if mar == nil {
-		return nil, errs.NoMarketForPair
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair")
 	}
 	return mar, nil
 }
@@ -573,51 +573,51 @@ func (e *Exchange) Info() *ExgInfo {
 }
 
 func (e *Exchange) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*Kline, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchBalance(params map[string]interface{}) (*Balances, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchTicker(symbol string, params map[string]interface{}) (*Ticker, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*OrderBook, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, price float64, params map[string]interface{}) (*Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) CancelOrder(id string, symbol string, params map[string]interface{}) (*Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) GetLeverage(symbol string, notional float64) (int, int) {
@@ -629,51 +629,51 @@ func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.
 }
 
 func (e *Exchange) WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchMarkPrices(symbols []string, params map[string]interface{}) (chan map[string]float64, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) UnWatchMarkPrices(symbols []string, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchTrades(symbols []string, params map[string]interface{}) (chan *Trade, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) UnWatchTrades(symbols []string, params map[string]interface{}) *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchMyTrades(params map[string]interface{}) (chan *MyTrade, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchBalance(params map[string]interface{}) (chan *Balances, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchPositions(params map[string]interface{}) (chan []*Position, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) WatchAccountConfig(params map[string]interface{}) (chan *AccountConfig, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
@@ -787,7 +787,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
-		return &HttpRes{Error: errs.ApiNotSupport}
+		return &HttpRes{Error: errs.NewMsg(errs.CodeApiNotSupport, "api not support")}
 	}
 	// 检查是否有缓存
 	if api.CacheSecs > 0 {

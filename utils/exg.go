@@ -45,12 +45,12 @@ func ParseTimeFrame(timeframe string) (int, *errs.Error) {
 	}
 	length := len(timeframe)
 	if length <= 1 {
-		return 0, errs.InvalidTimeFrame
+		return 0, errs.NewMsg(errs.CodeInvalidTimeFrame, "invalid timeframe")
 	}
 
 	amount, err := strconv.Atoi(timeframe[:length-1])
 	if err != nil {
-		return 0, errs.InvalidTimeFrame
+		return 0, errs.NewMsg(errs.CodeInvalidTimeFrame, "invalid timeframe")
 	}
 
 	unit := timeframe[length-1]
@@ -72,7 +72,7 @@ func ParseTimeFrame(timeframe string) (int, *errs.Error) {
 	case 's', 'S':
 		scale = 1
 	default:
-		return 0, errs.InvalidTimeFrame
+		return 0, errs.NewMsg(errs.CodeInvalidTimeFrame, "invalid timeframe")
 	}
 
 	res := amount * scale

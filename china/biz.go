@@ -265,15 +265,15 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 }
 
 func (e *China) FetchTicker(symbol string, params map[string]interface{}) (*banexg.Ticker, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchTickers(symbols []string, params map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
@@ -290,64 +290,65 @@ func (e *China) GetLeverage(symbol string, notional float64, account string) (fl
 	}
 	raw, _ := mar.Info.(*ItemMarket)
 	if raw != nil {
-		leverage := 1 / raw.MarginPct
+		leverage := 100 / raw.MarginPct
 		return leverage, leverage
 	}
 	return 0, 0
 }
 
 func (e *China) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*banexg.OrderBook, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchOrder(symbol, orderId string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchBalance(params map[string]interface{}) (*banexg.Balances, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) CreateOrder(symbol, odType, side string, amount, price float64, params map[string]interface{}) (*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) CancelOrder(id string, symbol string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
-	return nil, errs.NotImplement
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *China) SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
-	return nil, errs.ApiNotSupport
+	return nil, errs.NewMsg(errs.CodeApiNotSupport, "api not support")
 }
 
 func (e *China) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {
-	return 0, errs.NotImplement
+	leverage, _ := e.GetLeverage(symbol, cost, "")
+	return cost / leverage, nil
 }
 
 func (e *China) Close() *errs.Error {
-	return errs.NotImplement
+	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }

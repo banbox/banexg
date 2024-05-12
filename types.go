@@ -78,6 +78,7 @@ type ExgInfo struct {
 	NoHoliday bool     // true表示365天全年开放
 	FullDay   bool     // true表示一天24小时可交易
 	Min1mHole int      // 1分钟K线空洞的最小间隔，少于此认为正常无交易而非空洞
+	FixedLvg  bool     // 杠杆倍率是否固定不可修改
 
 	DebugWS  bool // 是否输出WS调试信息
 	DebugAPI bool // 是否输出API请求测试信息

@@ -32,15 +32,5 @@ const (
 )
 
 var (
-	ApiNotSupport        = NewMsg(CodeApiNotSupport, "api not support")
-	SandboxApiNotSupport = NewMsg(CodeSandboxApiNotSupport, "sandbox api not support")
-	UnsupportMarket      = NewMsg(CodeUnsupportMarket, "unsupported market type")
-	NoMarketForPair      = NewMsg(CodeNoMarketForPair, "no market found for pair")
-	MarketNotLoad        = NewMsg(CodeMarketNotLoad, "markets not loaded")
-	NotImplement         = NewMsg(CodeNotImplement, "method not implement")
-	InvalidTimeFrame     = NewMsg(CodeInvalidTimeFrame, "invalid timeframe")
-)
-
-var (
 	PrintErr func(e error) string // print string for common error
 )

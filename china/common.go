@@ -99,7 +99,7 @@ func (m *ItemMarket) toSymbol(parts []*utils2.StrType, toStd bool) (string, *err
 		}
 		return b.String(), nil
 	}
-	return "", errs.NotImplement
+	return "", errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 /*

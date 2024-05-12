@@ -12,6 +12,7 @@ func New(Options map[string]interface{}) (*China, *errs.Error) {
 				ID:        "china",
 				Name:      "China",
 				Countries: []string{"CN"},
+				FixedLvg:  true,
 			},
 			RateLimit: 50,
 			Options:   Options,

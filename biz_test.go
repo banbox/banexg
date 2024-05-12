@@ -38,18 +38,20 @@ func TestSetOptions(t *testing.T) {
 func TestCalcFee(t *testing.T) {
 	symbol := "FOO/BAR"
 	exg := Exchange{
-		Markets: map[string]*Market{
-			symbol: {
-				ID:     "foobar",
-				Symbol: symbol,
-				Base:   "FOO",
-				Quote:  "BAR",
-				Settle: "BAR",
-				Taker:  0.002,
-				Maker:  0.001,
-				Precision: &Precision{
-					Price:  8,
-					Amount: 8,
+		ExgInfo: &ExgInfo{
+			Markets: map[string]*Market{
+				symbol: {
+					ID:     "foobar",
+					Symbol: symbol,
+					Base:   "FOO",
+					Quote:  "BAR",
+					Settle: "BAR",
+					Taker:  0.002,
+					Maker:  0.001,
+					Precision: &Precision{
+						Price:  8,
+						Amount: 8,
+					},
 				},
 			},
 		},

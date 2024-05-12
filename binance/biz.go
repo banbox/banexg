@@ -158,7 +158,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 	return func(params map[string]interface{}) (banexg.CurrencyMap, *errs.Error) {
 		if e.Hosts.TestNet {
 			//sandbox/testnet does not support sapi endpoints
-			return nil, errs.SandboxApiNotSupport
+			return nil, errs.NewMsg(errs.CodeSandboxApiNotSupport, "sandbox api not support")
 		}
 		tryNum := e.GetRetryNum("FetchCurr", 1)
 		if params == nil {
@@ -409,7 +409,9 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 			apiKey, ok := marketApiMap[key]
 			if !ok {
 				log.Error("unsupported market type", zap.String("key", key))
-				ch <- &banexg.HttpRes{Error: errs.UnsupportMarket}
+				ch <- &banexg.HttpRes{
+					Error: errs.NewMsg(errs.CodeUnsupportMarket, "unsupported market type"),
+				}
 				return
 			}
 			tryNum := e.GetRetryNum("FetchMarkets", 1)
