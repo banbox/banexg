@@ -1040,7 +1040,8 @@ func (e *Exchange) LoadArgsMarketType(args map[string]interface{}, symbols ...st
 }
 
 func (e *Exchange) PrecAmount(m *Market, amount float64) (float64, *errs.Error) {
-	text, err := utils.PrecFloat64Str(amount, m.Precision.Amount, false)
+	prec := m.Precision
+	text, err := utils.PrecFloat64Str(amount, prec.Amount, false, prec.ModeAmount)
 	if err != nil {
 		return 0, errs.New(errs.CodePrecDecFail, err)
 	}
@@ -1052,7 +1053,8 @@ func (e *Exchange) PrecAmount(m *Market, amount float64) (float64, *errs.Error) 
 }
 
 func (e *Exchange) precPriceCost(m *Market, value float64, round bool) (float64, *errs.Error) {
-	text, err := utils.PrecFloat64Str(value, m.Precision.Price, round)
+	prec := m.Precision
+	text, err := utils.PrecFloat64Str(value, prec.Price, round, prec.ModePrice)
 	if err != nil {
 		return 0, errs.New(errs.CodePrecDecFail, err)
 	}

@@ -258,15 +258,16 @@ func parseAccountPosition(e *Binance, p *FuturePosition, a *FutureAsset, market 
 	res.MarginMode = marginMode
 	res.Collateral = collateral
 	// 计算marginRatio
-	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true)
+	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true, 0)
 	res.MarginRatio = marginRatio
 	// percentage
-	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true)
+	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true, 0)
 	res.Percentage = percentage
 	// 计算强平价格
 	isShort := res.Side == banexg.PosSideShort
 	entryPriceSign := res.EntryPrice
 	revtMaintMarginPct := float64(0)
+	prec := market.Precision
 	if market.Type == banexg.MarketLinear {
 		// liquidationPrice = (walletBalance / (contracts * (±1 + mmp))) + (±entryPrice / (±1 + mmp))
 		// mmp = maintenanceMarginPercentage
@@ -279,7 +280,7 @@ func parseAccountPosition(e *Binance, p *FuturePosition, a *FutureAsset, market 
 		}
 		leftSide := walletBalance / (res.Contracts * revtMaintMarginPct)
 		rightSide := entryPriceSign / revtMaintMarginPct
-		liquidationPrice, _ := utils.PrecFloat64(leftSide+rightSide, market.Precision.Price, true)
+		liquidationPrice, _ := utils.PrecFloat64(leftSide+rightSide, prec.Price, true, prec.ModePrice)
 		res.LiquidationPrice = liquidationPrice
 	} else {
 		// liquidationPrice = (contracts * contractSize(±1 - mmp)) / (±1/entryPrice * contracts * contractSize - walletBalance)
@@ -292,7 +293,7 @@ func parseAccountPosition(e *Binance, p *FuturePosition, a *FutureAsset, market 
 		size := res.Contracts * res.ContractSize
 		leftSide := size * revtMaintMarginPct
 		rightSide := size/entryPriceSign - walletBalance
-		liquidationPrice, _ := utils.PrecFloat64(leftSide/rightSide, market.Precision.Price, true)
+		liquidationPrice, _ := utils.PrecFloat64(leftSide/rightSide, prec.Price, true, prec.ModePrice)
 		res.LiquidationPrice = liquidationPrice
 	}
 	res.Hedged = res.Side != banexg.PosSideBoth
@@ -434,14 +435,18 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 		} else {
 			revMaintPct = -1.0 + maintMarginPct*mmpSign
 		}
-		var prec float64
+		var precVal float64
+		var mode int
+		var prec = market.Precision
 		if market.Type == banexg.MarketLinear {
 			// walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
 			leftSide := res.LiquidationPrice*revMaintPct + entryPriceSign
-			if market.Precision.Quote != 0 {
-				prec = market.Precision.Quote
+			if prec.Quote != 0 {
+				precVal = prec.Quote
+				mode = prec.ModeQuote
 			} else {
-				prec = market.Precision.Price
+				precVal = prec.Price
+				mode = prec.ModePrice
 			}
 			collateral = leftSide * res.Contracts
 		} else {
@@ -449,12 +454,13 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 			// walletBalance = (contracts * contractSize) * (±1/entryPrice - (±1 - mmp) / liquidationPrice)
 			leftSide := res.Contracts * res.ContractSize
 			rightSide := (1.0 / entryPriceSign) - (revMaintPct / res.LiquidationPrice)
-			prec = market.Precision.Base
+			precVal = prec.Base
+			mode = prec.ModeBase
 			collateral = leftSide * rightSide
 		}
-		if prec != 0 {
+		if precVal != 0 {
 			var err error
-			collateral, err = utils.PrecFloat64(collateral, prec, false)
+			collateral, err = utils.PrecFloat64(collateral, precVal, false, mode)
 			if err != nil {
 				return nil, errs.New(errs.CodePrecDecFail, err)
 			}
@@ -463,10 +469,10 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 		collateral, _ = strconv.ParseFloat(isolatedMarginStr, 64)
 	}
 	// 计算initMargin
-	initMargin, _ := utils.PrecFloat64(notional/float64(res.Leverage), 8, true)
-	maintMargin, _ := utils.PrecFloat64(maintMarginPct*notional, 11, true)
-	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true)
-	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true)
+	initMargin, _ := utils.PrecFloat64(notional/float64(res.Leverage), 8, true, 0)
+	maintMargin, _ := utils.PrecFloat64(maintMarginPct*notional, 11, true, 0)
+	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true, 0)
+	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true, 0)
 	res.Collateral = collateral
 	res.Hedged = res.Side != banexg.PosSideBoth
 	res.Notional = notional

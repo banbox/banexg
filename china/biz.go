@@ -8,6 +8,7 @@ import (
 	"github.com/banbox/banexg/utils"
 	"github.com/shopspring/decimal"
 	"gopkg.in/yaml.v3"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -234,6 +235,7 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		return nil, err
 	}
 	isOption := market == banexg.MarketOption
+	leverage := 100 / rawMar.MarginPct
 	mar := &banexg.Market{
 		ID:          exgSID,
 		LowercaseID: strings.ToLower(exgSID),
@@ -260,6 +262,15 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 			ModeBase:   banexg.PrecModeTickSize,
 			ModePrice:  banexg.PrecModeTickSize,
 			ModeQuote:  banexg.PrecModeTickSize,
+		},
+		Limits: &banexg.MarketLimits{
+			Leverage: &banexg.LimitRange{
+				Min: leverage,
+				Max: leverage,
+			},
+			Amount: &banexg.LimitRange{
+				Min: rawMar.Multiplier,
+			},
 		},
 		Info: rawMar,
 	}
@@ -378,22 +389,16 @@ func makeCalcFee(e *China) banexg.FuncCalcFee {
 		}
 		feeValDc := decimal.NewFromFloat(feeVal)
 		var costVal float64
-		var ok bool
 		if unit == "wan" {
 			wanDc := decimal.NewFromInt(10000)
-			costVal, ok = amount.Mul(price).Mul(feeValDc).Div(wanDc).Float64()
-			if !ok {
-				return nil, errs.NewMsg(errs.CodePrecDecFail, "decimal mul fail")
-			}
+			costVal, _ = amount.Mul(price).Mul(feeValDc).Div(wanDc).Float64()
 		} else if unit == "lot" {
 			mulDc := decimal.NewFromFloat(raw.Multiplier)
-			costVal, ok = feeValDc.Div(mulDc).Mul(amount).Float64()
-			if !ok {
-				return nil, errs.NewMsg(errs.CodePrecDecFail, "decimal mul fail")
-			}
+			costVal, _ = feeValDc.Div(mulDc).Mul(amount).Float64()
 		} else {
 			return nil, errs.NewMsg(errs.CodeRunTime, "invalid fee unit: %s", unit)
 		}
+		costVal = math.Round(costVal*100) / 100
 		odCost, _ := amount.Mul(price).Float64()
 		return &banexg.Fee{
 			Cost:     costVal,

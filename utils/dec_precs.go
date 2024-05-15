@@ -188,16 +188,19 @@ func adjusted(dec decimal.Decimal) int32 {
 PrecFloat64
 对给定浮点数取近似值，精确到指定位数
 */
-func PrecFloat64(num float64, prec float64, isRound bool) (float64, error) {
-	resStr, err := PrecFloat64Str(num, prec, isRound)
+func PrecFloat64(num float64, prec float64, isRound bool, mode int) (float64, error) {
+	resStr, err := PrecFloat64Str(num, prec, isRound, mode)
 	if err != nil {
 		return 0, err
 	}
 	return strconv.ParseFloat(resStr, 64)
 }
 
-func PrecFloat64Str(num float64, prec float64, isRound bool) (string, error) {
+func PrecFloat64Str(num float64, prec float64, isRound bool, mode int) (string, error) {
 	numStr := strconv.FormatFloat(num, 'f', -1, 64)
 	precStr := strconv.FormatFloat(prec, 'f', -1, 64)
-	return DecToPrec(numStr, PrecModeDecimalPlace, precStr, isRound, false)
+	if mode == 0 {
+		mode = PrecModeDecimalPlace
+	}
+	return DecToPrec(numStr, mode, precStr, isRound, false)
 }
