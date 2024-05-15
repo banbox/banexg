@@ -74,7 +74,6 @@ func (e *Exchange) Init() *errs.Error {
 	fees := utils.GetMapVal(e.Options, OptFees, map[string]map[string]float64{})
 	e.SetFees(fees)
 	utils.SetFieldBy(&e.CareMarkets, e.Options, OptCareMarkets, nil)
-	utils.SetFieldBy(&e.PrecisionMode, e.Options, OptPrecisionMode, PrecModeDecimalPlace)
 	utils.SetFieldBy(&e.MarketType, e.Options, OptMarketType, MarketSpot)
 	utils.SetFieldBy(&e.ContractType, e.Options, OptContractType, "")
 	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
@@ -246,16 +245,14 @@ func (e *Exchange) setMarkets(markets MarketMap) {
 func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 	if currencies == nil {
 		var currs = make([]*Currency, 0)
-		var defCurrPrecision = 1e-8
-		if e.PrecisionMode == PrecModeDecimalPlace {
-			defCurrPrecision = 8
-		}
+		var defCurrPrec, defCurrPrecMode = float64(8), PrecModeDecimalPlace
 		for _, market := range markets {
 			if market.Base != "" {
 				curr := Currency{
 					ID:        market.BaseID,
 					Code:      market.Base,
 					Precision: market.Precision.Base,
+					PrecMode:  market.Precision.ModeBase,
 				}
 				if curr.ID == "" {
 					curr.ID = market.Base
@@ -263,8 +260,10 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 				if curr.Precision == 0 {
 					if market.Precision.Amount > 0 {
 						curr.Precision = market.Precision.Amount
+						curr.PrecMode = market.Precision.ModeAmount
 					} else {
-						curr.Precision = defCurrPrecision
+						curr.Precision = defCurrPrec
+						curr.PrecMode = defCurrPrecMode
 					}
 				}
 				currs = append(currs, &curr)
@@ -274,6 +273,7 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 					ID:        market.QuoteID,
 					Code:      market.Quote,
 					Precision: market.Precision.Quote,
+					PrecMode:  market.Precision.ModeQuote,
 				}
 				if curr.ID == "" {
 					curr.ID = market.Quote
@@ -281,8 +281,10 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 				if curr.Precision == 0 {
 					if market.Precision.Price > 0 {
 						curr.Precision = market.Precision.Price
+						curr.PrecMode = market.Precision.ModePrice
 					} else {
-						curr.Precision = defCurrPrecision
+						curr.Precision = defCurrPrec
+						curr.PrecMode = defCurrPrecMode
 					}
 				}
 				currs = append(currs, &curr)
@@ -291,7 +293,7 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 		var highPrecs = make(map[string]*Currency)
 		for _, curr := range currs {
 			if old, ok := highPrecs[curr.Code]; ok {
-				if e.PrecisionMode == PrecModeTickSize {
+				if old.PrecMode == PrecModeTickSize {
 					if curr.Precision < old.Precision {
 						highPrecs[curr.Code] = curr
 					}
@@ -306,6 +308,7 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 			if old, ok := e.CurrenciesByCode[v.Code]; ok {
 				old.ID = v.ID
 				old.Precision = v.Precision
+				old.PrecMode = v.PrecMode
 			} else {
 				e.CurrenciesByCode[v.Code] = v
 			}
@@ -394,7 +397,7 @@ func (e *Exchange) GetPriceOnePip(pair string) (float64, *errs.Error) {
 	}
 	if mar, ok := markets[pair]; ok {
 		precision := mar.Precision.Price
-		if e.PrecisionMode == PrecModeTickSize {
+		if mar.Precision.ModePrice == PrecModeTickSize {
 			return precision, nil
 		} else {
 			return 1 / math.Pow(10, precision), nil
@@ -708,16 +711,21 @@ func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, pri
 	} else {
 		useQuote = feeSide == "quote"
 	}
-	cost := decimal.NewFromFloat(amount)
+	amountDc := decimal.NewFromFloat(amount)
+	cost := amountDc
+	priceDc := decimal.NewFromFloat(price)
 	currency := ""
 	if useQuote {
-		cost = cost.Mul(decimal.NewFromFloat(price))
+		cost = cost.Mul(priceDc)
 		currency = market.Quote
 	} else {
 		currency = market.Base
 	}
 	if !market.Spot {
 		currency = market.Settle
+	}
+	if e.CalcFee != nil {
+		return e.CalcFee(market, currency, isMaker, amountDc, priceDc, params)
 	}
 	feeRate := 0.0
 	if isMaker {
@@ -744,7 +752,7 @@ func (e *Exchange) PriceOnePip(symbol string) (float64, *errs.Error) {
 		return 0, err
 	}
 	prec := market.Precision.Price
-	if e.PrecisionMode == PrecModeTickSize {
+	if market.Precision.ModePrice == PrecModeTickSize {
 		return prec, nil
 	}
 	return 1 / math.Pow(10.0, prec), nil
@@ -1065,10 +1073,6 @@ func (e *Exchange) PrecCost(m *Market, cost float64) (float64, *errs.Error) {
 
 func (e *Exchange) PrecFee(m *Market, fee float64) (float64, *errs.Error) {
 	return e.precPriceCost(m, fee, true)
-}
-
-func (e *Exchange) PrecMode() int {
-	return e.PrecisionMode
 }
 
 /*

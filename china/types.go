@@ -26,15 +26,17 @@ type ItemMarket struct {
 	DayRanges   []string `yaml:"day_ranges"`
 	NightRanges []string `yaml:"night_ranges"`
 	Fee         *Fee     `yaml:"fee"`
-	FeeCT       *Fee     `yaml:"fee_ct"`
-	PriceTick   float64  `yaml:"price_tick"`
-	LimitChgPct float64  `yaml:"limit_chg_pct"`
-	MarginPct   float64  `yaml:"margin_pct"`
+	Multiplier  float64  `yaml:"multiplier"`    // 合约乘数；价格单位是吨，每手含multiplier吨
+	PriceTick   float64  `yaml:"price_tick"`    // 最小价格变动，单位：吨
+	LimitChgPct float64  `yaml:"limit_chg_pct"` // 涨跌停板，单位：百分比
+	MarginPct   float64  `yaml:"margin_pct"`    // 保证金比率，单位：百分比
 }
 
 type Fee struct {
-	Unit string  `yaml:"unit"`
-	Val  float64 `yaml:"val"`
+	Unit  string  `yaml:"unit"`
+	Val   float64 `yaml:"val"`
+	ValCT float64 `yaml:"val_ct"` // 平今
+	ValTD float64 `yaml:"val_td"` // 日内
 }
 
 type CnMarkets struct {

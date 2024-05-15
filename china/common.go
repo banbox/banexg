@@ -33,9 +33,6 @@ func (m *ItemMarket) Resolve(bases map[string]*ItemMarket) {
 	if m.Fee == nil && base.Fee != nil {
 		m.Fee = base.Fee
 	}
-	if m.FeeCT == nil && base.FeeCT != nil {
-		m.FeeCT = base.FeeCT
-	}
 	if m.PriceTick == 0 && base.PriceTick != 0 {
 		m.PriceTick = base.PriceTick
 	}
@@ -116,4 +113,26 @@ ToRawSymbol
 */
 func (m *ItemMarket) ToRawSymbol(parts []*utils2.StrType) (string, *errs.Error) {
 	return m.toSymbol(parts, false)
+}
+
+func (f *Fee) ParseStd() {
+	if f.Val == -999 {
+		f.Val = 0
+	} else if f.Val == 0 {
+		f.Val = -1
+	}
+	if f.ValCT == -999 {
+		f.ValCT = 0
+	} else if f.ValCT == 0 {
+		f.ValCT = -1
+	}
+	if f.ValTD == -999 {
+		f.ValTD = 0
+	} else if f.ValTD == 0 {
+		f.ValTD = -1
+	}
+	if f.ValTD >= 0 {
+		// 日内交易手续费，转为平今格式
+		f.ValCT = f.ValTD*2 - f.Val
+	}
 }

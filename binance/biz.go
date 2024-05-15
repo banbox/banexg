@@ -206,9 +206,8 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 				}
 				precisionTick := utils.PrecisionFromString(net.WithdrawIntegerMultiple)
 				if precisionTick != 0 {
-					if curr.Precision == 0 || precisionTick > curr.Precision {
-						curr.Precision = precisionTick
-					}
+					curr.Precision = precisionTick
+					curr.PrecMode = banexg.PrecModeTickSize
 				}
 				curr.Networks[i] = &banexg.ChainNetwork{
 					ID:        net.Network,
@@ -350,13 +349,7 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 	}
 	strikePrice, _ := strconv.ParseFloat(mar.StrikePrice, 64)
 	prec := mar.GetPrecision()
-	limits, pricePrec, amountPrec := mar.GetMarketLimits()
-	if pricePrec > 0 {
-		prec.Price = pricePrec
-	}
-	if amountPrec > 0 {
-		prec.Amount = amountPrec
-	}
+	limits := mar.GetMarketLimits(prec)
 	var market = banexg.Market{
 		ID:             mar.Symbol,
 		LowercaseID:    strings.ToLower(mar.Symbol),

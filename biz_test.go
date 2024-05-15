@@ -8,17 +8,11 @@ func TestSetOptions(t *testing.T) {
 	FakeApiKey := "123"
 	e := Exchange{
 		Options: map[string]interface{}{
-			OptMarketType:    MarketMargin,
-			OptApiKey:        FakeApiKey,
-			OptPrecisionMode: PrecModeTickSize,
+			OptMarketType: MarketMargin,
+			OptApiKey:     FakeApiKey,
 		},
 	}
 	e.Init()
-	if e.PrecisionMode == PrecModeTickSize {
-		t.Logf("Pass PrecisionMode")
-	} else {
-		t.Errorf("Fail PrecisionMode, cur %v, expect: %v", e.PrecisionMode, PrecModeTickSize)
-	}
 	_, creds, err := e.GetAccountCreds("default")
 	if err != nil {
 		panic(err)
@@ -49,8 +43,10 @@ func TestCalcFee(t *testing.T) {
 					Taker:  0.002,
 					Maker:  0.001,
 					Precision: &Precision{
-						Price:  8,
-						Amount: 8,
+						Price:      8,
+						Amount:     8,
+						ModePrice:  PrecModeDecimalPlace,
+						ModeAmount: PrecModeDecimalPlace,
 					},
 				},
 			},

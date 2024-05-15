@@ -79,7 +79,6 @@ const (
 	OptUserAgent       = "UserAgent"
 	OptReqHeaders      = "ReqHeaders"
 	OptCareMarkets     = "CareMarkets"
-	OptPrecisionMode   = "PrecisionMode"
 	OptMarketType      = "MarketType"
 	OptContractType    = "ContractType"
 	OptTimeInForce     = "TimeInForce"
@@ -95,9 +94,9 @@ const (
 )
 
 const (
-	PrecModeDecimalPlace = utils.PrecModeDecimalPlace
-	PrecModeSignifDigits = utils.PrecModeSignifDigits
-	PrecModeTickSize     = utils.PrecModeTickSize
+	PrecModeDecimalPlace = utils.PrecModeDecimalPlace // 保留小数点后位数
+	PrecModeSignifDigits = utils.PrecModeSignifDigits // 保留有效数字位数
+	PrecModeTickSize     = utils.PrecModeTickSize     // 返回给定数字的整数倍
 )
 
 const (

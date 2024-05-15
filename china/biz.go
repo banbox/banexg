@@ -6,6 +6,7 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+	"github.com/shopspring/decimal"
 	"gopkg.in/yaml.v3"
 	"strconv"
 	"strings"
@@ -53,6 +54,15 @@ func loadRawMarkets() *errs.Error {
 			bases[item.Code] = item
 		} else {
 			key := fmt.Sprintf("%s_%s", item.Market, strings.ToUpper(item.Code))
+			if item.Multiplier == 0 {
+				return errs.NewMsg(errs.CodeInvalidData, "`multiplier` required: %s", key)
+			}
+			if item.Market == banexg.MarketLinear {
+				if item.PriceTick == 0 {
+					return errs.NewMsg(errs.CodeInvalidData, "`price_tick` required: %s", key)
+				}
+			}
+			item.Fee.ParseStd()
 			ctMarkets[key] = item
 			if len(item.Alias) > 0 {
 				for _, alias := range item.Alias {
@@ -242,10 +252,14 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 		Expiry:      expiry,
 		FeeSide:     "quote",
 		Precision: &banexg.Precision{
-			Amount: 0,
-			Price:  2,
-			Base:   0,
-			Quote:  2,
+			Amount:     rawMar.Multiplier,
+			Price:      rawMar.PriceTick,
+			Base:       rawMar.Multiplier,
+			Quote:      rawMar.PriceTick,
+			ModeAmount: banexg.PrecModeTickSize,
+			ModeBase:   banexg.PrecModeTickSize,
+			ModePrice:  banexg.PrecModeTickSize,
+			ModeQuote:  banexg.PrecModeTickSize,
 		},
 		Info: rawMar,
 	}
@@ -347,6 +361,47 @@ func (e *China) SetLeverage(leverage float64, symbol string, params map[string]i
 func (e *China) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error) {
 	leverage, _ := e.GetLeverage(symbol, cost, "")
 	return cost / leverage, nil
+}
+
+func makeCalcFee(e *China) banexg.FuncCalcFee {
+	return func(market *banexg.Market, curr string, maker bool, amount, price decimal.Decimal, params map[string]interface{}) (*banexg.Fee, *errs.Error) {
+		raw, _ := market.Info.(*ItemMarket)
+		if raw == nil {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "raw market invalid")
+		}
+		closeToday, _ := params["closeToday"]
+		unit := raw.Fee.Unit
+		feeVal := raw.Fee.Val
+		if closeToday != nil {
+			// 平今手续费
+			feeVal = raw.Fee.ValCT
+		}
+		feeValDc := decimal.NewFromFloat(feeVal)
+		var costVal float64
+		var ok bool
+		if unit == "wan" {
+			wanDc := decimal.NewFromInt(10000)
+			costVal, ok = amount.Mul(price).Mul(feeValDc).Div(wanDc).Float64()
+			if !ok {
+				return nil, errs.NewMsg(errs.CodePrecDecFail, "decimal mul fail")
+			}
+		} else if unit == "lot" {
+			mulDc := decimal.NewFromFloat(raw.Multiplier)
+			costVal, ok = feeValDc.Div(mulDc).Mul(amount).Float64()
+			if !ok {
+				return nil, errs.NewMsg(errs.CodePrecDecFail, "decimal mul fail")
+			}
+		} else {
+			return nil, errs.NewMsg(errs.CodeRunTime, "invalid fee unit: %s", unit)
+		}
+		odCost, _ := amount.Mul(price).Float64()
+		return &banexg.Fee{
+			Cost:     costVal,
+			Currency: curr,
+			IsMaker:  maker,
+			Rate:     costVal / odCost,
+		}, nil
+	}
 }
 
 func (e *China) Close() *errs.Error {

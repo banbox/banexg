@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	PrecModeDecimalPlace = 2
-	PrecModeSignifDigits = 3
-	PrecModeTickSize     = 4
+	PrecModeDecimalPlace = 2 // 保留小数点后指定位
+	PrecModeSignifDigits = 3 // 保留全部有效数字个数
+	PrecModeTickSize     = 4 // 返回给定的数字的整数倍
 )
 
 var (

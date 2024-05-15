@@ -325,3 +325,13 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 func IsOrderDone(status string) bool {
 	return status == OdStatusFilled || status == OdStatusCanceled || status == OdStatusExpired || status == OdStatusRejected
 }
+
+func (m *Market) GetTradeTimes() [][2]int64 {
+	times := make([][2]int64, 0, len(m.DayTimes))
+	times = append(times, m.DayTimes...)
+	times = append(times, m.NightTimes...)
+	sort.Slice(times, func(i, j int) bool {
+		return times[i][0] < times[j][0]
+	})
+	return times
+}

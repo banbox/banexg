@@ -2,6 +2,7 @@ package banexg
 
 import (
 	"github.com/banbox/banexg/errs"
+	"github.com/shopspring/decimal"
 	"net/http"
 	"net/url"
 	"sync"
@@ -11,6 +12,7 @@ type FuncSign = func(api Entry, params map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params map[string]interface{}) (CurrencyMap, *errs.Error)
 type FuncFetchMarkets = func(marketTypes []string, params map[string]interface{}) (MarketMap, *errs.Error)
 type FuncAuthWS = func(acc *Account, params map[string]interface{}) *errs.Error
+type FuncCalcFee = func(market *Market, curr string, maker bool, amount, price decimal.Decimal, params map[string]interface{}) (*Fee, *errs.Error)
 
 type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
 type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)
@@ -62,6 +64,7 @@ type Exchange struct {
 	FetchCurrencies FuncFetchCurr
 	FetchMarkets    FuncFetchMarkets
 	AuthWS          FuncAuthWS
+	CalcFee         FuncCalcFee
 	GetRetryWait    func(e *errs.Error) int // 根据错误信息计算重试间隔秒数，<0表示无需重试
 
 	OnWsMsg   FuncOnWsMsg
@@ -93,12 +96,11 @@ type ExgInfo struct {
 	OrderBooks       map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
 
-	PrecisionMode int    // 2:PrecModeDecimalPlace  3:PrecModeSignifDigits  4:PrecModeTickSize
-	PrecPadZero   bool   // padding zero for precision
-	MarketType    string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
-	ContractType  string // MarketSwap/MarketFuture
-	MarginMode    string // MarginCross/MarginIsolated
-	TimeInForce   string // GTC/IOC/FOK
+	PrecPadZero  bool   // padding zero for precision
+	MarketType   string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
+	ContractType string // MarketSwap/MarketFuture
+	MarginMode   string // MarginCross/MarginIsolated
+	TimeInForce  string // GTC/IOC/FOK
 }
 
 type Account struct {
@@ -195,6 +197,7 @@ type Currency struct {
 	Type      string
 	NumericID int
 	Precision float64
+	PrecMode  int // 保留精度的模式：PrecModeDecimalPlace/PrecModeSignifDigits/PrecModeTickSize
 	Active    bool
 	Deposit   bool
 	Withdraw  bool
@@ -272,10 +275,14 @@ type Market struct {
 }
 
 type Precision struct {
-	Amount float64 `json:"amount"`
-	Price  float64 `json:"price"`
-	Base   float64 `json:"base"`
-	Quote  float64 `json:"quote"`
+	Amount     float64 `json:"amount"`
+	Price      float64 `json:"price"`
+	Base       float64 `json:"base"`
+	Quote      float64 `json:"quote"`
+	ModeAmount int     `json:"modeAmount"` // PrecModeTickSize/PrecModeSignifDigits/PrecModeDecimalPlace
+	ModePrice  int     `json:"modePrice"`
+	ModeBase   int     `json:"modeBase"`
+	ModeQuote  int     `json:"modeQuote"`
 }
 
 type MarketLimits struct {

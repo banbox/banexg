@@ -83,7 +83,6 @@ type BanExchange interface {
 	PrecPrice(m *Market, price float64) (float64, *errs.Error)
 	PrecCost(m *Market, cost float64) (float64, *errs.Error)
 	PrecFee(m *Market, fee float64) (float64, *errs.Error)
-	PrecMode() int
 
 	HasApi(key, market string) bool
 	PriceOnePip(symbol string) (float64, *errs.Error)

@@ -66,7 +66,11 @@ func New(Options map[string]interface{}) (*China, *errs.Error) {
 		},
 	}
 	err := exg.Init()
-	return exg, err
+	if err != nil {
+		return nil, err
+	}
+	exg.CalcFee = makeCalcFee(exg)
+	return exg, nil
 }
 
 func NewExchange(Options map[string]interface{}) (banexg.BanExchange, *errs.Error) {
