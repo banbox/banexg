@@ -38,6 +38,9 @@ type BanExchange interface {
 	LoadMarkets(reload bool, params map[string]interface{}) (MarketMap, *errs.Error)
 	GetCurMarkets() MarketMap
 	GetMarket(symbol string) (*Market, *errs.Error)
+	/*
+		将交易所原始品种ID映射为标准symbol，year是K线数据所在年
+	*/
 	MapMarket(rawID string, year int) (*Market, *errs.Error)
 	FetchTicker(symbol string, params map[string]interface{}) (*Ticker, *errs.Error)
 	FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error)

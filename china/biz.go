@@ -169,13 +169,19 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 			// 至少两部分，第二部分是3个数字，改为4个数字
 			p1num, _ := strconv.Atoi(p1val[1:])
 			if p1num >= 1 && p1num <= 12 {
-				var yearStr string
 				if year == 0 {
-					yearStr = curTime.Format("2006")
-				} else {
-					yearStr = strconv.Itoa(year)
+					year = curTime.Year()
 				}
-				parts[1].Val = yearStr[len(yearStr)-2:len(yearStr)-1] + p1val
+				// 取到期年月的年个位
+				yLast, _ := strconv.Atoi(p1val[:1])
+				// 计算实际到期年
+				dstYear := year/10*10 + yLast
+				for dstYear < year {
+					dstYear += 10
+				}
+				// 计算实际到期年的倒数第二个数字
+				prefix := strconv.Itoa(dstYear % 100 / 10)
+				parts[1].Val = prefix + p1val
 				p1val = parts[1].Val
 			}
 		}
