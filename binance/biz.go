@@ -494,7 +494,7 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 		closeP, _ := strconv.ParseFloat(closeStr, 64)
 		volume, _ := strconv.ParseFloat(volStr, 64)
 		res[i] = &banexg.Kline{
-			Time:   int64(barTime),
+			Time:   barTime,
 			Open:   open,
 			High:   high,
 			Low:    low,

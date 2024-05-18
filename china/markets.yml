@@ -796,6 +796,7 @@ contracts:
     multiplier: 10
   - code: MA
     extend: base4
+    alias: [ME]
     title: 甲醇
     fee:
       unit: wan
@@ -806,6 +807,7 @@ contracts:
     multiplier: 10
   - code: MA
     extend: base4
+    alias: [ME]
     title: 甲醇
     market: option
     fee:

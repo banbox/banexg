@@ -115,6 +115,9 @@ func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.
 	}
 	if len(symbols) > 0 {
 		for _, symbol := range symbols {
+			if symbol == "" {
+				continue
+			}
 			market, err := parseMarket(symbol, 0, false)
 			if err != nil {
 				return nil, err
@@ -232,9 +235,14 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 	}
 	var exgSID, stdSymbol string
 	var err *errs.Error
+	if parts[0].Type == utils.StrStr {
+		parts[0].Val = rawMar.Code
+	}
 	if isRaw {
 		stdSymbol, err = rawMar.ToStdSymbol(parts)
+		exgSID = symbol
 	} else {
+		stdSymbol = symbol
 		exgSID, err = rawMar.ToRawSymbol(parts)
 	}
 	if err != nil {

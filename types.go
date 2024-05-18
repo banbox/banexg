@@ -332,6 +332,7 @@ type Kline struct {
 	Low    float64
 	Close  float64
 	Volume float64
+	Info   float64
 }
 
 type PairTFKline struct {

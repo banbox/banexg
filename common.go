@@ -230,6 +230,7 @@ func (k *Kline) Clone() *Kline {
 		Low:    k.Low,
 		Close:  k.Close,
 		Volume: k.Volume,
+		Info:   k.Info,
 	}
 }
 
