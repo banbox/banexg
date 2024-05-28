@@ -408,7 +408,7 @@ func makeCalcFee(e *China) banexg.FuncCalcFee {
 			costVal, _ = amount.Mul(price).Mul(feeValDc).Div(wanDc).Float64()
 		} else if unit == "lot" {
 			mulDc := decimal.NewFromFloat(raw.Multiplier)
-			costVal, _ = feeValDc.Div(mulDc).Mul(amount).Float64()
+			costVal, _ = amount.Div(mulDc).Mul(feeValDc).Float64()
 		} else {
 			return nil, errs.NewMsg(errs.CodeRunTime, "invalid fee unit: %s", unit)
 		}

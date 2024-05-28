@@ -23,6 +23,14 @@ func UUID(length int) string {
 	return text
 }
 
+func ArrSum(s []float64) float64 {
+	var res float64
+	for _, a := range s {
+		res += a
+	}
+	return res
+}
+
 func ArrContains[T comparable](s []T, e T) bool {
 	for _, a := range s {
 		if a == e {
