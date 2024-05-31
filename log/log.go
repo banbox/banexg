@@ -216,14 +216,7 @@ func SetupLogger(cfg *Config) {
 	}
 }
 
-func Setup(debug bool, logFile string, handlers ...zapcore.Core) {
-	if debug && len(logFile) == 0 {
-		return
-	}
-	var level = "info"
-	if debug {
-		level = "debug"
-	}
+func Setup(level, logFile string, handlers ...zapcore.Core) {
 	var file *FileLogConfig
 	if len(logFile) > 0 {
 		file = &FileLogConfig{
