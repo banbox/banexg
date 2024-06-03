@@ -419,11 +419,20 @@ func (c *WsClient) read() {
 	for {
 		msgRaw, err := c.Conn.ReadMsg()
 		if err != nil {
-			if c.OnClose != nil {
-				c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
+			var errText = err.Error()
+			if strings.Contains(errText, "EOF") {
+				if c.OnClose != nil {
+					c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
+				}
+				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Error(err))
+				return
+			} else {
+				if c.OnError != nil {
+					c.OnError(c, errs.New(errs.CodeWsReadFail, err))
+				}
+				log.Error("read error", zap.String("url", c.URL), zap.Error(err))
+				continue
 			}
-			log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Error(err))
-			return
 		}
 		// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误
 		c.handleRawMsg(msgRaw)
