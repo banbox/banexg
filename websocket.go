@@ -143,6 +143,7 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 			for key := range result.SubscribeKeys {
 				subParams = append(subParams, key)
 			}
+			log.Info("reconnecting", zap.Int("job", len(subParams)))
 			var req = map[string]interface{}{
 				"method": "SUBSCRIBE",
 				"params": subParams,
@@ -335,9 +336,9 @@ func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
 			c.JobInfos[info.ID] = info
 		}
 	}
-	if log.GetLevel() >= zapcore.DebugLevel {
-		msgText := string(data)
-		log.Debug("write ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
+	msgText := string(data)
+	if log.GetLevel() >= zapcore.DebugLevel || len(msgText) >= 4000 {
+		log.Info("write ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
 	}
 	c.Send <- data
 	return nil
