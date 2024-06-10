@@ -107,6 +107,10 @@ func (c *MockWsConn) ReadMsg() ([]byte, error) {
 	return c.scanner.Bytes(), nil
 }
 
+func (c *MockWsConn) IsOK() bool {
+	return c.scanner != nil
+}
+
 type mockWriter struct {
 	conn *MockWsConn
 }

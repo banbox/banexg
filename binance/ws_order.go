@@ -130,9 +130,9 @@ func (e *Binance) UnWatchOrderBooks(symbols []string, params map[string]interfac
 	return nil
 }
 
-func (e *Binance) getExgWsParams(symbols []string, cvt func(m *banexg.Market) string) ([]string, *errs.Error) {
+func (e *Binance) getExgWsParams(offset int, symbols []string, cvt func(m *banexg.Market, i int) string) ([]string, *errs.Error) {
 	exgParams := make([]string, 0, len(symbols))
-	for _, sym := range symbols {
+	for i, sym := range symbols {
 		mar, err := e.GetMarket(sym)
 		if err != nil {
 			if strings.Contains(sym, "@") {
@@ -141,7 +141,7 @@ func (e *Binance) getExgWsParams(symbols []string, cvt func(m *banexg.Market) st
 			}
 			return nil, err
 		}
-		subText := cvt(mar)
+		subText := cvt(mar, offset+i)
 		if subText == "" {
 			continue
 		}
@@ -167,7 +167,7 @@ func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, sy
 	if !ok {
 		watchRate = 100
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
 		return fmt.Sprintf("%s@depth@%dms", m.LowercaseID, watchRate)
 	}, func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
 		var jobInfo *banexg.WsJobInfo
@@ -227,7 +227,7 @@ func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[st
 		return "", nil, err
 	}
 
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
 		return fmt.Sprintf("%s@%s", m.LowercaseID, name)
 	}, nil)
 	if err != nil {

@@ -3,6 +3,7 @@ package binance
 import (
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
@@ -13,16 +14,27 @@ import (
 )
 
 func TestWatchOHLCVs(t *testing.T) {
-	gock.DisableNetworking()
-	err := LoadGockItems("testdata/gock.json")
-	if err != nil {
-		panic(err)
-	}
-	exg := getBinance(nil)
-	gock.InterceptClient(exg.HttpClient)
+	testWatchOHLCVs(t, true)
+}
 
+func testWatchOHLCVs(t *testing.T, isFake bool) {
+	if isFake {
+		gock.DisableNetworking()
+		err := LoadGockItems("testdata/gock.json")
+		if err != nil {
+			panic(err)
+		}
+	}
+	exg := getBinance(map[string]interface{}{
+		banexg.OptDebugWS: true,
+	})
+	if isFake {
+		gock.InterceptClient(exg.HttpClient)
+	}
+
+	var err *errs.Error
 	symbol := "ETH/USDT:USDT"
-	jobs := map[string]string{symbol: "1m"}
+	jobs := [][2]string{{symbol, "1m"}}
 	out, err_ := exg.WatchOHLCVs(jobs, nil)
 	if err_ != nil {
 		panic(err_)

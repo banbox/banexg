@@ -639,11 +639,11 @@ func (e *Exchange) UnWatchOrderBooks(symbols []string, params map[string]interfa
 	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
-func (e *Exchange) WatchOHLCVs(jobs map[string]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error) {
+func (e *Exchange) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
-func (e *Exchange) UnWatchOHLCVs(jobs map[string]string, params map[string]interface{}) *errs.Error {
+func (e *Exchange) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
 	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 

@@ -26,7 +26,7 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 					log.Debug("ws job ok", zap.String("job", item.ID))
 				}
 			} else {
-				log.Error("no event ws msg", zap.String("msg", item.Text))
+				log.Warn("no event ws msg", zap.String("msg", item.Text))
 			}
 			return
 		}
@@ -306,7 +306,7 @@ watches historical candlestick data containing the open, high, low, and close pr
 :param dict [params]: extra parameters specific to the exchange API endpoint
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
 */
-func (e *Binance) WatchOHLCVs(jobs map[string]string, params map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
+func (e *Binance) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *banexg.PairTFKline, *errs.Error) {
 	chanKey, symbols, args, err := e.prepareOHLCVSub(true, jobs, params)
 	if err != nil {
 		return nil, err
@@ -318,7 +318,7 @@ func (e *Binance) WatchOHLCVs(jobs map[string]string, params map[string]interfac
 	return out, nil
 }
 
-func (e *Binance) UnWatchOHLCVs(jobs map[string]string, params map[string]interface{}) *errs.Error {
+func (e *Binance) UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error {
 	chanKey, symbols, _, err := e.prepareOHLCVSub(false, jobs, params)
 	if err != nil {
 		return err
@@ -371,7 +371,7 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 	if len(symbols) == 0 {
 		symbols = []string{"!markPrice@arr" + intv}
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
 		return m.LowercaseID + "@markPrice" + intv
 	}, nil)
 	if err != nil {
@@ -504,13 +504,13 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	banexg.WriteOutChan(e.Exchange, chanKey, kline, true)
 }
 
-func (e *Binance) prepareOHLCVSub(isSub bool, jobs map[string]string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareOHLCVSub(isSub bool, jobs [][2]string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
 	if len(jobs) == 0 {
 		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
 	var first string
-	for k := range jobs {
-		first = k
+	for _, it := range jobs {
+		first = it[0]
 		break
 	}
 	args, market, err := e.LoadArgsMarket(first, params)
@@ -525,15 +525,15 @@ func (e *Binance) prepareOHLCVSub(isSub bool, jobs map[string]string, params map
 	}
 
 	symbols := make([]string, 0, len(jobs))
-	for k := range jobs {
-		symbols = append(symbols, k)
+	for _, k := range jobs {
+		symbols = append(symbols, k[0])
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, i int) string {
 		marketId := m.LowercaseID
 		if name == "indexPriceKline" {
 			marketId = strings.Replace(marketId, "_perp", "", -1)
 		}
-		tf := jobs[m.Symbol]
+		tf := jobs[i][1]
 		return fmt.Sprintf("%s@%s_%s", marketId, name, tf)
 	}, nil)
 	if err != nil {

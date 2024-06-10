@@ -71,8 +71,8 @@ type BanExchange interface {
 
 	WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error)
 	UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error
-	WatchOHLCVs(jobs map[string]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error)
-	UnWatchOHLCVs(jobs map[string]string, params map[string]interface{}) *errs.Error
+	WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (chan *PairTFKline, *errs.Error)
+	UnWatchOHLCVs(jobs [][2]string, params map[string]interface{}) *errs.Error
 	WatchMarkPrices(symbols []string, params map[string]interface{}) (chan map[string]float64, *errs.Error)
 	UnWatchMarkPrices(symbols []string, params map[string]interface{}) *errs.Error
 	WatchTrades(symbols []string, params map[string]interface{}) (chan *Trade, *errs.Error)
@@ -102,4 +102,5 @@ type WsConn interface {
 	WriteClose() error
 	NextWriter() (io.WriteCloser, error)
 	ReadMsg() ([]byte, error)
+	IsOK() bool
 }

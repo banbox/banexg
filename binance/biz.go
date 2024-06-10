@@ -793,21 +793,24 @@ symbols 标准标的ID、或订阅字符串
 cvt 不为空时，尝试对symbols进行标准化
 getJobInfo 添加对返回结果的回调。会更新ID、symbols
 */
-func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []string, cvt func(m *banexg.Market) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
+func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []string, cvt func(m *banexg.Market, i int) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
 	leftSymbols := symbols
 	batchNum := 100
 	var err *errs.Error
+	var offset int
 	for len(leftSymbols) > 0 {
+		curOff := offset
 		if len(leftSymbols) > batchNum {
 			symbols = leftSymbols[:batchNum]
 			leftSymbols = leftSymbols[batchNum:]
+			offset += batchNum
 		} else {
 			symbols = leftSymbols
 			leftSymbols = nil
 		}
 		var exgParams []string
 		if cvt != nil {
-			exgParams, err = e.getExgWsParams(symbols, cvt)
+			exgParams, err = e.getExgWsParams(curOff, symbols, cvt)
 			if err != nil {
 				return err
 			}

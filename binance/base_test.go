@@ -6,7 +6,7 @@ import (
 )
 
 func getBinance(param map[string]interface{}) *Binance {
-	log.Setup(true, "")
+	log.Setup("info", "")
 	args := utils.SafeParams(param)
 	local := make(map[string]interface{})
 	_ = utils.ReadJsonFile("local.json", &local)

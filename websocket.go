@@ -1,6 +1,7 @@
 package banexg
 
 import (
+	"errors"
 	"fmt"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
@@ -42,7 +43,12 @@ type WebSocket struct {
 }
 
 func (ws *WebSocket) Close() error {
-	return ws.Conn.Close()
+	if ws.Conn != nil {
+		err := ws.Conn.Close()
+		ws.Conn = nil
+		return err
+	}
+	return nil
 }
 func (ws *WebSocket) WriteClose() error {
 	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
@@ -55,9 +61,35 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 	for {
 		msgType, msgRaw, err := ws.Conn.ReadMessage()
 		if err != nil {
-			var errText = err.Error()
-			if strings.Contains(errText, "EOF") {
-				log.Info(fmt.Sprintf("ws EOF closed, try reconnecting: %s, err: %T", ws.url, err))
+			var closeErr *websocket.CloseError
+			var wait time.Duration
+			var tryReConn = false
+			if errors.As(err, &closeErr) {
+				// 已关闭，禁止继续使用
+				ws.Conn = nil
+				code := closeErr.Code
+				if code == 1011 || code == 1012 || code == 1013 {
+					tryReConn = true
+					if code == 1013 {
+						// 等10s重试
+						wait = time.Millisecond * 10000
+					} else {
+						wait = time.Millisecond * 500
+					}
+				}
+			} else {
+				var errText = err.Error()
+				if strings.Contains(errText, "EOF") {
+					ws.Conn = nil
+					tryReConn = true
+					wait = time.Millisecond * 500
+				}
+			}
+			if wait > 0 {
+				time.Sleep(wait)
+			}
+			if tryReConn {
+				log.Info(fmt.Sprintf("ws closed, try reconnecting: %s, err: %T", ws.url, err))
 				conn, _, err_ := ws.dialer.Dial(ws.url, http.Header{})
 				if err_ != nil {
 					return nil, err_
@@ -77,6 +109,10 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			return msgRaw, nil
 		}
 	}
+}
+
+func (ws *WebSocket) IsOK() bool {
+	return ws.Conn != nil
 }
 
 func newWebSocket(reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*WebSocket, error) {
@@ -401,8 +437,7 @@ func (c *WsClient) read() {
 	for {
 		msgRaw, err := c.Conn.ReadMsg()
 		if err != nil {
-			var errText = err.Error()
-			if strings.Contains(errText, "EOF") {
+			if !c.Conn.IsOK() {
 				if c.OnClose != nil {
 					c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
 				}
