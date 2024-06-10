@@ -411,18 +411,12 @@ func (c *WsClient) write() {
 				log.Error("failed to create Ws.Writer", zapUrl, zap.Error(err))
 				return
 			}
+			// 一次只能写入一条消息
 			_, err = w.Write(msg)
 			if err != nil {
 				log.Error("write ws fail", zapUrl, zap.Error(err))
 			}
-			n := len(c.Send)
-			for i := 0; i < n; i++ {
-				_, err = w.Write(<-c.Send)
-				if err != nil {
-					log.Error("write ws fail", zapUrl, zap.Error(err))
-				}
-			}
-			if err := w.Close(); err != nil {
+			if err = w.Close(); err != nil {
 				log.Error("close WriteCloser fail", zapUrl, zap.Error(err))
 				return
 			}

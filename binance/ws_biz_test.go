@@ -14,7 +14,7 @@ import (
 )
 
 func TestWatchOHLCVs(t *testing.T) {
-	testWatchOHLCVs(t, true)
+	testWatchOHLCVs(t, false)
 }
 
 func testWatchOHLCVs(t *testing.T, isFake bool) {
@@ -33,8 +33,9 @@ func testWatchOHLCVs(t *testing.T, isFake bool) {
 	}
 
 	var err *errs.Error
-	symbol := "ETH/USDT:USDT"
-	jobs := [][2]string{{symbol, "1m"}}
+	jobs := [][2]string{
+		{"ETH/USDT:USDT", "1m"},
+	}
 	out, err_ := exg.WatchOHLCVs(jobs, nil)
 	if err_ != nil {
 		panic(err_)
