@@ -32,19 +32,17 @@ func (e *Binance) Stream(marType, subHash string) string {
 	return stream
 }
 
-func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, int, *errs.Error) {
+func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.Error) {
 	host := e.Hosts.GetHost(marType)
 	if host == "" {
-		return nil, 0, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
 	}
 	wsUrl := host + "/" + e.Stream(marType, msgHash)
-	requestId := e.wsRequestId[wsUrl] + 1
-	e.wsRequestId[wsUrl] = requestId
 	client, err := e.GetClient(wsUrl, marType, "")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	return client, requestId, nil
+	return client, nil
 }
 
 /*
@@ -132,18 +130,26 @@ func (e *Binance) UnWatchOrderBooks(symbols []string, params map[string]interfac
 	return nil
 }
 
-func (e *Binance) getExgWsParams(symbols []string, suffix string) ([]string, *errs.Error) {
+func (e *Binance) getExgWsParams(symbols []string, cvt func(m *banexg.Market) string) ([]string, *errs.Error) {
 	exgParams := make([]string, 0, len(symbols))
 	for _, sym := range symbols {
 		mar, err := e.GetMarket(sym)
 		if err != nil {
+			if strings.Contains(sym, "@") {
+				exgParams = append(exgParams, sym)
+				continue
+			}
 			return nil, err
 		}
-		subText := fmt.Sprintf("%s@%s", mar.LowercaseID, suffix)
+		subText := cvt(mar)
+		if subText == "" {
+			continue
+		}
 		exgParams = append(exgParams, subText)
 	}
 	return exgParams, nil
 }
+
 func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
 		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
@@ -153,44 +159,39 @@ func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, sy
 		return "", nil, err
 	}
 	var msgHash = market.Type + "@depth"
-	client, requestId, err := e.GetWsClient(market.Type, msgHash)
+	client, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
 		return "", nil, err
-	}
-	var jobInfo *banexg.WsJobInfo
-	if getJobInfo != nil {
-		jobInfo, err = getJobInfo(client)
-		if err != nil {
-			return "", nil, err
-		}
-		if jobInfo != nil {
-			jobInfo.ID = strconv.Itoa(requestId)
-			jobInfo.MsgHash = msgHash
-			jobInfo.Name = "depth"
-			jobInfo.Symbols = symbols
-		}
 	}
 	watchRate, ok := e.WsIntvs["WatchOrderBooks"]
 	if !ok {
 		watchRate = 100
 	}
-	exgParams, err := e.getExgWsParams(symbols, fmt.Sprintf("depth@%dms", watchRate))
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+		return fmt.Sprintf("%s@depth@%dms", m.LowercaseID, watchRate)
+	}, func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
+		var jobInfo *banexg.WsJobInfo
+		if getJobInfo != nil {
+			jobInfo, err = getJobInfo(client)
+			if err != nil {
+				return nil, err
+			}
+			if jobInfo != nil {
+				jobInfo.MsgHash = msgHash
+				jobInfo.Name = "depth"
+			}
+		}
+		return jobInfo, nil
+	})
 	if err != nil {
 		return "", nil, err
 	}
-	method := client.UpdateSubs(isSub, exgParams)
-	var request = map[string]interface{}{
-		"method": method,
-		"params": exgParams,
-		"id":     requestId,
-	}
-	err = client.Write(request, jobInfo)
 	chanKey := client.Prefix(msgHash)
 	return chanKey, args, err
 }
 
 func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (chan *banexg.Trade, *errs.Error) {
-	chanKey, symbols, args, err := e.prepareWatchTrades(true, symbols, params)
+	chanKey, args, err := e.prepareWatchTrades(true, symbols, params)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +203,7 @@ func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (
 }
 
 func (e *Binance) UnWatchTrades(symbols []string, params map[string]interface{}) *errs.Error {
-	chanKey, symbols, _, err := e.prepareWatchTrades(false, symbols, params)
+	chanKey, _, err := e.prepareWatchTrades(false, symbols, params)
 
 	if err != nil {
 		return err
@@ -211,40 +212,29 @@ func (e *Binance) UnWatchTrades(symbols []string, params map[string]interface{})
 	return nil
 }
 
-func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[string]interface{}) (string, []string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
-		return "", nil, nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
+		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols is required")
 	}
 	args, market, err := e.LoadArgsMarket(symbols[0], params)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 	name := utils.PopMapVal(args, banexg.ParamName, "trade")
 	msgHash := market.Type + "@" + name
-	client, requestId, err := e.GetWsClient(market.Type, msgHash)
+	client, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 
-	subParams := make([]string, 0, len(symbols))
-	pairs := make([]string, 0, len(symbols))
-	for _, symbol := range symbols {
-		mar, err := e.GetMarket(symbol)
-		if err != nil {
-			return "", nil, nil, err
-		}
-		subParams = append(subParams, fmt.Sprintf("%s@%s", mar.LowercaseID, name))
-		pairs = append(pairs, symbol)
+	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market) string {
+		return fmt.Sprintf("%s@%s", m.LowercaseID, name)
+	}, nil)
+	if err != nil {
+		return "", nil, err
 	}
 	chanKey := client.Prefix(msgHash)
-	method := client.UpdateSubs(isSub, subParams)
-	var request = map[string]interface{}{
-		"method": method,
-		"params": subParams,
-		"id":     requestId,
-	}
-	err = client.Write(request, nil)
-	return chanKey, pairs, args, nil
+	return chanKey, args, nil
 }
 
 /*

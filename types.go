@@ -18,6 +18,7 @@ type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
 type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)
 type FuncOnWsErr = func(client *WsClient, err *errs.Error)
 type FuncOnWsClose = func(client *WsClient, err *errs.Error)
+type FuncOnWsReCon = func(client *WsClient) *errs.Error
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
@@ -70,6 +71,7 @@ type Exchange struct {
 	OnWsMsg   FuncOnWsMsg
 	OnWsErr   FuncOnWsErr
 	OnWsClose FuncOnWsClose
+	OnWsReCon FuncOnWsReCon
 
 	Flags map[string]string
 }

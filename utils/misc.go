@@ -251,6 +251,10 @@ func UnmarshalString(text string, out interface{}) error {
 	return dc.Decode(out)
 }
 
+/*
+Unmarshal
+替代sonic.Unmarshal，强制使用int64解码json
+*/
 func Unmarshal(data []byte, out interface{}) error {
 	dc := decoder.NewStreamDecoder(bytes.NewReader(data))
 	dc.UseInt64()

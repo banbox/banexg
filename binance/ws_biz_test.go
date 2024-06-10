@@ -22,7 +22,7 @@ func TestWatchOHLCVs(t *testing.T) {
 	gock.InterceptClient(exg.HttpClient)
 
 	symbol := "ETH/USDT:USDT"
-	jobs := [][2]string{{symbol, "1m"}}
+	jobs := map[string]string{symbol: "1m"}
 	out, err_ := exg.WatchOHLCVs(jobs, nil)
 	if err_ != nil {
 		panic(err_)

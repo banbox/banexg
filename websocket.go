@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -112,7 +111,7 @@ var (
 	}
 )
 
-func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose,
+func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose, onReCon FuncOnWsReCon,
 	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	var result = &WsClient{
 		URL:           reqUrl,
@@ -136,25 +135,7 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 	if conn == nil {
 		var err error
 		conn, err = newWebSocket(reqUrl, args, func() *errs.Error {
-			if len(result.SubscribeKeys) == 0 {
-				return nil
-			}
-			var subParams = make([]string, 0, len(result.SubscribeKeys))
-			for key := range result.SubscribeKeys {
-				subParams = append(subParams, key)
-			}
-			log.Info("reconnecting", zap.Int("job", len(subParams)))
-			var req = map[string]interface{}{
-				"method": "SUBSCRIBE",
-				"params": subParams,
-				"id":     90000 + rand.Intn(10000),
-			}
-			err2 := result.Write(req, nil)
-			if err2 == nil {
-				log.Info("subscribe after reconnect success", zap.Int("num", len(subParams)),
-					zap.String("url", reqUrl))
-			}
-			return err2
+			return onReCon(result)
 		})
 		if err != nil {
 			return nil, errs.New(errs.CodeConnectFail, err)
@@ -189,7 +170,7 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
 	}
-	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, params, e.DebugWS)
+	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, e.OnWsReCon, params, e.DebugWS)
 	if err != nil {
 		return nil, err
 	}

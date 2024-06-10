@@ -779,3 +779,63 @@ func (e *Binance) Close() *errs.Error {
 	e.wsRequestId = map[string]int{}
 	return nil
 }
+
+func (e *Binance) nextId(client *banexg.WsClient) int {
+	requestId := e.wsRequestId[client.URL] + 1
+	e.wsRequestId[client.URL] = requestId
+	return requestId
+}
+
+/*
+WriteWSMsg 向交易所写入ws消息。
+isSub true订阅、false取消订阅
+symbols 标准标的ID、或订阅字符串
+cvt 不为空时，尝试对symbols进行标准化
+getJobInfo 添加对返回结果的回调。会更新ID、symbols
+*/
+func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []string, cvt func(m *banexg.Market) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
+	leftSymbols := symbols
+	batchNum := 100
+	var err *errs.Error
+	for len(leftSymbols) > 0 {
+		if len(leftSymbols) > batchNum {
+			symbols = leftSymbols[:batchNum]
+			leftSymbols = leftSymbols[batchNum:]
+		} else {
+			symbols = leftSymbols
+			leftSymbols = nil
+		}
+		var exgParams []string
+		if cvt != nil {
+			exgParams, err = e.getExgWsParams(symbols, cvt)
+			if err != nil {
+				return err
+			}
+		} else {
+			exgParams = symbols
+		}
+		method := client.UpdateSubs(isSub, exgParams)
+		id := e.nextId(client)
+		var request = map[string]interface{}{
+			"method": method,
+			"params": exgParams,
+			"id":     id,
+		}
+		var info *banexg.WsJobInfo
+		if getJobInfo != nil {
+			info, err = getJobInfo(client)
+			if err != nil {
+				return err
+			}
+			if info != nil {
+				info.ID = strconv.Itoa(id)
+				info.Symbols = symbols
+			}
+		}
+		err = client.Write(request, info)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
