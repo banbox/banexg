@@ -9,7 +9,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"io"
 	"net/http"
 	"net/url"
@@ -353,9 +352,8 @@ func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
 			c.JobInfos[info.ID] = info
 		}
 	}
-	msgText := string(data)
-	if log.GetLevel() >= zapcore.DebugLevel || len(msgText) >= 4000 {
-		log.Info("write ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
+	if c.Debug {
+		log.Debug("write ws msg", zap.String("url", c.URL), zap.String("msg", string(data)))
 	}
 	c.Send <- data
 	return nil

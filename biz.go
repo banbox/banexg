@@ -443,7 +443,8 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 			if mar, ok = e.Markets[futureSymbol]; ok {
 				return mar, nil
 			}
-			return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair: %v", symbol)
+			return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found: %v - %v - %v",
+				e.ExgInfo.Name, e.ExgInfo.MarketType, symbol)
 		}
 		return mar, nil
 	} else {
@@ -452,13 +453,15 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 			return market, nil
 		}
 	}
-	return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair: %v", symbol)
+	return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found: %v - %v - %v",
+		e.ExgInfo.Name, e.ExgInfo.MarketType, symbol)
 }
 
 func (e *Exchange) MapMarket(exgSID string, year int) (*Market, *errs.Error) {
 	mar := e.GetMarketById(exgSID, "")
 	if mar == nil {
-		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found for pair: %v", exgSID)
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found: %v - %v - %v",
+			e.ExgInfo.Name, e.ExgInfo.MarketType, exgSID)
 	}
 	return mar, nil
 }
