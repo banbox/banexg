@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/url"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -247,7 +248,9 @@ UnmarshalString
 */
 func UnmarshalString(text string, out interface{}) error {
 	dc := decoder.NewDecoder(text)
-	dc.UseInt64()
+	if runtime.GOARCH == "amd64" {
+		dc.UseInt64()
+	}
 	return dc.Decode(out)
 }
 
@@ -257,6 +260,8 @@ Unmarshal
 */
 func Unmarshal(data []byte, out interface{}) error {
 	dc := decoder.NewStreamDecoder(bytes.NewReader(data))
-	dc.UseInt64()
+	if runtime.GOARCH == "amd64" {
+		dc.UseInt64()
+	}
 	return dc.Decode(out)
 }

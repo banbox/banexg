@@ -16,6 +16,7 @@ const (
 	CodeSandboxApiNotSupport
 	CodeApiNotSupport
 	CodeInvalidResponse
+	CodeMarshalFail
 	CodeUnmarshalFail
 	CodeParamRequired
 	CodeParamInvalid

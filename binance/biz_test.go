@@ -294,6 +294,18 @@ func TestGetOHLCV(t *testing.T) {
 	}
 }
 
+func TestFetchOHLCV(t *testing.T) {
+	exg := getBinance(nil)
+	startMs := int64(1719014400000)
+	res, err := exg.FetchOHLCV("BAKE/USDT:USDT", "1h", startMs, 10, nil)
+	if err != nil {
+		panic(err)
+	}
+	for _, k := range res {
+		fmt.Printf("%v, %v %v %v %v %v\n", k.Time, k.Open, k.High, k.Low, k.Close, int(k.Volume))
+	}
+}
+
 func TestFetchBalances(t *testing.T) {
 	exg := getBinance(nil)
 	cases := []map[string]interface{}{
