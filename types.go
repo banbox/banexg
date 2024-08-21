@@ -471,6 +471,17 @@ type OrderBookSide struct {
 	Depth int
 }
 
+type Income struct {
+	Symbol     string  `json:"symbol"`
+	IncomeType string  `json:"incomeType"`
+	Income     float64 `json:"income"`
+	Asset      string  `json:"asset"`
+	Info       string  `json:"info"`
+	Time       int64   `json:"time"`
+	TranID     string  `json:"tranId"`
+	TradeID    string  `json:"tradeId"`
+}
+
 /*
 **************************   WebSockets   **************************
  */

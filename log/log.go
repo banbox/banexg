@@ -223,6 +223,9 @@ func Setup(level, logFile string, handlers ...zapcore.Core) {
 			LogPath: logFile,
 		}
 	}
+	if level == "" {
+		level = "info"
+	}
 	SetupLogger(&Config{
 		Stdout:   true,
 		Format:   "text",

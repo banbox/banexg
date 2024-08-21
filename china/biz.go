@@ -359,6 +359,10 @@ func (e *China) FetchAccountPositions(symbols []string, params map[string]interf
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *China) FetchIncomeHistory(inType string, symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Income, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
 func (e *China) FetchPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }

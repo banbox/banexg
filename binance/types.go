@@ -136,6 +136,7 @@ type BnbFilter = map[string]interface{}
 /*
 *****************************   Kline   ***********************************
  */
+
 type BnbOptionKline struct {
 	Open        string `json:"open"`        // 开盘价
 	High        string `json:"high"`        // 最高价
@@ -154,6 +155,7 @@ type BnbOptionKline struct {
 /*
 *****************************   Account   ***********************************
  */
+
 type SpotAccount struct {
 	MakerCommission            int               `json:"makerCommission"`
 	TakerCommission            int               `json:"takerCommission"`
@@ -419,9 +421,21 @@ type FundingAsset struct {
 	BtcValuation string `json:"btcValuation"` // btc估值
 }
 
+type Income struct {
+	Symbol     string `json:"symbol"`
+	IncomeType string `json:"incomeType"`
+	Income     string `json:"income"`
+	Asset      string `json:"asset"`
+	Info       string `json:"info"`
+	Time       int64  `json:"time"`
+	TranID     int64  `json:"tranId"`
+	TradeID    string `json:"tradeId"`
+}
+
 /*
 *****************************   Private Rows   ***********************************
  */
+
 type OrderBase struct {
 	Symbol        string `json:"symbol"`
 	Side          string `json:"side"`

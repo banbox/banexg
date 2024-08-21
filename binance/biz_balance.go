@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"go.uber.org/zap"
 	"math"
 	"strconv"
 	"strings"
@@ -88,6 +90,9 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 	}
 }
 
+/*
+FetchPositions get 'positionRisk' or 'account' positions (by banexg.OptPositionMethod)
+*/
 func (e *Binance) FetchPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
 	method := utils.GetMapVal(e.Options, banexg.OptPositionMethod, "positionRisk")
@@ -164,6 +169,72 @@ func (e *Binance) FetchAccountPositions(symbols []string, params map[string]inte
 		return nil, rsp.Error
 	}
 	return parseAccPosition(e, rsp, marketType)
+}
+
+func (e *Binance) FetchIncomeHistory(inType string, symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Income, *errs.Error) {
+	args := utils.SafeParams(params)
+	var marketType string
+	var err *errs.Error
+	if symbol != "" {
+		market, err := e.GetMarket(symbol)
+		if err != nil {
+			return nil, err
+		}
+		if !market.Swap {
+			return nil, errs.NewMsg(errs.CodeUnsupportMarket, "FetchIncomeHistory support swap market only")
+		}
+		args["symbol"] = market.ID
+		marketType = market.Type
+	} else {
+		marketType, _, err = e.LoadArgsMarketType(args)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !banexg.IsContract(marketType) {
+		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "FetchIncomeHistory support future market only")
+	}
+	args["startTime"] = since
+	args["limit"] = limit
+	args["incomeType"] = inType
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPrivateGetIncome"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPrivateGetIncome"
+	} else {
+		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "FetchIncomeHistory not support: "+marketType)
+	}
+	tryNum := e.GetRetryNum("FetchIncomeHistory", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var data = make([]*Income, 0)
+	err_ := utils.UnmarshalString(rsp.Content, &data)
+	if err_ != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err_)
+	}
+	var res = make([]*banexg.Income, 0, len(data))
+	for _, it := range data {
+		market := e.GetMarketById(it.Symbol, marketType)
+		if market == nil {
+			log.Warn("no symbol for", zap.String("code", it.Symbol))
+			continue
+		}
+		income, _ := strconv.ParseFloat(it.Income, 64)
+		res = append(res, &banexg.Income{
+			Symbol:     market.Symbol,
+			IncomeType: it.IncomeType,
+			Income:     income,
+			Asset:      e.SafeCurrencyCode(it.Asset),
+			Info:       it.Info,
+			Time:       it.Time,
+			TranID:     strconv.FormatInt(it.TranID, 10),
+			TradeID:    it.TradeID,
+		})
+	}
+	return res, nil
 }
 
 func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*banexg.Position, *errs.Error) {
