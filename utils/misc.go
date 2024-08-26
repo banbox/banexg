@@ -1,18 +1,18 @@
 package utils
 
 import (
-	"bytes"
 	"fmt"
-	"github.com/banbox/banexg/log"
-	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/decoder"
-	"go.uber.org/zap"
 	"math/rand"
 	"net/url"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/banbox/banexg/log"
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/decoder"
+	"go.uber.org/zap"
 )
 
 func UUID(length int) string {
@@ -244,7 +244,7 @@ func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
 
 /*
 UnmarshalString
-替代sonic.UnmarshalString，默认函数在将int64的长整数反序列化时，转为float64，导致精度损失，这里强制使用int64解码
+Replace sonic.UnmarshalString. The default function converts int64 long integers to float64 when deserializing, resulting in precision loss. Here, int64 decoding is forced to be used.
 */
 func UnmarshalString(text string, out interface{}) error {
 	dc := decoder.NewDecoder(text)
@@ -256,12 +256,8 @@ func UnmarshalString(text string, out interface{}) error {
 
 /*
 Unmarshal
-替代sonic.Unmarshal，强制使用int64解码json
+Replace sonic.Unmarshal, force to use int64 to decode json
 */
 func Unmarshal(data []byte, out interface{}) error {
-	dc := decoder.NewStreamDecoder(bytes.NewReader(data))
-	if runtime.GOARCH == "amd64" {
-		dc.UseInt64()
-	}
-	return dc.Decode(out)
+	return UnmarshalString(string(data), out)
 }
