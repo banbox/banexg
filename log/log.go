@@ -211,9 +211,6 @@ func SetupLogger(cfg *Config) {
 	} else {
 		Fatal("initialize logger error", zap.Error(err))
 	}
-	if cfg.File != nil && len(cfg.File.LogPath) > 0 {
-		Info("Log To", zap.String("path", cfg.File.LogPath))
-	}
 }
 
 func Setup(level, logFile string, handlers ...zapcore.Core) {
