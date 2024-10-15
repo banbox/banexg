@@ -315,6 +315,7 @@ func (e *Binance) WatchOHLCVs(jobs [][2]string, params map[string]interface{}) (
 	create := func(cap int) chan *banexg.PairTFKline { return make(chan *banexg.PairTFKline, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
+	e.DumpWS("WatchOHLCVs", jobs)
 	return out, nil
 }
 
@@ -335,6 +336,7 @@ func (e *Binance) WatchMarkPrices(symbols []string, params map[string]interface{
 	create := func(cap int) chan map[string]float64 { return make(chan map[string]float64, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "markPrice")
+	e.DumpWS("WatchMarkPrices", symbols)
 	return out, nil
 }
 
@@ -406,7 +408,7 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 
 func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
 	// event: aggTrade/trade
-	event, _ := utils.SafeMapVal(msg, "e", "")
+	event, _ := utils.SafeMapVal(msg, "e", "trade")
 	var isAggTrade = event == "aggTrade"
 	var chanKey = client.Prefix(client.MarketType + "@" + event)
 	marketId, _ := utils.SafeMapVal(msg, "s", "")
@@ -457,7 +459,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	/*
 		https://binance-docs.github.io/apidocs/futures/cn/#k-7
 	*/
-	event, _ := utils.SafeMapVal(msg, "e", "")
+	event, _ := utils.SafeMapVal(msg, "e", "kline")
 	switch event {
 	case "indexPrice_kline":
 		event = "indexPriceKline"

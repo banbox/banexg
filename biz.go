@@ -2,7 +2,9 @@ package banexg
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
@@ -16,6 +18,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -70,6 +73,14 @@ func (e *Exchange) Init() *errs.Error {
 	if len(failCaches) > 0 {
 		log.Error("invalid api keys for OptApiCaches", zap.Strings("keys", failCaches))
 	}
+	err := e.SetDump(utils.GetMapVal(e.Options, OptDumpPath, ""))
+	if err != nil {
+		return err
+	}
+	err = e.SetReplay(utils.GetMapVal(e.Options, OptReplayPath, ""))
+	if err != nil {
+		return err
+	}
 	// 更新手续费比率
 	fees := utils.GetMapVal(e.Options, OptFees, map[string]map[string]float64{})
 	e.SetFees(fees)
@@ -79,6 +90,7 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.TimeInForce, e.Options, OptTimeInForce, DefTimeInForce)
 	utils.SetFieldBy(&e.DebugWS, e.Options, OptDebugWS, false)
 	utils.SetFieldBy(&e.DebugAPI, e.Options, OptDebugAPI, false)
+	utils.SetFieldBy(&e.WsBatchSize, e.Options, OptDumpBatchSize, 1000)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -682,6 +694,181 @@ func (e *Exchange) WatchAccountConfig(params map[string]interface{}) (chan *Acco
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) CloseWsFile() {
+	if e.WsFile != nil {
+		err_ := e.WsFile.Close()
+		if err_ != nil {
+			log.Error("close ws file fail", zap.Error(err_))
+		}
+		e.WsFile = nil
+	}
+}
+
+func (e *Exchange) SetDump(path string) *errs.Error {
+	if path == "" {
+		if e.WsEncoder != nil {
+			if len(e.WsCache) > 0 {
+				err_ := e.WsEncoder.Encode(e.WsCache)
+				if err_ != nil {
+					log.Error("dump ws cache fail", zap.Error(err_))
+				}
+			}
+			e.WsEncoder = nil
+			err_ := e.WsWriter.Close()
+			if err_ != nil {
+				log.Error("write ws cache fail", zap.Error(err_))
+			}
+			e.WsWriter = nil
+			e.CloseWsFile()
+		}
+		return nil
+	}
+	if e.WsDecoder != nil {
+		return errs.NewMsg(errs.CodeRunTime, "cannot dump in replay mode")
+	}
+	// dump websocket messages for replay later
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return errs.New(errs.CodeIOWriteFail, err)
+	}
+	e.WsFile = file
+	e.WsCache = nil
+	e.WsWriter = gzip.NewWriter(file)
+	e.WsEncoder = gob.NewEncoder(e.WsWriter)
+	return nil
+}
+
+func (e *Exchange) SetReplay(path string) *errs.Error {
+	if path == "" {
+		if e.WsDecoder != nil {
+			e.WsDecoder = nil
+			err := e.WsReader.Close()
+			if err != nil {
+				return errs.New(errs.CodeIOReadFail, err)
+			}
+			e.WsReader = nil
+			e.CloseWsFile()
+		}
+		return nil
+	}
+	// replay ws message with dumped file
+	if e.WsEncoder != nil {
+		return errs.NewMsg(errs.CodeRunTime, "cannot set replay in dump mode !")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return errs.New(errs.CodeIOReadFail, err)
+	}
+	e.WsFile = file
+	e.WsCache = nil
+	e.WsReader, err = gzip.NewReader(file)
+	if err != nil {
+		return errs.New(errs.CodeIOReadFail, err)
+	}
+	e.WsDecoder = gob.NewDecoder(e.WsReader)
+	return nil
+}
+
+func (e *Exchange) DumpWS(name string, data interface{}) {
+	if e.WsEncoder == nil || data == nil {
+		return
+	}
+	dataStr, err_ := sonic.MarshalString(data)
+	if err_ != nil {
+		log.Warn("marshal data fail for DumpWs", zap.String("name", name), zap.Error(err_))
+		return
+	}
+	item := &WsLog{
+		Name:    name,
+		TimeMS:  time.Now().UnixMilli(),
+		Content: dataStr,
+	}
+	e.WsCache = append(e.WsCache, item)
+	if len(e.WsCache) > e.WsBatchSize {
+		rows := e.WsCache
+		e.WsCache = nil
+		go func() {
+			e.wsCacheLock.Lock()
+			defer e.wsCacheLock.Unlock()
+			err := e.WsEncoder.Encode(rows)
+			if err != nil {
+				log.Error("dump ws cache fail", zap.Error(err))
+			}
+		}()
+	}
+}
+
+func (e *Exchange) GetReplayTo() int64 {
+	if e.WsReplayMS == 0 {
+		if len(e.WsCache) == 0 {
+			e.WsCache = make([]*WsLog, 0, e.WsBatchSize)
+			if err := e.WsDecoder.Decode(&e.WsCache); err != nil {
+				e.WsReplayMS = math.MaxInt64
+				return e.WsReplayMS
+			}
+		}
+		if len(e.WsCache) > 0 {
+			e.WsReplayMS = e.WsCache[0].TimeMS
+		} else {
+			e.WsReplayMS = math.MaxInt64
+		}
+	}
+	return e.WsReplayMS
+}
+
+func (e *Exchange) ReplayOne() *errs.Error {
+	if e.WsReplayMS == math.MaxInt64 {
+		return nil
+	}
+	item := e.WsCache[0]
+	e.WsCache = e.WsCache[1:]
+	e.WsReplayMS = 0
+	handle, ok := e.WsReplayFn[item.Name]
+	if !ok {
+		log.Warn("no ws replay handle found", zap.String("for", item.Name), zap.String("exg", e.Name))
+		return nil
+	}
+	return handle(item)
+}
+
+func (e *Exchange) ReplayAll() *errs.Error {
+	if e.WsFile == nil {
+		return errs.NewMsg(errs.CodeRunTime, "Replay not initialized")
+	}
+	var counts = make(map[string]int)
+	for {
+		var bads = make(map[string]bool)
+		for _, item := range e.WsCache {
+			oldNum, _ := counts[item.Name]
+			counts[item.Name] = oldNum + 1
+			handle, ok := e.WsReplayFn[item.Name]
+			if !ok {
+				bads[item.Name] = true
+				continue
+			}
+			err := handle(item)
+			if err != nil {
+				return err
+			}
+		}
+		if len(bads) > 0 {
+			fails := utils.KeysOfMap(bads)
+			log.Warn("no ws replay handle found", zap.Strings("for", fails), zap.String("exg", e.Name))
+		}
+		e.WsCache = make([]*WsLog, 0, e.WsBatchSize)
+		if err_ := e.WsDecoder.Decode(&e.WsCache); err_ != nil {
+			// read done
+			break
+		}
+	}
+	log.Debug("replay counts", zap.Any("r", counts))
+	return nil
+}
+
+func (e *Exchange) SetOnWsChan(cb FuncOnWsChan) {
+	e.OnWsChan = cb
+}
+
 func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool,
 	params map[string]interface{}) (*Fee, *errs.Error) {
 	if odType == OdTypeMarket && isMaker {
@@ -1230,5 +1417,14 @@ func (e *Exchange) Close() *errs.Error {
 		client.Close()
 	}
 	e.WSClients = map[string]*WsClient{}
+	err := e.SetDump("")
+	if err != nil {
+		return err
+	}
+	e.WsCache = nil
+	err = e.SetReplay("")
+	if err != nil {
+		return err
+	}
 	return nil
 }

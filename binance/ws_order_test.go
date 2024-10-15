@@ -180,11 +180,13 @@ mainFor:
 		panic("no book received")
 	}
 	_, _ = writer.WriteString(fmt.Sprintf("---------- %v ----------\n", book.TimeStamp))
-	for _, row := range book.Asks.Rows {
-		_, _ = writer.WriteString(fmt.Sprintf("ask: %.3f %.6f\n", row[0], row[0]*row[1]))
+	for i, price := range book.Asks.Price {
+		size := book.Asks.Size[i]
+		_, _ = writer.WriteString(fmt.Sprintf("ask: %.3f %.6f\n", price, price*size))
 	}
-	for _, row := range book.Bids.Rows {
-		_, _ = writer.WriteString(fmt.Sprintf("bid: %.3f %.6f\n", row[0], row[0]*row[1]))
+	for i, price := range book.Bids.Price {
+		size := book.Bids.Size[i]
+		_, _ = writer.WriteString(fmt.Sprintf("bid: %.3f %.6f\n", price, price*size))
 	}
 	_, _ = writer.WriteString("\n")
 	output := writer.String()

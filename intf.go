@@ -39,6 +39,7 @@ type BanExchange interface {
 	GetCurMarkets() MarketMap
 	GetMarket(symbol string) (*Market, *errs.Error)
 	/*
+		Map the original variety ID of the exchange to a standard symbol, where year is the year where the K-line data is located
 		将交易所原始品种ID映射为标准symbol，year是K线数据所在年
 	*/
 	MapMarket(rawID string, year int) (*Market, *errs.Error)
@@ -87,6 +88,19 @@ type BanExchange interface {
 	WatchBalance(params map[string]interface{}) (chan *Balances, *errs.Error)
 	WatchPositions(params map[string]interface{}) (chan []*Position, *errs.Error)
 	WatchAccountConfig(params map[string]interface{}) (chan *AccountConfig, *errs.Error)
+
+	// SetDump Record all websocket messages to the specified file 将websocket所有消息记录到指定文件
+	SetDump(path string) *errs.Error
+	// SetReplay Replay all websocket messages from the specified file 从指定文件重放所有websocket消息
+	SetReplay(path string) *errs.Error
+	// GetReplayTo Retrieve the 13 bit timestamp of the next message to be replayed, with sys. MaxInt64 indicating no next message 获取下一个要重放的消息13位时间戳，sys.MaxInt64表示无下一个消息
+	GetReplayTo() int64
+	// ReplayOne Replay the next websocket message 重放下一个websocket消息
+	ReplayOne() *errs.Error
+	// ReplayAll Replay all recorded websocket messages 重放所有记录的websocket消息
+	ReplayAll() *errs.Error
+	// SetOnWsChan Trigger callback when creating a new websocket message chan 创建新websocket消息chan时触发回调
+	SetOnWsChan(cb FuncOnWsChan)
 
 	PrecAmount(m *Market, amount float64) (float64, *errs.Error)
 	PrecPrice(m *Market, price float64) (float64, *errs.Error)

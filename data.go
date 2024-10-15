@@ -91,6 +91,9 @@ const (
 	OptDebugAPI        = "DebugAPI"
 	OptApiCaches       = "ApiCaches"
 	OptFees            = "Fees"
+	OptDumpPath        = "DumpPath"
+	OptDumpBatchSize   = "DumpBatchSize"
+	OptReplayPath      = "ReplayPath"
 )
 
 const (

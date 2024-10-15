@@ -70,8 +70,8 @@ func (o BaseOrderBook) ToStdOrderBook(market *banexg.Market) *banexg.OrderBook {
 	}
 	var res = banexg.OrderBook{
 		Symbol: market.Symbol,
-		Asks:   banexg.NewOrderBookSide(false, len(asks), asks),
-		Bids:   banexg.NewOrderBookSide(true, len(bids), bids),
+		Asks:   banexg.NewOdBookSide(false, len(asks), asks),
+		Bids:   banexg.NewOdBookSide(true, len(bids), bids),
 		Cache:  make([]map[string]string, 0),
 	}
 	return &res

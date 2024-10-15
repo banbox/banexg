@@ -1,10 +1,13 @@
 package banexg
 
 import (
+	"compress/gzip"
+	"encoding/gob"
 	"github.com/banbox/banexg/errs"
 	"github.com/shopspring/decimal"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 )
 
@@ -21,6 +24,9 @@ type FuncOnWsClose = func(client *WsClient, err *errs.Error)
 type FuncOnWsReCon = func(client *WsClient) *errs.Error
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
+
+// key: acc@url#marketType@method
+type FuncOnWsChan = func(key string, out interface{})
 
 type Exchange struct {
 	*ExgInfo
@@ -58,6 +64,17 @@ type Exchange struct {
 	WsOutChans map[string]interface{}         // accName@url+msgHash: chan Type
 	WsChanRefs map[string]map[string]struct{} // accName@url+msgHash: symbols use this chan
 
+	WsCache     []*WsLog // websocket cache logs waiting for replay/dump
+	WsReplayMS  int64
+	WsFile      *os.File // file to replay/dump
+	WsWriter    *gzip.Writer
+	WsEncoder   *gob.Encoder
+	WsReader    *gzip.Reader
+	WsDecoder   *gob.Decoder
+	WsBatchSize int
+	WsReplayFn  map[string]func(item *WsLog) *errs.Error
+	wsCacheLock sync.Mutex
+
 	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 
 	// for calling sub struct func in parent struct
@@ -72,6 +89,7 @@ type Exchange struct {
 	OnWsErr   FuncOnWsErr
 	OnWsClose FuncOnWsClose
 	OnWsReCon FuncOnWsReCon
+	OnWsChan  FuncOnWsChan
 
 	Flags map[string]string
 }
@@ -452,22 +470,23 @@ type Fee struct {
 }
 
 type OrderBook struct {
-	Symbol    string         `json:"symbol"`
-	TimeStamp int64          `json:"timestamp"`
-	Asks      *OrderBookSide `json:"asks"`
-	Bids      *OrderBookSide `json:"bids"`
-	Nonce     int64          // latest update id
+	Symbol    string      `json:"symbol"`
+	TimeStamp int64       `json:"timestamp"`
+	Asks      *OdBookSide `json:"asks"`
+	Bids      *OdBookSide `json:"bids"`
+	Nonce     int64       `json:"nonce"` // latest update id
 	Cache     []map[string]string
 }
 
 /*
-OrderBookSide
+OdBookSide
+On one side of the order book. No need to add a lock, as only one goroutine can be modified
 订单簿一侧。不需要加锁，因为只有一个goroutine可以修改
 */
-type OrderBookSide struct {
+type OdBookSide struct {
 	IsBuy bool
-	Rows  [][2]float64 // [][price, size]
-	Index []float64
+	Price []float64 // bid: desc   ask: asc
+	Size  []float64
 	Depth int
 }
 
@@ -516,4 +535,17 @@ type WsMsg struct {
 type AccountConfig struct {
 	Symbol   string
 	Leverage int
+}
+
+type WsLog struct {
+	Name    string `json:"name,omitempty"`
+	TimeMS  int64  `json:"timeMS,omitempty"`
+	Content string `json:"content,omitempty"`
+}
+
+type OdBookShotLog struct {
+	MarketType string     `json:"marketType,omitempty"`
+	Symbol     string     `json:"symbol,omitempty"`
+	ChanKey    string     `json:"chanKey,omitempty"`
+	Book       *OrderBook `json:"book,omitempty"`
 }

@@ -118,6 +118,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string
 	create := func(cap int) chan *banexg.OrderBook { return make(chan *banexg.OrderBook, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
+	e.DumpWS("WatchOrderBooks", symbols)
 	return out, nil
 }
 
@@ -199,6 +200,7 @@ func (e *Binance) WatchTrades(symbols []string, params map[string]interface{}) (
 	create := func(cap int) chan *banexg.Trade { return make(chan *banexg.Trade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, symbols...)
+	e.DumpWS("WatchTrades", symbols)
 	return out, nil
 }
 
@@ -297,7 +299,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 		log.Info("book nonce empty, cache")
 		return
 	}
-	var chanKey = client.Prefix("depth")
+	var chanKey = client.Prefix(market.Type + "@depth")
 	var zero = int64(0)
 	U, _ := utils.SafeMapVal(msg, "U", zero)
 	u, _ := utils.SafeMapVal(msg, "u", zero)
@@ -410,10 +412,25 @@ func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]str
 func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string, info *banexg.WsJobInfo) *errs.Error {
 	// 3. Get a depth snapshot from https://www.binance.com/api/v1/depth?symbol=BNBBTC&limit=1000 .
 	// default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
+	if e.WsDecoder != nil {
+		// skip request odBook shot in replay mode
+		return nil
+	}
 	book, err := e.FetchOrderBook(symbol, info.Limit, info.Params)
 	if err != nil {
 		return err
 	}
+	chanKey := client.Prefix(info.MsgHash)
+	e.DumpWS("OdBookShot", &banexg.OdBookShotLog{
+		MarketType: client.MarketType,
+		Symbol:     symbol,
+		ChanKey:    chanKey,
+		Book:       book,
+	})
+	return e.applyOdBookSnapshot(client.MarketType, symbol, chanKey, book)
+}
+
+func (e *Binance) applyOdBookSnapshot(marketType, symbol, chanKey string, book *banexg.OrderBook) *errs.Error {
 	oldBook, ok := e.OrderBooks[symbol]
 	var cache []map[string]string
 	if ok && len(oldBook.Cache) > 0 {
@@ -427,7 +444,7 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			u, _ := utils.SafeMapVal(msg, "u", zero)
 			pu, _ := utils.SafeMapVal(msg, "pu", zero)
 			nonce := book.Nonce
-			if e.IsContract(client.MarketType) {
+			if e.IsContract(marketType) {
 				//4. Drop any event where u is < lastUpdateId in the snapshot
 				if u < nonce {
 					continue
@@ -448,7 +465,7 @@ func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string,
 			}
 		}
 	}
-	banexg.WriteOutChan(e.Exchange, info.MsgHash, book, true)
+	banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 	return nil
 }
 

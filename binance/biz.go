@@ -49,6 +49,7 @@ func (e *Binance) Init() *errs.Error {
 	e.wsRequestId = map[string]int{}
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true
+	e.regReplayHandles()
 	return nil
 }
 
@@ -841,4 +842,78 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []stri
 		}
 	}
 	return nil
+}
+
+func (e *Binance) regReplayHandles() {
+	e.WsReplayFn = map[string]func(item *banexg.WsLog) *errs.Error{
+		"WatchOrderBooks": func(item *banexg.WsLog) *errs.Error {
+			var symbols = make([]string, 0)
+			err_ := utils.UnmarshalString(item.Content, &symbols)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			log.Debug("replay WatchOrderBooks", zap.Strings("codes", symbols))
+			_, err := e.WatchOrderBooks(symbols, 100, nil)
+			return err
+		},
+		"WatchTrades": func(item *banexg.WsLog) *errs.Error {
+			var symbols = make([]string, 0)
+			err_ := utils.UnmarshalString(item.Content, &symbols)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			log.Debug("replay WatchTrades", zap.Strings("codes", symbols))
+			_, err := e.WatchTrades(symbols, nil)
+			return err
+		},
+		"WatchOHLCVs": func(item *banexg.WsLog) *errs.Error {
+			var jobs = make([][2]string, 0)
+			err_ := utils.UnmarshalString(item.Content, &jobs)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			if log.GetLevel() > zap.DebugLevel {
+				var symbols = make([]string, 0, len(jobs)*2)
+				for _, j := range jobs {
+					symbols = append(symbols, j[0], j[1])
+				}
+				log.Debug("replay WatchOHLCVs", zap.Strings("codes", symbols))
+			}
+			_, err := e.WatchOHLCVs(jobs, nil)
+			return err
+		},
+		"WatchMarkPrices": func(item *banexg.WsLog) *errs.Error {
+			var symbols = make([]string, 0)
+			err_ := utils.UnmarshalString(item.Content, &symbols)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			log.Debug("replay WatchMarkPrices", zap.Strings("codes", symbols))
+			_, err := e.WatchMarkPrices(symbols, nil)
+			return err
+		},
+		"OdBookShot": func(item *banexg.WsLog) *errs.Error {
+			var pak = &banexg.OdBookShotLog{}
+			err_ := utils.UnmarshalString(item.Content, pak)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			log.Debug("replay OdBookShot", zap.String("code", pak.Symbol))
+			return e.applyOdBookSnapshot(pak.MarketType, pak.Symbol, pak.ChanKey, pak.Book)
+		},
+		"wsMsg": func(item *banexg.WsLog) *errs.Error {
+			var arr = make([]string, 0)
+			err_ := utils.UnmarshalString(item.Content, &arr)
+			if err_ != nil {
+				return errs.New(errs.CodeUnmarshalFail, err_)
+			}
+			client, ok := e.WSClients[arr[0]]
+			if !ok {
+				return errs.NewMsg(errs.CodeRunTime, "ws client not found: %v", arr[0])
+			}
+			log.Debug("replay wsMsg", zap.String("msg", arr[1]))
+			client.HandleRawMsg([]byte(arr[1]))
+			return nil
+		},
+	}
 }

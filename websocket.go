@@ -19,10 +19,12 @@ import (
 )
 
 type WsClient struct {
+	Exg           *Exchange
 	Conn          WsConn
 	URL           string
 	AccName       string
 	MarketType    string
+	Key           string
 	Debug         bool
 	Send          chan []byte
 	control       chan int              // 用于内部同步控制命令
@@ -209,8 +211,10 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 	if err != nil {
 		return nil, err
 	}
+	client.Exg = e
 	client.MarketType = marketType
 	client.AccName = accName
+	client.Key = clientKey
 	e.WSClients[clientKey] = client
 	return client, nil
 }
@@ -229,6 +233,9 @@ func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args m
 		chanCap := utils.PopMapVal(args, ParamChanCap, 100)
 		res := create(chanCap)
 		e.WsOutChans[chanKey] = res
+		if e.OnWsChan != nil {
+			e.OnWsChan(chanKey, res)
+		}
 		return res
 	}
 }
@@ -335,11 +342,16 @@ func CheckWsError(msg map[string]string) *errs.Error {
 
 /*
 Write
+Send a message to the WS server to set the information required for processing task results
 发送消息到ws服务器，可设置处理任务结果需要的信息
-jobID: 此次消息的任务ID，唯一标识此次请求
-jobInfo: 此次任务的主要信息，在收到任务结果时使用
+jobID: The task ID of this message uniquely identifies this request 此次消息的任务ID，唯一标识此次请求
+jobInfo: The main information of this task will be used when receiving the task results 此次任务的主要信息，在收到任务结果时使用
 */
 func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
+	if c.Conn == nil || c.Exg.WsDecoder != nil {
+		// skip write ws msg in replay mode
+		return nil
+	}
 	data, err2 := sonic.Marshal(msg)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
@@ -443,12 +455,17 @@ func (c *WsClient) read() {
 				continue
 			}
 		}
-		// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误
-		c.handleRawMsg(msgRaw)
+		// skip ws msg in replay mode
+		if c.Exg.WsDecoder == nil {
+			// We cannot start a goroutine for each message here, otherwise it will result in incorrect message processing order
+			// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误
+			c.Exg.DumpWS("wsMsg", []string{c.Key, string(msgRaw)})
+			c.HandleRawMsg(msgRaw)
+		}
 	}
 }
 
-func (c *WsClient) handleRawMsg(msgRaw []byte) {
+func (c *WsClient) HandleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
 	if c.Debug {
 		log.Debug("receive ws msg", zap.String("url", c.URL), zap.String("msg", msgText))

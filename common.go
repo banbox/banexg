@@ -6,6 +6,7 @@ import (
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -96,7 +97,7 @@ func (a *Asset) IsEmpty() bool {
 	return utils.EqualNearly(a.Used+a.Free, 0) && utils.EqualNearly(a.Debt, 0)
 }
 
-func (ob *OrderBook) SetSide(text string, isBuy bool) {
+func (b *OrderBook) SetSide(text string, isBuy bool) {
 	var arr = make([][2]string, 0)
 	err := utils.UnmarshalString(text, &arr)
 	if err != nil {
@@ -111,86 +112,125 @@ func (ob *OrderBook) SetSide(text string, isBuy bool) {
 		valArr[i][1] = val2
 	}
 	if isBuy {
-		ob.Bids.Update(valArr)
+		b.Bids.Update(valArr)
 	} else {
-		ob.Asks.Update(valArr)
+		b.Asks.Update(valArr)
 	}
 }
 
-func NewOrderBookSide(isBuy bool, depth int, deltas [][2]float64) *OrderBookSide {
-	obs := &OrderBookSide{
+func NewOdBookSide(isBuy bool, depth int, deltas [][2]float64) *OdBookSide {
+	obs := &OdBookSide{
 		IsBuy: isBuy,
 		Depth: depth,
-		Rows:  make([][2]float64, 0, len(deltas)),
-		Index: make([]float64, 0, len(deltas)),
+		Price: make([]float64, 0, len(deltas)),
+		Size:  make([]float64, 0, len(deltas)),
 	}
 	obs.Update(deltas)
 	return obs
 }
 
-func (obs *OrderBookSide) Update(deltas [][2]float64) {
+func (obs *OdBookSide) Update(deltas [][2]float64) {
 	for _, delta := range deltas {
-		obs.StoreArray(delta)
+		obs.Set(delta[0], delta[1])
 	}
 	obs.Limit()
 }
 
-func (obs *OrderBookSide) StoreArray(delta [2]float64) {
-	price := delta[0]
-	size := delta[1]
-	indexPrice := price
+func (obs *OdBookSide) Set(price, size float64) {
+	oldLen := len(obs.Price)
+	prices := obs.Price
+	var index int
 	if obs.IsBuy {
-		indexPrice = -price
+		// desc order
+		index = sort.Search(oldLen, func(i int) bool {
+			return prices[i] <= price
+		})
+	} else {
+		// asc order
+		index = sort.Search(oldLen, func(i int) bool {
+			return prices[i] >= price
+		})
 	}
-
-	index := sort.SearchFloat64s(obs.Index, indexPrice)
 	if size > 0 {
-		if index < len(obs.Index) && obs.Index[index] == indexPrice {
-			obs.Rows[index][1] = size
+		if index < oldLen && prices[index] == price {
+			obs.Size[index] = size
 		} else {
-			obs.Index = append(obs.Index, 0)
-			copy(obs.Index[index+1:], obs.Index[index:])
-			obs.Index[index] = indexPrice
+			obs.Price = append(prices, 0)
+			copy(obs.Price[index+1:], prices[index:])
+			obs.Price[index] = price
 
-			obs.Rows = append(obs.Rows, [2]float64{})
-			copy(obs.Rows[index+1:], obs.Rows[index:])
-			obs.Rows[index] = delta
+			obs.Size = append(obs.Size, 0)
+			copy(obs.Size[index+1:], obs.Size[index:])
+			obs.Size[index] = size
 		}
-	} else if index < len(obs.Index) && obs.Index[index] == indexPrice {
-		obs.Index = append(obs.Index[:index], obs.Index[index+1:]...)
-		obs.Rows = append(obs.Rows[:index], obs.Rows[index+1:]...)
+	} else if index < oldLen && prices[index] == price {
+		obs.Price = append(prices[:index], prices[index+1:]...)
+		obs.Size = append(obs.Size[:index], obs.Size[index+1:]...)
 	}
 }
 
-func (obs *OrderBookSide) Store(price, size float64) {
-	obs.StoreArray([2]float64{price, size})
-}
-
-func (obs *OrderBookSide) Limit() {
-	for len(obs.Rows) > obs.Depth {
-		obs.Rows = obs.Rows[:len(obs.Rows)-1]
-		obs.Index = obs.Index[:len(obs.Index)-1]
+func (obs *OdBookSide) Limit() {
+	for len(obs.Price) > obs.Depth {
+		obs.Size = obs.Size[:obs.Depth]
+		obs.Price = obs.Price[:obs.Depth]
 	}
 }
 
-func (b *OrderBook) LimitPrice(side string, depth float64) float64 {
-	book := b.Asks
-	if side == OdSideBuy {
-		book = b.Bids
+/*
+SumVolTo return (total volume to price, filled rate)
+*/
+func (obs *OdBookSide) SumVolTo(price float64) (float64, float64) {
+	dirt := float64(1)
+	if obs.IsBuy {
+		dirt = float64(-1)
 	}
-	volSum, lastPrice := float64(0), float64(0)
-	for _, row := range book.Rows {
-		volSum += row[1]
-		lastPrice = row[0]
+	if len(obs.Price) == 0 {
+		return 0, 1
+	}
+	volSum := float64(0)
+	lastPrice := float64(0)
+	firstPrice := obs.Price[0]
+	for i, p := range obs.Price {
+		lastPrice = p
+		priceDiff := p - price
+		if priceDiff*dirt >= 0 {
+			return volSum, 1
+		}
+		volSum += obs.Size[i]
+	}
+	return volSum, math.Abs(lastPrice-firstPrice) / math.Abs(price-firstPrice)
+}
+
+/*
+AvgPrice get (average price, last price)
+*/
+func (obs *OdBookSide) AvgPrice(depth float64) (float64, float64) {
+	volSum, lastPrice, cost := float64(0), float64(0), float64(0)
+	for i, price := range obs.Price {
+		size := obs.Size[i]
+		volSum += size
+		lastPrice = price
+		cost += size * price
 		if volSum >= depth {
 			break
 		}
 	}
 	if volSum < depth {
 		log.Warn("depth not enough", zap.Float64("require", depth), zap.Float64("cur", volSum),
-			zap.Int("len", len(book.Rows)))
+			zap.Int("len", len(obs.Price)))
 	}
-	return lastPrice
+	if volSum == 0 {
+		return 0, 0
+	}
+	return cost / volSum, lastPrice
+}
+
+func (b *OrderBook) AvgPrice(side string, depth float64) (float64, float64) {
+	book := b.Asks
+	if side == OdSideBuy {
+		book = b.Bids
+	}
+	return book.AvgPrice(depth)
 }
 
 /*
@@ -200,26 +240,10 @@ second return val is rate filled
 */
 func (b *OrderBook) SumVolTo(side string, price float64) (float64, float64) {
 	book := b.Asks
-	dirt := float64(1)
 	if side == OdSideBuy {
 		book = b.Bids
-		dirt = float64(-1)
 	}
-	if len(book.Rows) == 0 {
-		return 0, 1
-	}
-	volSum := float64(0)
-	lastPrice := float64(0)
-	firstPrice := book.Rows[0][0]
-	for _, row := range book.Rows {
-		lastPrice = row[0]
-		priceDiff := row[0] - price
-		if priceDiff*dirt >= 0 {
-			return volSum, 1
-		}
-		volSum += row[1]
-	}
-	return volSum, (lastPrice - firstPrice) / (price - firstPrice)
+	return book.SumVolTo(price)
 }
 
 func (k *Kline) Clone() *Kline {
