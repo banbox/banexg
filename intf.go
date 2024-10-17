@@ -123,4 +123,6 @@ type WsConn interface {
 	NextWriter() (io.WriteCloser, error)
 	ReadMsg() ([]byte, error)
 	IsOK() bool
+	GetID() int
+	SetID(id int)
 }

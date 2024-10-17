@@ -32,6 +32,8 @@ const (
 	ParamMethod             = "method"
 	ParamInterval           = "interval"
 	ParamAccount            = "account"
+	ParamMarket             = "market"
+	ParamContract           = "contract"
 )
 
 var (

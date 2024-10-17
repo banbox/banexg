@@ -19,9 +19,17 @@ import (
 )
 
 func TestWatchOrderBook(t *testing.T) {
+	testWatchOrderBook("ETH/USDT:USDT", 100)
+}
+
+func TestWatchOrderBookLimit(t *testing.T) {
+	//testWatchOrderBook("ETH/USDT", 10)
+	testWatchOrderBook("ETH/USDT:USDT", 10)
+}
+
+func testWatchOrderBook(symbol string, depthLimit int) {
 	exg := getBinance(nil)
-	symbol := "ETH/USDT:USDT"
-	out, err := exg.WatchOrderBooks([]string{symbol}, 100, nil)
+	out, err := exg.WatchOrderBooks([]string{symbol}, depthLimit, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -44,6 +52,7 @@ type MockWsConn struct {
 	scanner *bufio.Scanner
 	msgChan chan []byte
 	lock    sync.Mutex
+	id      int
 }
 
 func (c *MockWsConn) Close() error {
@@ -109,6 +118,14 @@ func (c *MockWsConn) ReadMsg() ([]byte, error) {
 
 func (c *MockWsConn) IsOK() bool {
 	return c.scanner != nil
+}
+
+func (c *MockWsConn) GetID() int {
+	return c.id
+}
+
+func (c *MockWsConn) SetID(v int) {
+	c.id = v
 }
 
 type mockWriter struct {

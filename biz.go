@@ -502,6 +502,9 @@ func (e *Exchange) GetMarketIDByArgs(args map[string]interface{}, required bool)
 	return e.GetMarketID(symbol)
 }
 
+/*
+GetMarketById get market by exchange id (Upper Required!)
+*/
 func (e *Exchange) GetMarketById(marketId, marketType string) *Market {
 	if e.MarketsById == nil {
 		return nil
@@ -1179,8 +1182,8 @@ GetArgsMarket
 从symbol和args中的market+inverse得到对应的Market对象
 */
 func (e *Exchange) GetArgsMarket(symbol string, args map[string]interface{}) (*Market, *errs.Error) {
-	marketType := utils.PopMapVal(args, "market", "")
-	contractType := utils.PopMapVal(args, "contract", "")
+	marketType := utils.PopMapVal(args, ParamMarket, "")
+	contractType := utils.PopMapVal(args, ParamContract, "")
 	backType, backContrType := "", ""
 	if marketType != "" {
 		backType, backContrType = e.MarketType, e.ContractType

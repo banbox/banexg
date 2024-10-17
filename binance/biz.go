@@ -794,12 +794,14 @@ symbols 标准标的ID、或订阅字符串
 cvt 不为空时，尝试对symbols进行标准化
 getJobInfo 添加对返回结果的回调。会更新ID、symbols
 */
-func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []string, cvt func(m *banexg.Market, i int) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
+func (e *Binance) WriteWSMsg(client *banexg.WsClient, connID int, isSub bool, symbols []string, cvt func(m *banexg.Market, i int) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
 	leftSymbols := symbols
 	batchNum := 100
 	var err *errs.Error
 	var offset int
 	for len(leftSymbols) > 0 {
+		// Subscription in batches, with a maximum of 100 per batch
+		// 分批次订阅，每批最大100个
 		curOff := offset
 		if len(leftSymbols) > batchNum {
 			symbols = leftSymbols[:batchNum]
@@ -818,7 +820,7 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []stri
 		} else {
 			exgParams = symbols
 		}
-		method := client.UpdateSubs(isSub, exgParams)
+		method, conn := client.UpdateSubs(connID, isSub, exgParams)
 		id := e.nextId(client)
 		var request = map[string]interface{}{
 			"method": method,
@@ -833,10 +835,12 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, isSub bool, symbols []stri
 			}
 			if info != nil {
 				info.ID = strconv.Itoa(id)
-				info.Symbols = symbols
+				if len(info.Symbols) == 0 {
+					info.Symbols = symbols
+				}
 			}
 		}
-		err = client.Write(request, info)
+		err = client.Write(conn, request, info)
 		if err != nil {
 			return err
 		}

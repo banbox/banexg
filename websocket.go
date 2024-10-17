@@ -10,30 +10,48 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	maxClientConn = 20
+	connMinSubs   = 50
 )
 
 type WsClient struct {
 	Exg           *Exchange
-	Conn          WsConn
+	Conns         map[int]*AsyncConn
 	URL           string
 	AccName       string
 	MarketType    string
 	Key           string
 	Debug         bool
-	Send          chan []byte
-	control       chan int              // 用于内部同步控制命令
 	JobInfos      map[string]*WsJobInfo // request id: Sub Data
 	ChanCaps      map[string]int        // msgHash: cap size of cache msg
-	SubscribeKeys map[string]bool       // 订阅的key，用于重连后恢复订阅
+	SubscribeKeys map[string]int        // Subscription key, used to restore subscription after reconnection 订阅的key，用于重连后恢复订阅
+	OdBookLimits  map[string]int        // Record the depth of each target subscription order book for easy cancellation 记录每个标的订阅订单簿的深度，方便取消
 	OnMessage     func(client *WsClient, msg *WsMsg)
 	OnError       func(client *WsClient, err *errs.Error)
 	OnClose       func(client *WsClient, err *errs.Error)
+	OnReConn      func(client *WsClient, connID int) *errs.Error
+	NextConnId    int
+	connArgs      map[string]interface{}
+	connSubs      map[int]int
+	connLock      sync.Mutex
+	LimitsLock    sync.Mutex // for OdBookLimits
+}
+
+type AsyncConn struct {
+	WsConn
+	Send    chan []byte
+	control chan int // Used for internal synchronization control commands 用于内部同步控制命令
 }
 
 type WebSocket struct {
@@ -41,6 +59,7 @@ type WebSocket struct {
 	url         string
 	dialer      *websocket.Dialer
 	onReConnect func() *errs.Error
+	id          int
 }
 
 func (ws *WebSocket) Close() error {
@@ -51,13 +70,16 @@ func (ws *WebSocket) Close() error {
 	}
 	return nil
 }
+
 func (ws *WebSocket) WriteClose() error {
 	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 	return ws.Conn.WriteMessage(websocket.CloseMessage, exitData)
 }
+
 func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
 	return ws.Conn.NextWriter(websocket.TextMessage)
 }
+
 func (ws *WebSocket) ReadMsg() ([]byte, error) {
 	for {
 		msgType, msgRaw, err := ws.Conn.ReadMessage()
@@ -65,11 +87,14 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			var closeErr *websocket.CloseError
 			var wait time.Duration
 			var tryReConn = false
+			var code = -1
+			var errText = err.Error()
 			if errors.As(err, &closeErr) {
+				// Closed, no further use allowed
 				// 已关闭，禁止继续使用
 				ws.Conn = nil
-				code := closeErr.Code
-				if code == 1011 || code == 1012 || code == 1013 {
+				code = closeErr.Code
+				if code == 1006 || code == 1011 || code == 1012 || code == 1013 {
 					tryReConn = true
 					if code == 1013 {
 						// 等10s重试
@@ -77,9 +102,11 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 					} else {
 						wait = time.Millisecond * 500
 					}
+				} else if code == 1008 && strings.Contains(errText, "Pong timeout") {
+					tryReConn = true
+					wait = time.Millisecond * 500
 				}
 			} else {
-				var errText = err.Error()
 				if strings.Contains(errText, "EOF") {
 					ws.Conn = nil
 					tryReConn = true
@@ -90,13 +117,12 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				time.Sleep(wait)
 			}
 			if tryReConn {
-				log.Info(fmt.Sprintf("ws closed, try reconnecting: %s, err: %T", ws.url, err))
-				conn, _, err_ := ws.dialer.Dial(ws.url, http.Header{})
+				log.Info(fmt.Sprintf("[%v] ws %v closed, reconnecting: %s, err: %T %v", code, ws.id, ws.url, err, errText))
+				err_ := ws.initConn()
 				if err_ != nil {
 					return nil, err_
 				}
-				ws.Conn = conn
-				log.Info("ws reconnect success")
+				log.Info("reconnect success", zap.String("url", ws.url), zap.Int("id", ws.id))
 				if ws.onReConnect != nil {
 					err2 := ws.onReConnect()
 					if err2 != nil {
@@ -116,7 +142,24 @@ func (ws *WebSocket) IsOK() bool {
 	return ws.Conn != nil
 }
 
-func newWebSocket(reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*WebSocket, error) {
+func (ws *WebSocket) initConn() error {
+	conn, _, err := ws.dialer.Dial(ws.url, http.Header{})
+	if err != nil {
+		return err
+	}
+	ws.Conn = conn
+	return nil
+}
+
+func (ws *WebSocket) GetID() int {
+	return ws.id
+}
+
+func (ws *WebSocket) SetID(v int) {
+	ws.id = v
+}
+
+func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*AsyncConn, error) {
 	var dialer = &websocket.Dialer{}
 	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
 	var defProxy *url.URL
@@ -124,11 +167,16 @@ func newWebSocket(reqUrl string, args map[string]interface{}, onReConnect func()
 	if proxy != nil {
 		dialer.Proxy = http.ProxyURL(proxy)
 	}
-	conn, _, err := dialer.Dial(reqUrl, http.Header{})
+	res := &WebSocket{id: id, dialer: dialer, url: reqUrl, onReConnect: onReConnect}
+	err := res.initConn()
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
 	}
-	return &WebSocket{Conn: conn, dialer: dialer, url: reqUrl, onReConnect: onReConnect}, nil
+	return &AsyncConn{
+		WsConn:  res,
+		Send:    make(chan []byte),
+		control: make(chan int),
+	}, nil
 }
 
 var (
@@ -150,44 +198,44 @@ var (
 
 func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose, onReCon FuncOnWsReCon,
 	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
+	args := utils.SafeParams(params)
 	var result = &WsClient{
 		URL:           reqUrl,
 		Debug:         debug,
-		Send:          make(chan []byte, 1024),
+		Conns:         make(map[int]*AsyncConn),
 		JobInfos:      make(map[string]*WsJobInfo),
-		SubscribeKeys: make(map[string]bool),
+		SubscribeKeys: make(map[string]int),
+		OdBookLimits:  make(map[string]int),
 		OnMessage:     onMsg,
 		OnError:       onErr,
 		OnClose:       onClose,
-		control:       make(chan int, 1),
+		OnReConn:      onReCon,
+		NextConnId:    1,
+		connArgs:      args,
+		connSubs:      make(map[int]int),
 	}
-	args := utils.SafeParams(params)
 	result.ChanCaps = DefChanCaps
 	chanCaps := utils.GetMapVal(args, ParamChanCaps, map[string]int{})
 	for k, v := range chanCaps {
 		result.ChanCaps[k] = v
 	}
-	var conn WsConn
+	var conn *AsyncConn
+	var err *errs.Error
 	conn = utils.GetMapVal(args, OptWsConn, conn)
 	if conn == nil {
-		var err error
-		conn, err = newWebSocket(reqUrl, args, func() *errs.Error {
-			return onReCon(result)
-		})
+		conn, err = result.newConn(false)
 		if err != nil {
-			return nil, errs.New(errs.CodeConnectFail, err)
+			return nil, err
 		}
 	}
-	result.Conn = conn
-	go result.read()
-	go result.write()
+	result.addConn(conn)
 	return result, nil
 }
 
 func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
 	clientKey := accName + "@" + wsUrl
 	client, ok := e.WSClients[clientKey]
-	if ok && client.Conn != nil {
+	if ok && len(client.Conns) == 0 {
 		return client, nil
 	}
 	params := map[string]interface{}{}
@@ -342,13 +390,13 @@ func CheckWsError(msg map[string]string) *errs.Error {
 
 /*
 Write
-Send a message to the WS server to set the information required for processing task results
+send a message to the WS server to set the information required for processing task results
 发送消息到ws服务器，可设置处理任务结果需要的信息
 jobID: The task ID of this message uniquely identifies this request 此次消息的任务ID，唯一标识此次请求
 jobInfo: The main information of this task will be used when receiving the task results 此次任务的主要信息，在收到任务结果时使用
 */
-func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
-	if c.Conn == nil || c.Exg.WsDecoder != nil {
+func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *errs.Error {
+	if conn == nil || c.Exg.WsDecoder != nil {
 		// skip write ws msg in replay mode
 		return nil
 	}
@@ -365,30 +413,35 @@ func (c *WsClient) Write(msg interface{}, info *WsJobInfo) *errs.Error {
 		}
 	}
 	if c.Debug {
-		log.Debug("write ws msg", zap.String("url", c.URL), zap.String("msg", string(data)))
+		log.Debug("write ws msg", zap.String("url", c.URL), zap.Int("id", conn.GetID()),
+			zap.String("msg", string(data)))
 	}
-	c.Send <- data
+	conn.Send <- data
 	return nil
 }
 
 func (c *WsClient) Close() {
-	c.control <- ctrlDoClose
+	for _, conn := range c.Conns {
+		conn.control <- ctrlDoClose
+	}
 }
 
-func (c *WsClient) write() {
-	zapUrl := zap.String("url", c.URL)
+func (c *WsClient) write(conn *AsyncConn) {
+	zapFields := []zap.Field{zap.String("url", c.URL), zap.Int("id", conn.GetID())}
 	defer func() {
-		log.Debug("stop write ws", zapUrl)
-		err := c.Conn.Close()
+		log.Debug("stop write ws", zapFields...)
+		err := conn.Close()
 		if err != nil {
-			log.Error("close ws error", zapUrl, zap.Error(err))
+			log.Error("close ws error", append(zapFields, zap.Error(err))...)
 		}
-		close(c.control)
-		c.Conn = nil // 置为nil表示连接已关闭
+		close(conn.control)
+		c.connLock.Lock()
+		delete(c.Conns, conn.GetID())
+		c.connLock.Unlock()
 	}()
 	for {
 		select {
-		case ctrlType, ok := <-c.control:
+		case ctrlType, ok := <-conn.control:
 			if !ok {
 				log.Error("read control fail", zap.Int("flag", ctrlType))
 				continue
@@ -398,60 +451,61 @@ func (c *WsClient) write() {
 			} else if ctrlType == ctrlDoClose {
 				// Cleanly close the connection by sending a close message and then
 				// waiting (with timeout) for the server to close the connection.
-				err := c.Conn.WriteClose()
+				err := conn.WriteClose()
 				if err != nil {
-					log.Error("write ws close error", zapUrl, zap.Error(err))
+					log.Error("write ws close error", append(zapFields, zap.Error(err))...)
 					return
 				}
 			} else {
-				log.Error("invalid ws control type", zapUrl, zap.Int("val", ctrlType))
+				log.Error("invalid ws control type", append(zapFields, zap.Int("val", ctrlType))...)
 			}
-		case msg, ok := <-c.Send:
+		case msg, ok := <-conn.Send:
 			if !ok {
-				err := c.Conn.WriteClose()
+				err := conn.WriteClose()
 				if err != nil {
-					log.Error("write ws close error", zapUrl, zap.Error(err))
+					log.Error("write ws close error", append(zapFields, zap.Error(err))...)
 					return
 				}
-				log.Info("WsClient.Send closed", zapUrl)
+				log.Info("WsClient.Send closed", zapFields...)
 				return
 			}
-			w, err := c.Conn.NextWriter()
+			w, err := conn.NextWriter()
 			if err != nil {
-				log.Error("failed to create Ws.Writer", zapUrl, zap.Error(err))
+				log.Error("failed to create Ws.Writer", append(zapFields, zap.Error(err))...)
 				return
 			}
 			// 一次只能写入一条消息
 			_, err = w.Write(msg)
 			if err != nil {
-				log.Error("write ws fail", zapUrl, zap.Error(err))
+				log.Error("write ws fail", append(zapFields, zap.Error(err))...)
 			}
 			if err = w.Close(); err != nil {
-				log.Error("close WriteCloser fail", zapUrl, zap.Error(err))
+				log.Error("close WriteCloser fail", append(zapFields, zap.Error(err))...)
 				return
 			}
 		}
 	}
 }
 
-func (c *WsClient) read() {
+func (c *WsClient) read(conn *AsyncConn) {
 	defer func() {
-		c.control <- ctrlClosed
+		conn.control <- ctrlClosed
 	}()
 	for {
-		msgRaw, err := c.Conn.ReadMsg()
+		msgRaw, err := conn.ReadMsg()
 		if err != nil {
-			if !c.Conn.IsOK() {
+			if !conn.IsOK() {
 				if c.OnClose != nil {
 					c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
 				}
-				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Error(err))
+				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				return
 			} else {
+				// 这里可能遇到connection reset by peer错误，继续观察输出日志
 				if c.OnError != nil {
 					c.OnError(c, errs.New(errs.CodeWsReadFail, err))
 				}
-				log.Error("read error", zap.String("url", c.URL), zap.Error(err))
+				log.Error("read error", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				continue
 			}
 		}
@@ -496,19 +550,96 @@ func (c *WsClient) Prefix(key string) string {
 	return strings.Join(arr, "")
 }
 
-func (c *WsClient) UpdateSubs(isSub bool, keys []string) string {
+func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *AsyncConn) {
 	method := "SUBSCRIBE"
+	var conn *AsyncConn
 	if !isSub {
 		method = "UNSUBSCRIBE"
 		for _, key := range keys {
-			delete(c.SubscribeKeys, key)
+			if cid, ok := c.SubscribeKeys[key]; ok {
+				num, _ := c.connSubs[cid]
+				if num <= 1 {
+					delete(c.connSubs, cid)
+				} else {
+					c.connSubs[cid] = num - 1
+				}
+				delete(c.SubscribeKeys, key)
+			}
 		}
 	} else {
+		conn, _ = c.Conns[connID]
+		// Check if there are any existing connections that have not reached the minimum number of subscriptions
+		// 检查已有连接，是否有未达到最低订阅数的
+		if conn == nil {
+			for cid, con := range c.Conns {
+				num, _ := c.connSubs[cid]
+				if num < connMinSubs {
+					conn = con
+					break
+				}
+			}
+		}
+		// Attempt to create a new connection
+		// 尝试创建新连接
+		if conn == nil && len(c.Conns) < maxClientConn {
+			var err *errs.Error
+			conn, err = c.newConn(true)
+			if err != nil {
+				log.Warn("make new websocket fail", zap.String("url", c.URL))
+			}
+		}
+		// Randomly select one from existing connections
+		// 从已有连接随机挑一个
+		if conn == nil {
+			cids := utils.KeysOfMap(c.Conns)
+			conn = c.Conns[cids[rand.Intn(len(cids))]]
+		}
+		connID = conn.GetID()
 		for _, key := range keys {
-			c.SubscribeKeys[key] = true
+			c.SubscribeKeys[key] = connID
+		}
+		num, _ := c.connSubs[connID]
+		c.connSubs[connID] = num + len(keys)
+	}
+	return method, conn
+}
+
+func (c *WsClient) GetSubKeys(connID int) []string {
+	var keys = make([]string, 0, 16)
+	for key, id := range c.SubscribeKeys {
+		if id == connID {
+			keys = append(keys, key)
 		}
 	}
-	return method
+	return keys
+}
+
+func (c *WsClient) newConn(add bool) (*AsyncConn, *errs.Error) {
+	connID := c.NextConnId
+	conn, err := newWebSocket(connID, c.URL, c.connArgs, func() *errs.Error {
+		return c.OnReConn(c, connID)
+	})
+	if err != nil {
+		return nil, errs.New(errs.CodeConnectFail, err)
+	}
+	log.Debug("new websocket conn", zap.String("url", c.URL), zap.Int("id", conn.GetID()))
+	c.NextConnId += 1
+	if add {
+		c.addConn(conn)
+	}
+	return conn, nil
+}
+
+func (c *WsClient) addConn(conn *AsyncConn) {
+	connID := conn.GetID()
+	if _, has := c.Conns[connID]; has {
+		conn.SetID(c.NextConnId)
+		c.NextConnId += 1
+		connID = conn.GetID()
+	}
+	c.Conns[connID] = conn
+	go c.read(conn)
+	go c.write(conn)
 }
 
 func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {

@@ -21,7 +21,7 @@ type FuncOnWsMsg = func(client *WsClient, msg *WsMsg)
 type FuncOnWsMethod = func(client *WsClient, msg map[string]string, info *WsJobInfo)
 type FuncOnWsErr = func(client *WsClient, err *errs.Error)
 type FuncOnWsClose = func(client *WsClient, err *errs.Error)
-type FuncOnWsReCon = func(client *WsClient) *errs.Error
+type FuncOnWsReCon = func(client *WsClient, connID int) *errs.Error
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
@@ -115,6 +115,7 @@ type ExgInfo struct {
 	MarketsById      MarketArrMap                  // markets index by id
 	OrderBooks       map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
+	OdBookLock       sync.Mutex
 
 	PrecPadZero  bool   // padding zero for precision
 	MarketType   string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
@@ -475,6 +476,7 @@ type OrderBook struct {
 	Asks      *OdBookSide `json:"asks"`
 	Bids      *OdBookSide `json:"bids"`
 	Nonce     int64       `json:"nonce"` // latest update id
+	Limit     int         `json:"limit"`
 	Cache     []map[string]string
 }
 
@@ -507,6 +509,7 @@ type Income struct {
 
 /*
 WsJobInfo
+store callback data for calling websocket API. Used for processing when returning results.
 调用websocket api时暂存的任务信息。用于返回结果时处理。
 */
 type WsJobInfo struct {
@@ -515,7 +518,6 @@ type WsJobInfo struct {
 	Name    string
 	Symbols []string
 	Method  func(client *WsClient, msg map[string]string, info *WsJobInfo)
-	Limit   int
 	Params  map[string]interface{}
 }
 

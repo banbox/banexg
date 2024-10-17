@@ -84,22 +84,20 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 }
 
 func makeHandleWsReCon(e *Binance) banexg.FuncOnWsReCon {
-	return func(client *banexg.WsClient) *errs.Error {
-		if len(client.SubscribeKeys) == 0 {
+	return func(client *banexg.WsClient, connID int) *errs.Error {
+		subParams := client.GetSubKeys(connID)
+		if len(subParams) == 0 {
 			return nil
 		}
-		var subParams = make([]string, 0, len(client.SubscribeKeys))
-		for key := range client.SubscribeKeys {
-			subParams = append(subParams, key)
-		}
-		log.Info("reconnecting", zap.Int("job", len(subParams)))
-		err := e.WriteWSMsg(client, true, subParams, nil, nil)
+		zapFields := []zap.Field{zap.String("url", client.URL), zap.Int("id", connID),
+			zap.Int("job", len(subParams))}
+		log.Info("re-subscribe ws", zapFields...)
+		err := e.WriteWSMsg(client, connID, true, subParams, nil, nil)
 		if err != nil {
-			log.Info("subscribe after reconnect success", zap.Int("num", len(subParams)),
-				zap.String("url", client.URL))
 			return err
 		}
-		return err
+		log.Info("re-subscribe ok", zapFields...)
+		return nil
 	}
 }
 
@@ -178,7 +176,9 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 		acc.LockData.Unlock()
 		clientKey := acc.Name + "@" + e.Hosts.GetHost(marketType) + "/" + listenKey
 		if client, ok := e.WSClients[clientKey]; ok {
-			_ = client.Conn.WriteClose()
+			for _, conn := range client.Conns {
+				_ = conn.WriteClose()
+			}
 			log.Warn("renew listenKey fail, close ws client", zap.String("key", clientKey))
 		}
 	}()
@@ -373,7 +373,7 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 	if len(symbols) == 0 {
 		symbols = []string{"!markPrice@arr" + intv}
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
+	err = e.WriteWSMsg(client, 0, isSub, symbols, func(m *banexg.Market, _ int) string {
 		return m.LowercaseID + "@markPrice" + intv
 	}, nil)
 	if err != nil {
@@ -530,7 +530,7 @@ func (e *Binance) prepareOHLCVSub(isSub bool, jobs [][2]string, params map[strin
 	for _, k := range jobs {
 		symbols = append(symbols, k[0])
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, i int) string {
+	err = e.WriteWSMsg(client, 0, isSub, symbols, func(m *banexg.Market, i int) string {
 		marketId := m.LowercaseID
 		if name == "indexPriceKline" {
 			marketId = strings.Replace(marketId, "_perp", "", -1)

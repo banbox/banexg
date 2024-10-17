@@ -7,7 +7,6 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"strconv"
 	"strings"
@@ -32,6 +31,7 @@ func (e *Binance) Stream(marType, subHash string) string {
 	return stream
 }
 
+// GetWsClient get WsClient for public data
 func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.Error) {
 	host := e.Hosts.GetHost(marType)
 	if host == "" {
@@ -48,6 +48,8 @@ func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.
 /*
 WatchOrderBooks
 watches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+When depth limit <= 20, and not spot market, subscribe to limited depth instead of incremental depth
+当深度<=20时，且非现货时，订阅有限档深度而非增量深度（币安现货有限档推送缺少event和symbol）
 
 	:param str symbol: unified symbol of the market to fetch the order book for
 	:param int [limit]: the maximum amount of order book entries to return
@@ -62,25 +64,38 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string
 		#
 		# default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	*/
-	getJobFn := func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
-		if limit != 0 {
-			if e.IsContract(client.MarketType) {
-				if !utils.ArrContains(contOdBookLimits, limit) {
-					return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be 0,5,10,20,50,100,500,1000")
+	if len(symbols) == 0 {
+		return nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for WatchOrderBooks")
+	}
+	_, market, err := e.LoadArgsMarket(symbols[0], params)
+	if err != nil {
+		return nil, err
+	}
+	if limit != 0 {
+		if e.IsContract(market.Type) {
+			if !utils.ArrContains(contOdBookLimits, limit) {
+				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be 0,5,10,20,50,100,500,1000")
+			}
+		} else if limit > 5000 {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be <= 5000")
+		}
+	} else {
+		e.OdBookLock.Lock()
+		for _, code := range symbols {
+			if book, ok := e.OrderBooks[code]; ok {
+				limit = book.Limit
+				if limit > 0 {
+					break
 				}
-			} else if limit > 5000 {
-				return nil, errs.NewMsg(errs.CodeParamInvalid, "WatchOrderBooks.limit must be <= 5000")
 			}
 		}
-		jobInfo := &banexg.WsJobInfo{
-			Symbols: symbols,
-			Method:  e.HandleOrderBookSub,
-			Limit:   limit,
+		e.OdBookLock.Unlock()
+		if limit == 0 {
+			limit = 100
 		}
-		return jobInfo, nil
 	}
-	chanKey, args, err := e.prepareBookArgs(true, getJobFn, symbols, params)
-	if err != nil {
+	chanKey, args, err := e.prepareBookArgs(true, limit, symbols, params)
+	if err != nil || chanKey == "" {
 		return nil, err
 	}
 
@@ -123,7 +138,7 @@ func (e *Binance) WatchOrderBooks(symbols []string, limit int, params map[string
 }
 
 func (e *Binance) UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error {
-	chanKey, _, err := e.prepareBookArgs(false, nil, symbols, params)
+	chanKey, _, err := e.prepareBookArgs(false, 0, symbols, params)
 	if err != nil {
 		return err
 	}
@@ -151,9 +166,9 @@ func (e *Binance) getExgWsParams(offset int, symbols []string, cvt func(m *banex
 	return exgParams, nil
 }
 
-func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
+func (e *Binance) prepareBookArgs(isSub bool, limit int, symbols []string, params map[string]interface{}) (string, map[string]interface{}, *errs.Error) {
 	if len(symbols) == 0 {
-		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for UnWatchOrderBooks")
+		return "", nil, errs.NewMsg(errs.CodeParamRequired, "symbols required for WatchOrderBooks")
 	}
 	args, market, err := e.LoadArgsMarket(symbols[0], params)
 	if err != nil {
@@ -168,24 +183,44 @@ func (e *Binance) prepareBookArgs(isSub bool, getJobInfo banexg.FuncGetWsJob, sy
 	if !ok {
 		watchRate = 100
 	}
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
-		return fmt.Sprintf("%s@depth@%dms", m.LowercaseID, watchRate)
-	}, func(client *banexg.WsClient) (*banexg.WsJobInfo, *errs.Error) {
-		var jobInfo *banexg.WsJobInfo
-		if getJobInfo != nil {
-			jobInfo, err = getJobInfo(client)
-			if err != nil {
-				return nil, err
-			}
-			if jobInfo != nil {
-				jobInfo.MsgHash = msgHash
-				jobInfo.Name = "depth"
+	var task = "depth"
+	// save the depth limit of subscription
+	// 记录订阅的深度信息
+	client.LimitsLock.Lock()
+	defer client.LimitsLock.Unlock()
+	if isSub {
+		for _, code := range symbols {
+			client.OdBookLimits[code] = limit
+		}
+	} else {
+		for _, code := range symbols {
+			if val, ok := client.OdBookLimits[code]; ok {
+				limit = val
+				break
 			}
 		}
-		return jobInfo, nil
-	})
+		if limit <= 0 {
+			// no sub symbols, return
+			return "", nil, nil
+		}
+	}
+	if limit <= 20 && !market.Spot {
+		// ignoring binance's spot, as no symbols and events to distinguish on Binance's spot limited depth msg
+		// 币安的现货有限档深度推送，缺少symbol和event，无法区分，忽略现货
+		// limited depth order book
+		// 有限档深度信息: 5/10/20
+		task += strconv.Itoa(limit)
+	}
+	err = e.WriteWSMsg(client, 0, isSub, symbols, func(m *banexg.Market, _ int) string {
+		return fmt.Sprintf("%s@%s@%dms", m.LowercaseID, task, watchRate)
+	}, nil)
 	if err != nil {
 		return "", nil, err
+	}
+	if !isSub {
+		for _, code := range symbols {
+			delete(client.OdBookLimits, code)
+		}
 	}
 	chanKey := client.Prefix(msgHash)
 	return chanKey, args, err
@@ -229,7 +264,7 @@ func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[st
 		return "", nil, err
 	}
 
-	err = e.WriteWSMsg(client, isSub, symbols, func(m *banexg.Market, _ int) string {
+	err = e.WriteWSMsg(client, 0, isSub, symbols, func(m *banexg.Market, _ int) string {
 		return fmt.Sprintf("%s@%s", m.LowercaseID, name)
 	}, nil)
 	if err != nil {
@@ -289,22 +324,70 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 		log.Error("no market for ws depth update", urlZap, zap.String("symbol", marketId))
 		return
 	}
-	book, ok := e.OrderBooks[market.Symbol]
+	symbol := market.Symbol
+	e.OdBookLock.Lock()
+	book, ok := e.OrderBooks[symbol]
 	if !ok {
+		client.LimitsLock.Lock()
+		limit, _ := client.OdBookLimits[symbol]
+		if limit <= 0 {
+			limit = 500
+			client.OdBookLimits[symbol] = limit
+		}
+		client.LimitsLock.Unlock()
+		book = &banexg.OrderBook{
+			Symbol: symbol,
+			Cache:  make([]map[string]string, 0),
+			Limit:  limit,
+			Asks:   banexg.NewOdBookSide(false, limit, nil),
+			Bids:   banexg.NewOdBookSide(true, limit, nil),
+		}
+		e.OrderBooks[symbol] = book
+	}
+	e.OdBookLock.Unlock()
+
+	var chanKey = client.Prefix(market.Type + "@depth")
+	if !market.Spot && book.Limit <= 20 {
+		// ignoring binance's spot, as no symbols and events to distinguish on Binance's spot limited depth msg
+		// 币安的现货有限档深度推送，缺少symbol和event，无法区分，忽略现货
+		// Limited depth, not incremental updates
+		// 有限档深度，非增量更新
+		if _, ok = msg["bids"]; ok {
+			// spot: lastUpdateId, bids, asks
+			e.applyDepthMsgBy(msg, book, true, "asks", "bids", "lastUpdateId", "")
+		} else {
+			// usd-m, coin-m
+			e.applyDepthMsgBy(msg, book, true, "a", "b", "u", "E")
+		}
+		banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 		return
 	}
-	nonce := book.Nonce
+	// Incremental update 增量更新
+	refresh := func() {
+		err := e.fetchOrderBookSnapshot(client, symbol, chanKey, book.Limit)
+		if err != nil {
+			e.DelWsChanRefs(chanKey, symbol)
+			log.Error("fetch od book from rest fail", zap.String("code", symbol), zap.Error(err))
+			err = e.UnWatchOrderBooks([]string{symbol}, nil)
+			if err != nil {
+				log.Error("unwatch ws order book fail", zap.String("code", symbol), zap.Error(err))
+			}
+		}
+	}
+	nonce := book.Nonce // 上一次的u
 	if nonce == 0 {
 		book.Cache = append(book.Cache, msg)
-		log.Info("book nonce empty, cache")
+		if len(book.Cache) == 1 {
+			// new order book, refresh from rest
+			go refresh()
+		}
 		return
 	}
-	var chanKey = client.Prefix(market.Type + "@depth")
 	var zero = int64(0)
-	U, _ := utils.SafeMapVal(msg, "U", zero)
-	u, _ := utils.SafeMapVal(msg, "u", zero)
+	U, _ := utils.SafeMapVal(msg, "U", zero) // 上次推送至今新增的第一个id，应恰好等于上一次u+1
+	u, _ := utils.SafeMapVal(msg, "u", zero) // 上次推送至今新增的最后一个id
 	pu, _ := utils.SafeMapVal(msg, "pu", zero)
-	var err error
+	var err_ error
 	if pu == 0 {
 		// spot
 		// 4. Drop any event where u is <= lastUpdateId in the snapshot
@@ -319,124 +402,102 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 				valid = U-1 == nonce
 			}
 			if valid {
-				e.handleOrderBookMsg(msg, book)
+				e.applyDepthMsg(msg, book)
 				if nonce < book.Nonce {
 					banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 				}
 			} else {
-				err = errors.New("out of date")
+				err_ = errors.New("out of date")
 			}
 		}
 	} else {
 		// contract
 		// 4. Drop any event where u is < lastUpdateId in the snapshot
-		if e.DebugWS {
-			log.Debug("depth msg", zap.Int64("nonce", nonce), zap.Int64("u", u), zap.Int64("U", U),
-				zap.Int64("pu", pu))
-		}
 		if u >= nonce {
 			// 5. The first processed event should have U <= lastUpdateId AND u >= lastUpdateId
 			// 6. While listening to the stream, each new event's pu should be equal to the previous event's u, otherwise initialize the process from step 3
 			if U <= nonce || pu == nonce {
-				e.handleOrderBookMsg(msg, book)
+				e.applyDepthMsg(msg, book)
 				if nonce < book.Nonce {
 					banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 				}
 			} else {
-				err = errors.New("out of date")
+				err_ = errors.New("out of date")
 			}
 		}
 	}
-	if err != nil {
-		msgText, _ := sonic.MarshalString(msg)
-		log.Error("ws order book received an out-of-order nonce", urlZap, zap.String("msg", msgText),
-			zap.Int64("nonce", nonce))
-		delete(e.OrderBooks, market.Symbol)
+	if err_ != nil {
+		// order book is out of date, refresh from rest-api
+		log.Warn("ws order book out-of-date, refresh", urlZap, zap.String("code", symbol),
+			zap.Int64("cur", nonce), zap.Int64("latest", u))
+		book.Reset()
+		book.Cache = append(book.Cache, msg)
+		go refresh()
 	}
 }
 
-func (e *Binance) handleOrderBookMsg(msg map[string]string, book *banexg.OrderBook) {
+func (e *Binance) applyDepthMsg(msg map[string]string, book *banexg.OrderBook) {
+	e.applyDepthMsgBy(msg, book, false, "a", "b", "u", "E")
+}
+
+func (e *Binance) applyDepthMsgBy(msg map[string]string, book *banexg.OrderBook, replace bool, a, b, u, t string) {
 	var zero = int64(0)
-	u, _ := utils.SafeMapVal(msg, "u", zero)
-	at, ok := msg["a"]
+	uv, _ := utils.SafeMapVal(msg, u, zero)
+	at, ok := msg[a]
 	if !ok {
 		log.Error("asks not found in ws depth")
 		at = "[]"
 	}
-	book.SetSide(at, false)
-	bt, ok := msg["b"]
+	book.SetSide(at, false, replace)
+	bt, ok := msg[b]
 	if !ok {
 		log.Error("bids not found in ws depth")
 		bt = "[]"
 	}
-	book.SetSide(bt, true)
-	book.Nonce = u
-	timestamp, err := utils.SafeMapVal(msg, "E", zero)
+	book.SetSide(bt, true, replace)
+	book.Nonce = uv
+	timestamp, err := utils.SafeMapVal(msg, t, zero)
 	if err == nil {
+		if timestamp == 0 {
+			timestamp = e.Nonce()
+		}
 		book.TimeStamp = timestamp
 	}
 }
 
-func (e *Binance) HandleOrderBookSub(client *banexg.WsClient, msg map[string]string, info *banexg.WsJobInfo) {
-	err := banexg.CheckWsError(msg)
-	urlZap := zap.String("url", client.URL)
-	chanKey := client.Prefix(info.MsgHash)
-	if err != nil {
-		e.DelWsChanRefs(chanKey, info.Symbols...)
-		log.Error("sub order error", urlZap, zap.Error(err))
-		return
-	}
-	symbols := info.Symbols
-	var failSymbols []string
-	for _, symbol := range symbols {
-		delete(e.OrderBooks, symbol)
-		e.OrderBooks[symbol] = &banexg.OrderBook{
-			Symbol: symbol,
-			Cache:  make([]map[string]string, 0),
-		}
-		err = e.fetchOrderBookSnapshot(client, symbol, info)
-		if err != nil {
-			failSymbols = append(failSymbols, symbol)
-		}
-	}
-	if len(failSymbols) > 0 {
-		e.DelWsChanRefs(chanKey, failSymbols...)
-		log.Error("sub ws od books fail", zap.Strings("symbols", failSymbols))
-		err = e.UnWatchOrderBooks(failSymbols, nil)
-		if err != nil {
-			log.Error("unwatch ws order book fail", zap.Strings("symbols", failSymbols), zap.Error(err))
-		}
-	}
-}
-
-func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol string, info *banexg.WsJobInfo) *errs.Error {
+func (e *Binance) fetchOrderBookSnapshot(client *banexg.WsClient, symbol, chanKey string, limit int) *errs.Error {
 	// 3. Get a depth snapshot from https://www.binance.com/api/v1/depth?symbol=BNBBTC&limit=1000 .
 	// default 100, max 1000, valid limits 5, 10, 20, 50, 100, 500, 1000
 	if e.WsDecoder != nil {
 		// skip request odBook shot in replay mode
 		return nil
 	}
-	book, err := e.FetchOrderBook(symbol, info.Limit, info.Params)
+	book, err := e.FetchOrderBook(symbol, limit, nil)
 	if err != nil {
 		return err
 	}
-	chanKey := client.Prefix(info.MsgHash)
 	e.DumpWS("OdBookShot", &banexg.OdBookShotLog{
 		MarketType: client.MarketType,
-		Symbol:     symbol,
+		Symbol:     book.Symbol,
 		ChanKey:    chanKey,
 		Book:       book,
 	})
-	return e.applyOdBookSnapshot(client.MarketType, symbol, chanKey, book)
+	return e.applyOdBookSnapshot(client.MarketType, book.Symbol, chanKey, book)
 }
 
 func (e *Binance) applyOdBookSnapshot(marketType, symbol, chanKey string, book *banexg.OrderBook) *errs.Error {
+	e.OdBookLock.Lock()
 	oldBook, ok := e.OrderBooks[symbol]
 	var cache []map[string]string
 	if ok && len(oldBook.Cache) > 0 {
 		cache = oldBook.Cache
 	}
-	e.OrderBooks[symbol] = book
+	if oldBook != nil {
+		oldBook.Update(book)
+		book = oldBook
+	} else {
+		e.OrderBooks[symbol] = book
+	}
 	if len(cache) > 0 {
 		var zero = int64(0)
 		for _, msg := range cache {
@@ -451,7 +512,7 @@ func (e *Binance) applyOdBookSnapshot(marketType, symbol, chanKey string, book *
 				}
 				// 5. The first processed event should have U <= lastUpdateId AND u >= lastUpdateId
 				if U <= nonce && u >= nonce || pu == nonce {
-					e.handleOrderBookMsg(msg, book)
+					e.applyDepthMsg(msg, book)
 				}
 			} else {
 				// 4. Drop any event where u is <= lastUpdateId in the snapshot
@@ -460,11 +521,12 @@ func (e *Binance) applyOdBookSnapshot(marketType, symbol, chanKey string, book *
 				}
 				// 5. The first processed event should have U <= lastUpdateId+1 AND u >= lastUpdateId+1
 				if U-1 <= nonce && u-1 >= nonce {
-					e.handleOrderBookMsg(msg, book)
+					e.applyDepthMsg(msg, book)
 				}
 			}
 		}
 	}
+	e.OdBookLock.Unlock()
 	banexg.WriteOutChan(e.Exchange, chanKey, book, true)
 	return nil
 }

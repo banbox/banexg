@@ -97,24 +97,35 @@ func (a *Asset) IsEmpty() bool {
 	return utils.EqualNearly(a.Used+a.Free, 0) && utils.EqualNearly(a.Debt, 0)
 }
 
-func (b *OrderBook) SetSide(text string, isBuy bool) {
+func (b *OrderBook) SetSide(text string, isBuy, replace bool) {
 	var arr = make([][2]string, 0)
 	err := utils.UnmarshalString(text, &arr)
 	if err != nil {
 		log.Error("unmarshal od book side fail", zap.Error(err))
 		return
 	}
-	var valArr = make([][2]float64, len(arr))
-	for i, row := range arr {
-		val1, _ := strconv.ParseFloat(row[0], 64)
-		val2, _ := strconv.ParseFloat(row[1], 64)
-		valArr[i][0] = val1
-		valArr[i][1] = val2
-	}
+	side := b.Asks
 	if isBuy {
-		b.Bids.Update(valArr)
+		side = b.Bids
+	}
+	if replace {
+		var prices = make([]float64, len(arr))
+		var sizes = make([]float64, len(arr))
+		for i, row := range arr {
+			prices[i], _ = strconv.ParseFloat(row[0], 64)
+			sizes[i], _ = strconv.ParseFloat(row[1], 64)
+		}
+		side.Price = prices
+		side.Size = sizes
 	} else {
-		b.Asks.Update(valArr)
+		var valArr = make([][2]float64, len(arr))
+		for i, row := range arr {
+			val1, _ := strconv.ParseFloat(row[0], 64)
+			val2, _ := strconv.ParseFloat(row[1], 64)
+			valArr[i][0] = val1
+			valArr[i][1] = val2
+		}
+		side.Update(valArr)
 	}
 }
 
@@ -244,6 +255,25 @@ func (b *OrderBook) SumVolTo(side string, price float64) (float64, float64) {
 		book = b.Bids
 	}
 	return book.SumVolTo(price)
+}
+
+func (b *OrderBook) Reset() {
+	b.Nonce = 0
+	b.Bids.Size = nil
+	b.Bids.Price = nil
+	b.Asks.Size = nil
+	b.Asks.Price = nil
+	b.Cache = nil
+}
+
+func (b *OrderBook) Update(book *OrderBook) {
+	b.TimeStamp = book.TimeStamp
+	b.Nonce = book.Nonce
+	b.Cache = nil
+	b.Asks.Price = book.Asks.Price
+	b.Asks.Size = book.Asks.Size
+	b.Bids.Price = book.Bids.Price
+	b.Bids.Size = book.Bids.Size
 }
 
 func (k *Kline) Clone() *Kline {
