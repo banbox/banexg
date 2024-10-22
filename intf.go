@@ -108,6 +108,7 @@ type BanExchange interface {
 	PrecFee(m *Market, fee float64) (float64, *errs.Error)
 
 	HasApi(key, market string) bool
+	SetOnHost(cb func(n string) string)
 	PriceOnePip(symbol string) (float64, *errs.Error)
 	IsContract(marketType string) bool
 	MilliSeconds() int64

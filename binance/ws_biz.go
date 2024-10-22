@@ -174,7 +174,7 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 		delete(acc.Data, authField)
 		delete(acc.Data, lastTimeKey)
 		acc.LockData.Unlock()
-		clientKey := acc.Name + "@" + e.Hosts.GetHost(marketType) + "/" + listenKey
+		clientKey := acc.Name + "@" + e.GetHost(marketType) + "/" + listenKey
 		if client, ok := e.WSClients[clientKey]; ok {
 			for _, conn := range client.Conns {
 				_ = conn.WriteClose()
@@ -244,7 +244,7 @@ func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.
 	acc.LockData.Lock()
 	listenKey := utils.GetMapVal(acc.Data, marketType+banexg.MidListenKey, "")
 	acc.LockData.Unlock()
-	wsUrl := e.Hosts.GetHost(marketType) + "/" + listenKey
+	wsUrl := e.GetHost(marketType) + "/" + listenKey
 	client, err := e.GetClient(wsUrl, marketType, acc.Name)
 	return listenKey, client, err
 }

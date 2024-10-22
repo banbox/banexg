@@ -50,16 +50,17 @@ func (e *Binance) Init() *errs.Error {
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true
 	e.regReplayHandles()
+	e.CalcRateLimiterCost = makeCalcRateLimiterCost(e)
 	return nil
 }
 
 func makeSign(e *Binance) banexg.FuncSign {
-	return func(api banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
+	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
 		accID := e.PopAccName(params)
 		path := api.Path
 		hostKey := api.Host
-		url := e.Hosts.GetHost(hostKey) + "/" + path
+		url := api.Url
 		headers := http.Header{}
 		query := make([]string, 0)
 		body := ""
@@ -911,13 +912,56 @@ func (e *Binance) regReplayHandles() {
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
-			client, ok := e.WSClients[arr[0]]
-			if !ok {
-				return errs.NewMsg(errs.CodeRunTime, "ws client not found: %v", arr[0])
+			client, err := e.GetClient(arr[0], arr[1], arr[2])
+			if err != nil {
+				return err
 			}
-			log.Debug("replay wsMsg", zap.String("msg", arr[1]))
-			client.HandleRawMsg([]byte(arr[1]))
+			log.Debug("replay wsMsg", zap.String("msg", arr[3]))
+			client.HandleRawMsg([]byte(arr[3]))
 			return nil
 		},
+	}
+}
+
+var rateCostMap = map[string]string{
+	"noCoin":   "coin",
+	"noSymbol": "symbol",
+	"noPoolId": "poolId",
+}
+
+func makeCalcRateLimiterCost(e *Binance) banexg.FuncCalcRateLimiterCost {
+	return func(api *banexg.Entry, params map[string]interface{}) float64 {
+		if api.More != nil {
+			for key, val := range rateCostMap {
+				if noVal, ok1 := api.More[key]; ok1 {
+					if _, ok1_ := params[val]; !ok1_ {
+						noValF, ok1_ := noVal.(float64)
+						if ok1_ {
+							return noValF
+						} else {
+							log.Error(fmt.Sprintf("bad cost type: binance.%v.%s", api.Path, key))
+						}
+					}
+				}
+			}
+			if byLimitV, ok := api.More["byLimit"]; ok {
+				if limitV, ok2 := params["limit"]; ok2 {
+					byLimitF, ok_ := byLimitV.([]int)
+					limitF, ok2_ := limitV.(int)
+					if ok_ && ok2_ {
+						for i := 0; i+1 < len(byLimitF); i += 2 {
+							level, cost := byLimitF[i], byLimitF[i+1]
+							if limitF <= level {
+								return float64(cost)
+							}
+						}
+					} else {
+						log.Error(fmt.Sprintf("bad cost type: binance.%v byLimit: %v limit: %v",
+							api.Path, ok_, ok2_))
+					}
+				}
+			}
+		}
+		return api.Cost
 	}
 }

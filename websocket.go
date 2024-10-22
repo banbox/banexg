@@ -235,7 +235,7 @@ func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose Fu
 func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
 	clientKey := accName + "@" + wsUrl
 	client, ok := e.WSClients[clientKey]
-	if ok && len(client.Conns) == 0 {
+	if ok && len(client.Conns) > 0 {
 		return client, nil
 	}
 	params := map[string]interface{}{}
@@ -513,7 +513,7 @@ func (c *WsClient) read(conn *AsyncConn) {
 		if c.Exg.WsDecoder == nil {
 			// We cannot start a goroutine for each message here, otherwise it will result in incorrect message processing order
 			// 这里不能对每个消息启动一个goroutine，否则会导致消息处理顺序错误
-			c.Exg.DumpWS("wsMsg", []string{c.Key, string(msgRaw)})
+			c.Exg.DumpWS("wsMsg", []string{c.URL, c.MarketType, c.AccName, string(msgRaw)})
 			c.HandleRawMsg(msgRaw)
 		}
 	}

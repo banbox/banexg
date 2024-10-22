@@ -33,7 +33,7 @@ func (e *Binance) Stream(marType, subHash string) string {
 
 // GetWsClient get WsClient for public data
 func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.Error) {
-	host := e.Hosts.GetHost(marType)
+	host := e.GetHost(marType)
 	if host == "" {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
 	}
@@ -459,7 +459,7 @@ func (e *Binance) applyDepthMsgBy(msg map[string]string, book *banexg.OrderBook,
 	timestamp, err := utils.SafeMapVal(msg, t, zero)
 	if err == nil {
 		if timestamp == 0 {
-			timestamp = e.Nonce()
+			timestamp = e.MilliSeconds()
 		}
 		book.TimeStamp = timestamp
 	}

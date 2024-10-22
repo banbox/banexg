@@ -7,6 +7,7 @@ import (
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
 	"math"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -115,8 +116,10 @@ func (b *OrderBook) SetSide(text string, isBuy, replace bool) {
 			prices[i], _ = strconv.ParseFloat(row[0], 64)
 			sizes[i], _ = strconv.ParseFloat(row[1], 64)
 		}
+		side.Lock.Lock()
 		side.Price = prices
 		side.Size = sizes
+		side.Lock.Unlock()
 	} else {
 		var valArr = make([][2]float64, len(arr))
 		for i, row := range arr {
@@ -141,10 +144,15 @@ func NewOdBookSide(isBuy bool, depth int, deltas [][2]float64) *OdBookSide {
 }
 
 func (obs *OdBookSide) Update(deltas [][2]float64) {
+	obs.Lock.Lock()
 	for _, delta := range deltas {
 		obs.Set(delta[0], delta[1])
 	}
-	obs.Limit()
+	for len(obs.Price) > obs.Depth {
+		obs.Size = obs.Size[:obs.Depth]
+		obs.Price = obs.Price[:obs.Depth]
+	}
+	obs.Lock.Unlock()
 }
 
 func (obs *OdBookSide) Set(price, size float64) {
@@ -180,13 +188,6 @@ func (obs *OdBookSide) Set(price, size float64) {
 	}
 }
 
-func (obs *OdBookSide) Limit() {
-	for len(obs.Price) > obs.Depth {
-		obs.Size = obs.Size[:obs.Depth]
-		obs.Price = obs.Price[:obs.Depth]
-	}
-}
-
 /*
 SumVolTo return (total volume to price, filled rate)
 */
@@ -198,6 +199,7 @@ func (obs *OdBookSide) SumVolTo(price float64) (float64, float64) {
 	if len(obs.Price) == 0 {
 		return 0, 1
 	}
+	obs.Lock.Lock()
 	volSum := float64(0)
 	lastPrice := float64(0)
 	firstPrice := obs.Price[0]
@@ -205,35 +207,41 @@ func (obs *OdBookSide) SumVolTo(price float64) (float64, float64) {
 		lastPrice = p
 		priceDiff := p - price
 		if priceDiff*dirt >= 0 {
+			obs.Lock.Unlock()
 			return volSum, 1
 		}
 		volSum += obs.Size[i]
 	}
+	obs.Lock.Unlock()
 	return volSum, math.Abs(lastPrice-firstPrice) / math.Abs(price-firstPrice)
 }
 
 /*
-AvgPrice get (average price, last price)
+AvgPrice get (average price, filled rate)
 */
-func (obs *OdBookSide) AvgPrice(depth float64) (float64, float64) {
+func (obs *OdBookSide) AvgPrice(volume float64) (float64, float64) {
+	obs.Lock.Lock()
+	prices, sizes := obs.Price, obs.Size
+	obs.Lock.Unlock()
 	volSum, lastPrice, cost := float64(0), float64(0), float64(0)
-	for i, price := range obs.Price {
-		size := obs.Size[i]
+	for i, price := range prices {
+		size := sizes[i]
 		volSum += size
 		lastPrice = price
 		cost += size * price
-		if volSum >= depth {
+		if volSum >= volume {
 			break
 		}
-	}
-	if volSum < depth {
-		log.Warn("depth not enough", zap.Float64("require", depth), zap.Float64("cur", volSum),
-			zap.Int("len", len(obs.Price)))
 	}
 	if volSum == 0 {
 		return 0, 0
 	}
-	return cost / volSum, lastPrice
+	if volSum < volume {
+		price0 := prices[0]
+		lastPrice = price0 + (lastPrice-price0)*volume/volSum
+		return price0*0.3 + lastPrice*0.7, volSum / volume
+	}
+	return cost / volSum, 1
 }
 
 func (b *OrderBook) AvgPrice(side string, depth float64) (float64, float64) {
@@ -258,22 +266,30 @@ func (b *OrderBook) SumVolTo(side string, price float64) (float64, float64) {
 }
 
 func (b *OrderBook) Reset() {
+	b.Asks.Lock.Lock()
+	b.Bids.Lock.Lock()
 	b.Nonce = 0
 	b.Bids.Size = nil
 	b.Bids.Price = nil
 	b.Asks.Size = nil
 	b.Asks.Price = nil
 	b.Cache = nil
+	b.Bids.Lock.Unlock()
+	b.Asks.Lock.Unlock()
 }
 
 func (b *OrderBook) Update(book *OrderBook) {
 	b.TimeStamp = book.TimeStamp
 	b.Nonce = book.Nonce
 	b.Cache = nil
+	b.Asks.Lock.Lock()
+	b.Bids.Lock.Lock()
 	b.Asks.Price = book.Asks.Price
 	b.Asks.Size = book.Asks.Size
 	b.Bids.Price = book.Bids.Price
 	b.Bids.Size = book.Bids.Size
+	b.Bids.Lock.Unlock()
+	b.Asks.Lock.Unlock()
 }
 
 func (k *Kline) Clone() *Kline {
@@ -389,4 +405,38 @@ func (m *Market) GetTradeTimes() [][2]int64 {
 		return times[i][0] < times[j][0]
 	})
 	return times
+}
+
+func GetHostRetryWait(host string, randAdd bool) int64 {
+	var waitMS int64
+	hostWaitLock.Lock()
+	if until, ok := HostRetryWaits[host]; ok {
+		waitMS = until - time.Now().UnixMilli()
+		if waitMS < 0 {
+			delete(HostRetryWaits, host)
+		} else if randAdd {
+			// 随机增加10s内延迟，避免全部同一时间发起
+			randWait := int64(rand.Float32() * 10000)
+			waitMS += randWait
+		}
+	}
+	hostWaitLock.Unlock()
+	return waitMS
+}
+
+func SetHostRetryWait(host string, waitMS int64) {
+	hostWaitLock.Lock()
+	HostRetryWaits[host] = time.Now().UnixMilli() + waitMS
+	hostWaitLock.Unlock()
+}
+
+func GetHostFlowChan(host string) chan struct{} {
+	hostFlowLock.Lock()
+	out, ok := hostFlowChans[host]
+	if !ok {
+		out = make(chan struct{}, HostHttpConcurr)
+		hostFlowChans[host] = out
+	}
+	hostFlowLock.Unlock()
+	return out
 }

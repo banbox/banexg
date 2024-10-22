@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-type FuncSign = func(api Entry, params map[string]interface{}) *HttpReq
+type FuncSign = func(api *Entry, params map[string]interface{}) *HttpReq
 type FuncFetchCurr = func(params map[string]interface{}) (CurrencyMap, *errs.Error)
 type FuncFetchMarkets = func(marketTypes []string, params map[string]interface{}) (MarketMap, *errs.Error)
 type FuncAuthWS = func(acc *Account, params map[string]interface{}) *errs.Error
@@ -25,6 +25,8 @@ type FuncOnWsReCon = func(client *WsClient, connID int) *errs.Error
 
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
+type FuncCalcRateLimiterCost = func(api *Entry, params map[string]interface{}) float64
+
 // key: acc@url#marketType@method
 type FuncOnWsChan = func(key string, out interface{})
 
@@ -32,19 +34,21 @@ type Exchange struct {
 	*ExgInfo
 	Hosts   *ExgHosts
 	Fees    *ExgFee
-	Apis    map[string]Entry          // 所有API的路径
+	Apis    map[string]*Entry         // 所有API的路径
 	Has     map[string]map[string]int // 是否定义了某个API
 	Options map[string]interface{}    // 用户传入的配置
 	Proxy   *url.URL
+	onHost  func(name string) string
 
 	CredKeys   map[string]bool     // cred keys required for exchange
 	Accounts   map[string]*Account // name: account
 	DefAccName string              // default account name
 
-	EnableRateLimit int        // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
-	RateLimit       int64      // 请求速率控制毫秒数，最小间隔单位
-	lastRequestMS   int64      // 上次请求的13位时间戳
-	rateM           sync.Mutex // 同步锁
+	EnableRateLimit     int        // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
+	RateLimit           int64      // 请求速率控制毫秒数，最小间隔单位
+	lastRequestMS       int64      // 上次请求的13位时间戳
+	rateM               sync.Mutex // 同步锁
+	CalcRateLimiterCost FuncCalcRateLimiterCost
 
 	MarketsWait chan interface{} // whether is loading markets
 	CareMarkets []string         // markets to be fetch: spot/linear/inverse/option
@@ -65,7 +69,8 @@ type Exchange struct {
 	WsChanRefs map[string]map[string]struct{} // accName@url+msgHash: symbols use this chan
 
 	WsCache     []*WsLog // websocket cache logs waiting for replay/dump
-	WsReplayMS  int64
+	WsNextMS    int64    // timestamp of next replay log
+	WsReplayTo  int64    // timestamp of latest replay log
 	WsFile      *os.File // file to replay/dump
 	WsWriter    *gzip.Writer
 	WsEncoder   *gob.Encoder
@@ -175,6 +180,8 @@ type FeeTierItem struct {
 type Entry struct {
 	Path      string
 	Host      string
+	RawHost   string
+	Url       string
 	Method    string
 	Cost      float64
 	More      map[string]interface{}
@@ -200,6 +207,7 @@ type HttpReq struct {
 
 type HttpRes struct {
 	AccName string      `json:"acc_name"`
+	Url     string      `json:"url"`
 	Status  int         `json:"status"`
 	Headers http.Header `json:"headers"`
 	Content string      `json:"content"`
@@ -490,6 +498,7 @@ type OdBookSide struct {
 	Price []float64 // bid: desc   ask: asc
 	Size  []float64
 	Depth int
+	Lock  sync.Mutex
 }
 
 type Income struct {

@@ -587,7 +587,6 @@ type LinearTicker struct {
 }
 
 type BookTicker struct {
-	Symbol   string `json:"symbol"`   // 交易对
 	AskPrice string `json:"askPrice"` // 卖价
 	AskQty   string `json:"askQty"`   // 卖单数量
 	BidPrice string `json:"bidPrice"` // 买价
@@ -607,8 +606,9 @@ type SpotTicker24hr struct {
 
 type LinearBookTicker struct {
 	BookTicker
-	LastUpdateId int   `json:"lastUpdateId"`
-	Time         int64 `json:"time"`
+	Symbol       string `json:"symbol"` // 交易对
+	LastUpdateId int    `json:"lastUpdateId"`
+	Time         int64  `json:"time"`
 }
 
 type LinearPriceTicker struct {

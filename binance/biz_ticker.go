@@ -155,13 +155,13 @@ func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType stri
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	var result = make([]*banexg.Ticker, len(data))
-	for i, item := range data {
+	var result = make([]*banexg.Ticker, 0, len(data))
+	for _, item := range data {
 		ticker := item.ToStdTicker(e, marketType)
 		if ticker.Symbol == "" {
 			continue
 		}
-		result[i] = ticker
+		result = append(result, ticker)
 	}
 	return result, nil
 }

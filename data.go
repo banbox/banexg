@@ -54,6 +54,11 @@ var (
 		"FetchOrderBook":     1,
 		"FetchPositionsRisk": 1,
 	}
+	HostRetryWaits  = map[string]int64{}
+	hostWaitLock    sync.Mutex
+	hostFlowChans   = make(map[string]chan struct{})
+	hostFlowLock    sync.Mutex
+	HostHttpConcurr = 3 // Maximum concurrent number of HTTP requests per domain name 每个域名发起http请求最大并发数
 )
 
 const (

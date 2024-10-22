@@ -32,15 +32,20 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params map[string]int
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
+	var book *banexg.OrderBook
 	if market.Option {
-		return parseOrderBook[OptionOrderBook](market, rsp)
+		book, err = parseOrderBook[OptionOrderBook](market, rsp)
 	} else if market.Linear {
-		return parseOrderBook[LinearOrderBook](market, rsp)
+		book, err = parseOrderBook[LinearOrderBook](market, rsp)
 	} else if market.Inverse {
-		return parseOrderBook[InverseOrderBook](market, rsp)
+		book, err = parseOrderBook[InverseOrderBook](market, rsp)
 	} else {
-		return parseOrderBook[SpotOrderBook](market, rsp)
+		book, err = parseOrderBook[SpotOrderBook](market, rsp)
 	}
+	if book != nil && book.TimeStamp == 0 {
+		book.TimeStamp = e.MilliSeconds()
+	}
+	return book, err
 }
 
 func parseOrderBook[T IBnbOrderBook](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.OrderBook, *errs.Error) {

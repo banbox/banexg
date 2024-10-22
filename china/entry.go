@@ -26,7 +26,7 @@ func New(Options map[string]interface{}) (*China, *errs.Error) {
 					Maker:      0.0002,
 				},
 			},
-			Apis: map[string]banexg.Entry{
+			Apis: map[string]*banexg.Entry{
 				"test": {Path: "", Host: "", Method: "GET"},
 			},
 			Has: map[string]map[string]int{

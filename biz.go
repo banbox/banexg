@@ -45,6 +45,7 @@ func (e *Exchange) Init() *errs.Error {
 	if e.EnableRateLimit == BoolNull {
 		e.EnableRateLimit = BoolTrue
 	}
+	e.CalcRateLimiterCost = makeCalcRateLimiterCost(e)
 	e.ReqHeaders = DefReqHeaders
 	reqHeaders := utils.GetMapVal(e.Options, OptReqHeaders, map[string]string{})
 	for k, v := range reqHeaders {
@@ -802,30 +803,31 @@ func (e *Exchange) DumpWS(name string, data interface{}) {
 }
 
 func (e *Exchange) GetReplayTo() int64 {
-	if e.WsReplayMS == 0 {
+	if e.WsNextMS == 0 {
 		if len(e.WsCache) == 0 {
 			e.WsCache = make([]*WsLog, 0, e.WsBatchSize)
 			if err := e.WsDecoder.Decode(&e.WsCache); err != nil {
-				e.WsReplayMS = math.MaxInt64
-				return e.WsReplayMS
+				e.WsNextMS = math.MaxInt64
+				return e.WsNextMS
 			}
 		}
 		if len(e.WsCache) > 0 {
-			e.WsReplayMS = e.WsCache[0].TimeMS
+			e.WsNextMS = e.WsCache[0].TimeMS
 		} else {
-			e.WsReplayMS = math.MaxInt64
+			e.WsNextMS = math.MaxInt64
 		}
 	}
-	return e.WsReplayMS
+	return e.WsNextMS
 }
 
 func (e *Exchange) ReplayOne() *errs.Error {
-	if e.WsReplayMS == math.MaxInt64 {
+	if e.WsNextMS == math.MaxInt64 {
 		return nil
 	}
 	item := e.WsCache[0]
 	e.WsCache = e.WsCache[1:]
-	e.WsReplayMS = 0
+	e.WsNextMS = 0
+	e.WsReplayTo = item.TimeMS
 	handle, ok := e.WsReplayFn[item.Name]
 	if !ok {
 		log.Warn("no ws replay handle found", zap.String("for", item.Name), zap.String("exg", e.Name))
@@ -844,6 +846,7 @@ func (e *Exchange) ReplayAll() *errs.Error {
 		for _, item := range e.WsCache {
 			oldNum, _ := counts[item.Name]
 			counts[item.Name] = oldNum + 1
+			e.WsReplayTo = item.TimeMS
 			handle, ok := e.WsReplayFn[item.Name]
 			if !ok {
 				bads[item.Name] = true
@@ -964,11 +967,14 @@ func (e *Exchange) IsContract(marketType string) bool {
 }
 
 func (e *Exchange) MilliSeconds() int64 {
+	if e.WsDecoder != nil {
+		return e.WsReplayTo
+	}
 	return time.Now().UnixMilli()
 }
 
 func (e *Exchange) Nonce() int64 {
-	return time.Now().UnixMilli() - e.TimeDelay
+	return e.MilliSeconds() - e.TimeDelay
 }
 
 func (e *Exchange) setReqHeaders(head *http.Header) {
@@ -984,7 +990,118 @@ func (e *Exchange) setReqHeaders(head *http.Header) {
 	}
 }
 
-func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[string]interface{}) *HttpRes {
+/*
+RequestApi
+Request exchange API without checking cache
+Concurrent control: Same host, default concurrent 3 times at the same time
+
+请求交易所API，不检查缓存
+并发控制：同一个host，默认同时并发3
+*/
+func (e *Exchange) RequestApi(ctx context.Context, endpoint string, api *Entry, params map[string]interface{}) *HttpRes {
+	// Traffic control, block if concurrency is full
+	// 流量控制，如果并发已满则阻塞
+	sem := GetHostFlowChan(api.RawHost)
+	sem <- struct{}{}
+	defer func() {
+		<-sem
+	}()
+	// Check if 429 or 418 appears and wait
+	// 检查是否出现429或418需要等待
+	waitMS := GetHostRetryWait(api.RawHost, true)
+	if waitMS > 0 {
+		time.Sleep(time.Millisecond * time.Duration(waitMS))
+	}
+	if e.EnableRateLimit == BoolTrue {
+		e.rateM.Lock()
+		elapsed := e.MilliSeconds() - e.lastRequestMS
+		cost := e.CalcRateLimiterCost(api, params)
+		sleepMS := int64(math.Round(float64(e.RateLimit) * cost))
+		if elapsed < sleepMS {
+			time.Sleep(time.Duration(sleepMS-elapsed) * time.Millisecond)
+		}
+		e.lastRequestMS = e.MilliSeconds()
+		e.rateM.Unlock()
+	}
+	sign := e.Sign(api, params)
+	if sign.Error != nil {
+		return &HttpRes{AccName: sign.AccName, Error: sign.Error}
+	}
+	var req *http.Request
+	var err error
+	if sign.Body != "" {
+		var body *bytes.Buffer
+		body = bytes.NewBufferString(sign.Body)
+		req, err = http.NewRequest(sign.Method, sign.Url, body)
+	} else {
+		req, err = http.NewRequest(sign.Method, sign.Url, nil)
+	}
+	if err != nil {
+		return &HttpRes{Url: sign.Url, AccName: sign.AccName, Error: errs.New(errs.CodeInvalidRequest, err)}
+	}
+	req = req.WithContext(ctx)
+	req.Header = sign.Headers
+	e.setReqHeaders(&req.Header)
+
+	if e.DebugAPI {
+		log.Debug("request", zap.String(sign.Method, sign.Url),
+			zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
+	}
+	rsp, err := e.HttpClient.Do(req)
+	if err != nil {
+		return &HttpRes{Url: sign.Url, AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
+	}
+	defer rsp.Body.Close()
+	var result = HttpRes{Url: sign.Url, AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header}
+	rspData, err := io.ReadAll(rsp.Body)
+	if err != nil {
+		result.Error = errs.New(errs.CodeNetFail, err)
+		return &result
+	}
+	result.Content = string(rspData)
+	cutLen := min(len(result.Content), 3000)
+	bodyShort := zap.String("body", result.Content[:cutLen])
+	if e.DebugAPI {
+		log.Debug("rsp", zap.Int("status", result.Status), zap.String("url", sign.Url),
+			zap.Object("head", HttpHeader(result.Headers)),
+			zap.Int("len", len(result.Content)), bodyShort)
+	}
+	if result.Status >= 400 {
+		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
+		result.Error = errs.NewMsg(result.Status, msg)
+		var resData = make(map[string]interface{})
+		err = utils.UnmarshalString(result.Content, &resData)
+		if err == nil {
+			result.Error.BizCode = int(utils.GetMapVal(resData, "code", int64(0)))
+		}
+		if result.Status == 429 || result.Status == 418 {
+			waitStr := rsp.Header.Get("Retry-After")
+			waitSecs, err := strconv.ParseInt(waitStr, 10, 64)
+			if err != nil {
+				log.Error("parse Retry-After fail", zap.String("val", waitStr), zap.Error(err))
+				waitSecs = 30
+			}
+			result.Error.Data = waitSecs
+			SetHostRetryWait(api.RawHost, waitSecs*1000)
+		}
+	} else if api.CacheSecs > 0 {
+		if sign.Private {
+			log.Warn("cache private api result is not recommend:" + sign.Url)
+		}
+		cacheText, err_ := sonic.MarshalString(&result)
+		if err_ != nil {
+			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
+		} else {
+			err2 := utils.WriteCacheFile(endpoint+".json", cacheText, api.CacheSecs)
+			if err2 != nil {
+				log.Error("write api rsp cache fail", zap.String("url", sign.Url), zap.Error(err2))
+			}
+		}
+	}
+	return &result
+}
+
+func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
@@ -1007,92 +1124,16 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, params map[s
 			}
 		}
 	}
-	// 检查是否需要限流等待
-	if e.EnableRateLimit == BoolTrue {
-		e.rateM.Lock()
-		elapsed := e.MilliSeconds() - e.lastRequestMS
-		cost := api.Cost
-		if cost == 0 {
-			cost = 1
-		}
-		sleepMS := int64(math.Round(float64(e.RateLimit) * cost))
-		if elapsed < sleepMS {
-			time.Sleep(time.Duration(sleepMS-elapsed) * time.Millisecond)
-		}
-		e.lastRequestMS = e.MilliSeconds()
-		e.rateM.Unlock()
-	}
-	sign := e.Sign(api, params)
-	if sign.Error != nil {
-		return &HttpRes{AccName: sign.AccName, Error: sign.Error}
-	}
-	var req *http.Request
-	var err error
-	if sign.Body != "" {
-		var body *bytes.Buffer
-		body = bytes.NewBufferString(sign.Body)
-		req, err = http.NewRequest(sign.Method, sign.Url, body)
-	} else {
-		req, err = http.NewRequest(sign.Method, sign.Url, nil)
-	}
-	if err != nil {
-		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeInvalidRequest, err)}
-	}
-	req = req.WithContext(ctx)
-	req.Header = sign.Headers
-	e.setReqHeaders(&req.Header)
-
-	if e.DebugAPI {
-		log.Debug("request", zap.String(sign.Method, req.URL.String()),
-			zap.Object("header", HttpHeader(req.Header)), zap.String("body", sign.Body))
-	}
-	rsp, err := e.HttpClient.Do(req)
-	if err != nil {
-		return &HttpRes{AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
-	}
-	defer rsp.Body.Close()
-	var result = HttpRes{AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header}
-	rspData, err := io.ReadAll(rsp.Body)
-	if err != nil {
-		result.Error = errs.New(errs.CodeNetFail, err)
-		return &result
-	}
-	result.Content = string(rspData)
-	cutLen := min(len(result.Content), 3000)
-	bodyShort := zap.String("body", result.Content[:cutLen])
-	if e.DebugAPI {
-		log.Debug("rsp", zap.Int("status", result.Status), zap.Object("method", HttpHeader(result.Headers)),
-			zap.Int("len", len(result.Content)), bodyShort)
-	}
-	if result.Status >= 400 {
-		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
-		result.Error = errs.NewMsg(result.Status, msg)
-		var resData = make(map[string]interface{})
-		err = utils.UnmarshalString(result.Content, &resData)
-		if err == nil {
-			result.Error.BizCode = int(utils.GetMapVal(resData, "code", int64(0)))
-		}
-		if result.Status == 429 || result.Status == 418 {
-			result.Error.Data = rsp.Header.Get("Retry-After")
-		}
-	} else if api.CacheSecs > 0 {
-		if sign.Private {
-			log.Warn("cache private api result is not recommend:" + sign.Url)
-		}
-		cacheText, err_ := sonic.MarshalString(&result)
+	if api.RawHost == "" || e.onHost != nil {
+		// we should recalculate on each time if onHost is provided as it may return a random host
+		// 提供onHost时，可能每次请求host不同，需要重新计算
+		api.Url = e.GetHost(api.Host) + "/" + api.Path
+		parsed, err_ := url.Parse(api.Url)
 		if err_ != nil {
-			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
-		} else {
-			err2 := utils.WriteCacheFile(endpoint+".json", cacheText, api.CacheSecs)
-			if err2 != nil {
-				log.Error("write api rsp cache fail", zap.String("url", sign.Url), zap.Error(err2))
-			}
+			return &HttpRes{Error: errs.New(errs.CodeRunTime, err_)}
 		}
+		api.RawHost = parsed.Host
 	}
-	return &result
-}
-
-func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {
 	tryNum := retryNum + 1
 	var rsp *HttpRes
 	var sleep = 0
@@ -1101,7 +1142,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			time.Sleep(time.Second * time.Duration(sleep))
 			sleep = 0
 		}
-		rsp = e.RequestApi(ctx, endpoint, params)
+		rsp = e.RequestApi(ctx, endpoint, api, params)
 		if rsp.Error != nil {
 			if rsp.Error.Code == errs.CodeNetFail {
 				// 网络错误等待3s重试
@@ -1110,18 +1151,14 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 				continue
 			} else if rsp.Error.Code == 429 || rsp.Error.Code == 418 {
 				// 请求过于频繁，随机休息
-				retryAfter, _ := rsp.Error.Data.(string)
+				retryAfter, _ := rsp.Error.Data.(int64)
 				randWait := int(rand.Float32() * 10)
-				if retryAfter != "" {
-					retryAfterVal, err_ := strconv.Atoi(retryAfter)
-					if err_ != nil {
-						log.Error("parse Retry-After fail", zap.String("val", retryAfter), zap.Error(err_))
-					}
-					sleep = retryAfterVal + randWait
+				if retryAfter > 0 {
+					sleep = int(retryAfter) + randWait
 				} else {
 					sleep = 30 + randWait
 				}
-				log.Warn(fmt.Sprintf("%v occur, retry after: %v", rsp.Error.Code, sleep))
+				log.Warn(fmt.Sprintf("%v occur, retry after: %v, %v", rsp.Error.Code, sleep, rsp.Url))
 				continue
 			} else if e.GetRetryWait != nil {
 				// 子交易所根据错误信息返回睡眠时间
@@ -1150,6 +1187,21 @@ func (e *Exchange) HasApi(key, market string) bool {
 		return e.HasApi(key, "")
 	}
 	return false
+}
+
+func (e *Exchange) SetOnHost(cb func(n string) string) {
+	e.onHost = cb
+}
+
+func (e *Exchange) GetHost(name string) string {
+	var result string
+	if e.onHost != nil {
+		result = e.onHost(name)
+	}
+	if result == "" {
+		result = e.Hosts.GetHost(name)
+	}
+	return result
 }
 
 func (e *Exchange) GetTimeFrame(timeframe string) string {
@@ -1430,4 +1482,10 @@ func (e *Exchange) Close() *errs.Error {
 		return err
 	}
 	return nil
+}
+
+func makeCalcRateLimiterCost(e *Exchange) FuncCalcRateLimiterCost {
+	return func(api *Entry, params map[string]interface{}) float64 {
+		return api.Cost
+	}
 }
