@@ -216,10 +216,21 @@ func (obs *OdBookSide) SumVolTo(price float64) (float64, float64) {
 	return volSum, math.Abs(lastPrice-firstPrice) / math.Abs(price-firstPrice)
 }
 
+func (obs *OdBookSide) Price0() float64 {
+	var result = float64(0)
+	obs.Lock.Lock()
+	if len(obs.Price) > 0 {
+		result = obs.Price[0]
+	}
+	obs.Lock.Unlock()
+	return result
+}
+
 /*
-AvgPrice get (average price, filled rate)
+AvgPrice
+return average price, filled rate, change rate of first & last
 */
-func (obs *OdBookSide) AvgPrice(volume float64) (float64, float64) {
+func (obs *OdBookSide) AvgPrice(volume float64) (float64, float64, float64) {
 	obs.Lock.Lock()
 	prices, sizes := obs.Price, obs.Size
 	obs.Lock.Unlock()
@@ -234,17 +245,19 @@ func (obs *OdBookSide) AvgPrice(volume float64) (float64, float64) {
 		}
 	}
 	if volSum == 0 {
-		return 0, 0
+		return 0, 0, 0
 	}
+	price0 := prices[0]
 	if volSum < volume {
-		price0 := prices[0]
 		lastPrice = price0 + (lastPrice-price0)*volume/volSum
-		return price0*0.3 + lastPrice*0.7, volSum / volume
+		chgRate := math.Abs(lastPrice-price0) / price0
+		return price0*0.3 + lastPrice*0.7, volSum / volume, chgRate
 	}
-	return cost / volSum, 1
+	chgRate := math.Abs(lastPrice-price0) / price0
+	return cost / volSum, 1, chgRate
 }
 
-func (b *OrderBook) AvgPrice(side string, depth float64) (float64, float64) {
+func (b *OrderBook) AvgPrice(side string, depth float64) (float64, float64, float64) {
 	book := b.Asks
 	if side == OdSideBuy {
 		book = b.Bids

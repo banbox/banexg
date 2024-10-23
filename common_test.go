@@ -35,7 +35,7 @@ func TestOdBookSide(t *testing.T) {
 	asks.Set(127, 43)
 	asks.Set(135, 100)
 	asks.Set(121.8, 5)
-	avgBidPrice, lastBidPrice := bids.AvgPrice(43)
+	avgBidPrice, lastBidPrice, _ := bids.AvgPrice(43)
 	volSum, fillRate := asks.SumVolTo(127)
 	volSum2, fillRate2 := bids.SumVolTo(116)
 	if avgBidPrice != 118.83720930232558 || lastBidPrice != 118 {

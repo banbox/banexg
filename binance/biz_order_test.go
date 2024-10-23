@@ -92,6 +92,11 @@ func TestBinance_CreateOrder(t *testing.T) {
 	printCreateOrder(symbol, banexg.OdTypeLimit, banexg.OdSideBuy, 0.02, 1000, args)
 }
 
+func TestSellOrder(t *testing.T) {
+	symbol := "USDT/BRL"
+	printCreateOrder(symbol, banexg.OdTypeMarket, banexg.OdSideSell, 10, 0, nil)
+}
+
 func TestCalcelOrder(t *testing.T) {
 	exg := getBinance(nil)
 	symbol := "ETH/USDT:USDT"

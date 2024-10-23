@@ -27,30 +27,57 @@ func (e *Binance) FetchTickers(symbols []string, params map[string]interface{}) 
 		return nil, err
 	}
 	var method string
-	switch marketType {
-	case banexg.MarketOption:
-		method = "eapiPublicGetTicker"
-	case banexg.MarketLinear:
-		method = "fapiPublicGetTicker24hr"
-	case banexg.MarketInverse:
-		method = "dapiPublicGetTicker24hr"
-	default:
-		method = "publicGetTicker24hr"
+	inMethod := utils.PopMapVal(args, banexg.ParamMethod, "")
+	if inMethod == "" {
+		switch marketType {
+		case banexg.MarketOption:
+			method = "eapiPublicGetTicker"
+		case banexg.MarketLinear:
+			method = "fapiPublicGetTicker24hr"
+		case banexg.MarketInverse:
+			method = "dapiPublicGetTicker24hr"
+		default:
+			method = "publicGetTicker24hr"
+		}
+	} else if inMethod == "bookTicker" {
+		switch marketType {
+		case banexg.MarketOption:
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "option market dont support bookTicker")
+		case banexg.MarketLinear:
+			method = "fapiPublicGetTickerBookTicker"
+		case banexg.MarketInverse:
+			method = "dapiPublicGetTickerBookTicker"
+		default:
+			method = "publicGetTickerBookTicker"
+		}
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported method: %v", inMethod)
 	}
 	tryNum := e.GetRetryNum("FetchTickers", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
-	switch marketType {
-	case banexg.MarketOption:
-		return parseTickers[*OptionTicker](rsp, e, marketType)
-	case banexg.MarketLinear:
-		return parseTickers[*LinearTicker](rsp, e, marketType)
-	case banexg.MarketInverse:
-		return parseTickers[*InverseTicker24hr](rsp, e, marketType)
-	default:
-		return parseTickers[*SpotTicker24hr](rsp, e, marketType)
+	if inMethod == "bookTicker" {
+		switch marketType {
+		case banexg.MarketLinear:
+			return parseTickers[*LinearBookTicker](rsp, e, marketType)
+		case banexg.MarketInverse:
+			return parseTickers[*InverseBookTicker](rsp, e, marketType)
+		default:
+			return parseTickers[*SpotBookTicker](rsp, e, marketType)
+		}
+	} else {
+		switch marketType {
+		case banexg.MarketOption:
+			return parseTickers[*OptionTicker](rsp, e, marketType)
+		case banexg.MarketLinear:
+			return parseTickers[*LinearTicker](rsp, e, marketType)
+		case banexg.MarketInverse:
+			return parseTickers[*InverseTicker24hr](rsp, e, marketType)
+		default:
+			return parseTickers[*SpotTicker24hr](rsp, e, marketType)
+		}
 	}
 }
 
@@ -213,6 +240,30 @@ func (t *BookTicker) SetStdTicker(ticker *banexg.Ticker) {
 	ticker.BidVolume = bidQty
 	ticker.Ask = askPrice
 	ticker.AskVolume = askQty
+}
+
+func (t *SpotBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+	symbol := e.SafeSymbol(t.Symbol, "", marketType)
+	ticker := &banexg.Ticker{
+		Symbol: symbol,
+	}
+	t.BookTicker.SetStdTicker(ticker)
+	ticker.Info = t
+	ticker.TimeStamp = e.MilliSeconds()
+	return ticker
+}
+
+func (t *LinearBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+	ticker := t.SpotBookTicker.ToStdTicker(e, marketType)
+	ticker.TimeStamp = t.Time
+	ticker.Info = t
+	return ticker
+}
+
+func (t *InverseBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+	ticker := t.LinearBookTicker.ToStdTicker(e, marketType)
+	ticker.Info = t
+	return ticker
 }
 
 func (t *LinearTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {

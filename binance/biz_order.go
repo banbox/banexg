@@ -433,6 +433,24 @@ func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	}
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
+	// calc fee and average from trades
+	average, filled, feeAmt, feeAsset := calcFills(o.Fills)
+	if filled > 0 {
+		result.Average = average
+		if result.Price == 0 {
+			result.Price = average
+		}
+		result.Filled = filled
+		if result.Fee == nil {
+			result.Fee = &banexg.Fee{
+				Currency: feeAsset,
+				Cost:     feeAmt,
+			}
+		} else {
+			result.Fee.Cost = feeAmt
+			result.Fee.Currency = feeAsset
+		}
+	}
 	return result
 }
 
@@ -494,4 +512,26 @@ func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	result.Info = o
 	result.Cost = cost
 	return result
+}
+
+func calcFills(fills []*SpotFill) (float64, float64, float64, string) {
+	if len(fills) == 0 {
+		return 0, 0, 0, ""
+	}
+	var totCost, totAmt, totFee = float64(0), float64(0), float64(0)
+	var feeCurr string
+	for _, f := range fills {
+		price, _ := strconv.ParseFloat(f.Price, 64)
+		qty, _ := strconv.ParseFloat(f.Qty, 64)
+		feeCost, _ := strconv.ParseFloat(f.Commission, 64)
+		feeCurr = f.CommissionAsset
+		totAmt += qty
+		totFee += feeCost
+		totCost += qty * price
+	}
+	average := float64(0)
+	if totAmt > 0 {
+		average = totCost / totAmt
+	}
+	return average, totAmt, totFee, feeCurr
 }

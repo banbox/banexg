@@ -167,6 +167,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 					return nil, err
 				}
 				args["quoteOrderQty"] = precRes
+				quantityRequired = false
 			}
 		}
 	} else if odType == banexg.OdTypeLimit {

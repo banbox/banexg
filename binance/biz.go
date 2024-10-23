@@ -935,11 +935,16 @@ func makeCalcRateLimiterCost(e *Binance) banexg.FuncCalcRateLimiterCost {
 			for key, val := range rateCostMap {
 				if noVal, ok1 := api.More[key]; ok1 {
 					if _, ok1_ := params[val]; !ok1_ {
-						noValF, ok1_ := noVal.(float64)
+						noValI, ok1_ := noVal.(int)
 						if ok1_ {
-							return noValF
+							return float64(noValI)
 						} else {
-							log.Error(fmt.Sprintf("bad cost type: binance.%v.%s", api.Path, key))
+							noValF, ok1_ := noVal.(float64)
+							if ok1_ {
+								return noValF
+							} else {
+								log.Warn(fmt.Sprintf("bad cost type: binance.%v.%s", api.Path, key))
+							}
 						}
 					}
 				}
@@ -956,7 +961,7 @@ func makeCalcRateLimiterCost(e *Binance) banexg.FuncCalcRateLimiterCost {
 							}
 						}
 					} else {
-						log.Error(fmt.Sprintf("bad cost type: binance.%v byLimit: %v limit: %v",
+						log.Warn(fmt.Sprintf("bad cost type: binance.%v byLimit: %v limit: %v",
 							api.Path, ok_, ok2_))
 					}
 				}
