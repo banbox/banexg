@@ -216,14 +216,21 @@ func (obs *OdBookSide) SumVolTo(price float64) (float64, float64) {
 	return volSum, math.Abs(lastPrice-firstPrice) / math.Abs(price-firstPrice)
 }
 
-func (obs *OdBookSide) Price0() float64 {
-	var result = float64(0)
+/*
+Level
+return price&size for given level (i is started from 0)
+*/
+func (obs *OdBookSide) Level(i int) (float64, float64) {
+	var price, amount = float64(0), float64(0)
 	obs.Lock.Lock()
-	if len(obs.Price) > 0 {
-		result = obs.Price[0]
+	if len(obs.Price) > i {
+		price = obs.Price[i]
+	}
+	if len(obs.Size) > i {
+		amount = obs.Size[i]
 	}
 	obs.Lock.Unlock()
-	return result
+	return price, amount
 }
 
 /*
