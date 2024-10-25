@@ -108,6 +108,9 @@ func (e *Exchange) Init() *errs.Error {
 /****************************  Business Functions  *******************************/
 
 func (e *Exchange) SafeCurrency(currId string) *Currency {
+	if currId == "" {
+		return &Currency{}
+	}
 	if e.CurrenciesById != nil {
 		curr, ok := e.CurrenciesById[currId]
 		if ok {
@@ -511,9 +514,7 @@ func (e *Exchange) GetMarketById(marketId, marketType string) *Market {
 		return nil
 	}
 	if mars, ok := e.MarketsById[marketId]; ok {
-		if len(mars) == 1 {
-			return mars[0]
-		}
+		// 这里不能判断有一个时直接返回，有可能市场不一致：bybit现货市场信息不含SEC，但现货tickers含SEC
 		if marketType == "" {
 			marketType = e.MarketType
 		}
@@ -606,11 +607,23 @@ func (e *Exchange) FetchPositions(symbols []string, params map[string]interface{
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error) {
+	return nil, nil
+}
+
 func (e *Exchange) FetchTicker(symbol string, params map[string]interface{}) (*Ticker, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
 func (e *Exchange) FetchTickers(symbols []string, params map[string]interface{}) ([]*Ticker, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
+func (e *Exchange) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
+func (e *Exchange) FetchOrder(symbol, orderId string, params map[string]interface{}) (*Order, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
@@ -622,6 +635,10 @@ func (e *Exchange) FetchOpenOrders(symbol string, since int64, limit int, params
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) FetchIncomeHistory(inType string, symbol string, since int64, limit int, params map[string]interface{}) ([]*Income, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
 func (e *Exchange) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*OrderBook, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
@@ -630,11 +647,15 @@ func (e *Exchange) CreateOrder(symbol, odType, side string, amount float64, pric
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
 func (e *Exchange) CancelOrder(id string, symbol string, params map[string]interface{}) (*Order, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
-func (e *Exchange) SetLeverage(leverage int, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
+func (e *Exchange) SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
@@ -642,7 +663,7 @@ func (e *Exchange) LoadLeverageBrackets(reload bool, params map[string]interface
 	return errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
-func (e *Exchange) GetLeverage(symbol string, notional float64) (int, int) {
+func (e *Exchange) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
 	return 0, 0
 }
 
@@ -998,7 +1019,7 @@ Concurrent control: Same host, default concurrent 3 times at the same time
 请求交易所API，不检查缓存
 并发控制：同一个host，默认同时并发3
 */
-func (e *Exchange) RequestApi(ctx context.Context, endpoint string, api *Entry, params map[string]interface{}) *HttpRes {
+func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, api *Entry, params map[string]interface{}) *HttpRes {
 	// Traffic control, block if concurrency is full
 	// 流量控制，如果并发已满则阻塞
 	sem := GetHostFlowChan(api.RawHost)
@@ -1092,7 +1113,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint string, api *Entry, 
 		if err_ != nil {
 			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
 		} else {
-			err2 := utils.WriteCacheFile(endpoint+".json", cacheText, api.CacheSecs)
+			err2 := utils.WriteCacheFile(cacheKey, cacheText, api.CacheSecs)
 			if err2 != nil {
 				log.Error("write api rsp cache fail", zap.String("url", sign.Url), zap.Error(err2))
 			}
@@ -1108,8 +1129,11 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 		return &HttpRes{Error: errs.NewMsg(errs.CodeApiNotSupport, "api not support")}
 	}
 	// 检查是否有缓存
+	var cacheKey string
 	if api.CacheSecs > 0 {
-		cacheText, err := utils.ReadCacheFile(endpoint + ".json")
+		paramStr, _ := sonic.MarshalString(params)
+		cacheKey = fmt.Sprintf("%s_%s_%s.json", e.ID, endpoint, utils.MD5([]byte(paramStr))[:10])
+		cacheText, err := utils.ReadCacheFile(cacheKey)
 		if err != nil {
 			if e.DebugAPI {
 				log.Debug("read api cache fail", zap.String("url", api.Path), zap.String("err", err.Short()))
@@ -1142,7 +1166,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			time.Sleep(time.Second * time.Duration(sleep))
 			sleep = 0
 		}
-		rsp = e.RequestApi(ctx, endpoint, api, params)
+		rsp = e.RequestApi(ctx, endpoint, cacheKey, api, params)
 		if rsp.Error != nil {
 			if rsp.Error.Code == errs.CodeNetFail {
 				// 网络错误等待3s重试

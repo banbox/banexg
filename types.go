@@ -156,6 +156,7 @@ type ExgFee struct {
 	Main    *TradeFee //默认
 	Linear  *TradeFee //U本位合约
 	Inverse *TradeFee // 币本位合约
+	Option  *TradeFee
 }
 
 type TradeFee struct {
@@ -212,6 +213,11 @@ type HttpRes struct {
 	Headers http.Header `json:"headers"`
 	Content string      `json:"content"`
 	Error   *errs.Error
+}
+
+type ApiRes[T any] struct {
+	*HttpRes
+	Result T `json:"content"`
 }
 
 /*
@@ -345,6 +351,8 @@ type Ticker struct {
 	BaseVolume    float64     `json:"baseVolume"`
 	QuoteVolume   float64     `json:"quoteVolume"`
 	PreviousClose float64     `json:"previousClose"`
+	MarkPrice     float64     `json:"markPrice"`
+	IndexPrice    float64     `json:"indexPrice"`
 	Info          interface{} `json:"info"`
 }
 

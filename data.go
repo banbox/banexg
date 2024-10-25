@@ -34,6 +34,8 @@ const (
 	ParamAccount            = "account"
 	ParamMarket             = "market"
 	ParamContract           = "contract"
+	ParamBrokerId           = "brokerId"
+	ParamLimit              = "limit"
 )
 
 var (

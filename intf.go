@@ -6,32 +6,8 @@ import (
 )
 
 /*
+Exchange interface
 交易所接口
-需要实现的方法：
-FetchTicker
-FetchTickers
-FetchTickerPrice
-LoadLeverageBrackets
-GetLeverage
-
-FetchOHLCV
-FetchOrderBook
-
-FetchOrder
-FetchOrders
-FetchBalance
-FetchAccountPositions
-FetchPositions
-FetchOpenOrders
-
-CreateOrder
-EditOrder
-CancelOrder
-
-SetLeverage
-CalcMaintMargin
-
-Close
 */
 
 type BanExchange interface {

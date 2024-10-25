@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net/url"
@@ -276,4 +278,12 @@ Replace sonic.Unmarshal, force to use int64 to decode json
 */
 func Unmarshal(data []byte, out interface{}) error {
 	return UnmarshalString(string(data), out)
+}
+
+func MD5(data []byte) string {
+	hash := md5.New()
+	hash.Write(data)
+	hashInBytes := hash.Sum(nil)
+
+	return hex.EncodeToString(hashInBytes)
 }

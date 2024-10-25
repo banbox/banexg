@@ -3,6 +3,7 @@ package bex
 import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/binance"
+	"github.com/banbox/banexg/bybit"
 	"github.com/banbox/banexg/china"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
@@ -11,6 +12,7 @@ import (
 func init() {
 	newExgs = map[string]FuncNewExchange{
 		"binance": binance.NewExchange,
+		"bybit":   bybit.NewExchange,
 		"china":   china.NewExchange,
 	}
 }
