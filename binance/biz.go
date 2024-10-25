@@ -85,6 +85,9 @@ func makeSign(e *Binance) banexg.FuncSign {
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			headers.Add("Content-Type", "application/x-www-form-urlencoded")
 			isPrivate = true
+			if api.Method != "GET" {
+				body = utils.UrlEncodeMap(params, true)
+			}
 		} else if _, ok := secretApis[hostKey]; ok || (hostKey == "sapi" && path != "system/status") {
 			isPrivate = true
 			accID, creds, err = e.GetAccountCreds(accID)

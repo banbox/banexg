@@ -1214,8 +1214,8 @@ func (e *Exchange) GetTimeFrame(timeframe string) string {
 }
 
 func (e *Exchange) GetArgsMarketType(args map[string]interface{}, symbol string) (string, string) {
-	marketType := utils.PopMapVal(args, "market", "")
-	contractType := utils.GetMapVal(args, "contract", "")
+	marketType := utils.PopMapVal(args, ParamMarket, "")
+	contractType := utils.GetMapVal(args, ParamContract, "")
 	if marketType == "" {
 		marketType = e.MarketType
 		contractType = e.ContractType
