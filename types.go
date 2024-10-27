@@ -520,6 +520,13 @@ type Income struct {
 	TradeID    string  `json:"tradeId"`
 }
 
+type FundingRate struct {
+	Symbol      string      `json:"symbol"`
+	FundingRate float64     `json:"fundingRate"`
+	Timestamp   int64       `json:"timestamp"`
+	Info        interface{} `json:"info"`
+}
+
 /*
 **************************   WebSockets   **************************
  */

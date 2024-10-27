@@ -761,3 +761,10 @@ type ISymbolLvgBracket interface {
 	ToStdBracket() *SymbolLvgBrackets
 	GetSymbol() string
 }
+
+type FundingRate struct {
+	Symbol      string `json:"symbol"`
+	FundingTime int64  `json:"fundingTime"`
+	FundingRate string `json:"fundingRate"`
+	MarkPrice   string `json:"markPrice"`
+}

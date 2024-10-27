@@ -36,6 +36,7 @@ const (
 	ParamContract           = "contract"
 	ParamBrokerId           = "brokerId"
 	ParamLimit              = "limit"
+	ParamUntil              = "until"
 )
 
 var (

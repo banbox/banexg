@@ -539,3 +539,158 @@ func (f *OptionLotSizeFt) parse() (float64, float64, float64) {
 	}
 	return minOrderQty, maxOrderQty, lotQtyStep
 }
+
+func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	args["symbol"] = market.ID
+	if limit <= 0 {
+		limit = 200
+	}
+	args["limit"] = limit
+	if since > 0 {
+		args["start"] = since
+	}
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	if until > 0 {
+		args["end"] = until
+	}
+	args["interval"] = utils.TFToSecs(timeframe) / 60
+	var method string
+	if market.Spot {
+		args["categoty"] = "spot"
+		method = "publicGetV5MarketKline"
+	} else {
+		price := utils.PopMapVal(args, "price", "")
+		if market.Linear {
+			args["categoty"] = "linear"
+		} else if market.Inverse {
+			args["categoty"] = "inverse"
+		} else {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "not support market: %v", market.Type)
+		}
+		if price == "mark" {
+			method = "publicGetV5MarketMarkPriceKline"
+		} else if price == "index" {
+			method = "publicGetV5MarketIndexPriceKline"
+		} else if price == "premiumIndex" {
+			method = "publicGetV5MarketPremiumIndexPriceKline"
+		} else {
+			method = "publicGetV5MarketKline"
+		}
+	}
+	tryNum := e.GetRetryNum("FetchOHLCV", 1)
+	rsp := requestRetry[struct {
+		Symbol   string     `json:"symbol"`
+		Category string     `json:"category"`
+		List     [][]string `json:"list"`
+	}](e, method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var res = make([]*banexg.Kline, 0, len(rsp.Result.List))
+	for _, row := range rsp.Result.List {
+		var arr = make([]float64, 0, len(row)-1)
+		stamp, _ := strconv.ParseInt(row[0], 10, 64)
+		for _, str := range row[1:] {
+			val, _ := strconv.ParseFloat(str, 64)
+			arr = append(arr, val)
+		}
+		kline := &banexg.Kline{
+			Time:  stamp,
+			Open:  arr[0],
+			High:  arr[1],
+			Low:   arr[2],
+			Close: arr[3],
+		}
+		if len(arr) >= 6 {
+			kline.Volume = arr[4]
+			kline.Info = arr[5]
+		}
+	}
+	return res, nil
+}
+
+const maxFundRateBatch = 200 // 一次最多返回200个
+
+func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.FundingRate, *errs.Error) {
+	if symbol == "" {
+		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for bybit FetchFundingRateHistory")
+	}
+	if limit <= 0 {
+		limit = maxFundRateBatch
+	}
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	if market.Spot || market.Option {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "only linear/inverse market support")
+	}
+	args["limit"] = min(limit, maxFundRateBatch)
+	args["symbol"] = market.ID
+	args["category"] = market.Type
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	if since > 0 {
+		args["startTime"] = since
+		if until <= 0 {
+			interval := int64(60 * 60 * 8 * 1000)
+			until = since + int64(limit)*interval
+		}
+	}
+	if until > 0 {
+		args["endTime"] = until
+	}
+	items := make([]*banexg.FundingRate, 0)
+	for {
+		list, hasMore, err := e.getFundRateHis(market.Type, until, args)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, list...)
+		if !hasMore {
+			break
+		}
+		// 有未完成的数据，需要继续请求
+		intv := list[1].Timestamp - list[0].Timestamp
+		since = list[len(list)-1].Timestamp + intv
+		args["startTime"] = since
+	}
+	return items, nil
+}
+
+func (e *Bybit) getFundRateHis(marketType string, until int64, args map[string]interface{}) ([]*banexg.FundingRate, bool, *errs.Error) {
+	method := "publicGetV5MarketFundingHistory"
+	tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
+	rsp := requestRetry[struct {
+		Category string      `json:"category"`
+		List     []*FundRate `json:"list"`
+	}](e, method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, false, rsp.Error
+	}
+	var lastMS int64
+	var list = make([]*banexg.FundingRate, 0, len(rsp.Result.List))
+	for _, it := range rsp.Result.List {
+		code := e.SafeSymbol(it.Symbol, "", marketType)
+		stamp, _ := strconv.ParseInt(it.FundingRateTimestamp, 10, 64)
+		if stamp > lastMS {
+			lastMS = stamp
+		}
+		if code == "" {
+			continue
+		}
+		rate, _ := strconv.ParseFloat(it.FundingRate, 64)
+		list = append(list, &banexg.FundingRate{
+			Symbol:      code,
+			FundingRate: rate,
+			Timestamp:   stamp,
+			Info:        it,
+		})
+	}
+	interval := int64(60 * 60 * 8 * 1000)
+	hasMore := until > 0 && len(rsp.Result.List) == maxFundRateBatch && lastMS+interval < until
+	return list, hasMore, nil
+}

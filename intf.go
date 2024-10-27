@@ -42,6 +42,7 @@ type BanExchange interface {
 	// FetchOpenOrders Get all open orders on a symbol or all symbol.
 	FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error)
 	FetchIncomeHistory(inType string, symbol string, since int64, limit int, params map[string]interface{}) ([]*Income, *errs.Error)
+	FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*FundingRate, *errs.Error)
 
 	CreateOrder(symbol, odType, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error)
 	EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*Order, *errs.Error)
@@ -91,6 +92,7 @@ type BanExchange interface {
 
 	GetAccount(id string) (*Account, *errs.Error)
 	SetMarketType(marketType, contractType string) *errs.Error
+	GetExg() *Exchange
 	Close() *errs.Error
 }
 

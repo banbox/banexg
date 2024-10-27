@@ -536,8 +536,7 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 		return nil, err
 	}
 	priceType := utils.PopMapVal(args, "price", "")
-	until := utils.PopMapVal(args, "until", int64(0))
-	utils.OmitMapKeys(args, "price", "until")
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
 	//binance docs say that the default limit 500, max 1500 for futures, max 1000 for spot markets
 	//the reality is that the time range wider than 500 candles won't work right
 	if limit == 0 {
@@ -972,4 +971,99 @@ func makeCalcRateLimiterCost(e *Binance) banexg.FuncCalcRateLimiterCost {
 		}
 		return api.Cost
 	}
+}
+
+const maxFundRateBatch = 1000 // 一次最多返回1000个
+
+func (e *Binance) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.FundingRate, *errs.Error) {
+	args := utils.SafeParams(params)
+	var marketType string
+	var err *errs.Error
+	if symbol != "" {
+		mar, ok := e.Markets[symbol]
+		if !ok {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "symbol invalid: %v", symbol)
+		}
+		args["symbol"] = mar.ID
+		marketType = mar.Type
+	} else {
+		marketType, _, err = e.LoadArgsMarketType(args)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if limit <= 0 {
+		limit = maxFundRateBatch
+	}
+	args["limit"] = min(limit, maxFundRateBatch)
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPublicGetFundingRate"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPublicGetFundingRate"
+	} else {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "market not support: %s", marketType)
+	}
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	if since > 0 {
+		args["startTime"] = since
+		if until <= 0 {
+			interval := int64(60 * 60 * 8 * 1000)
+			until = since + int64(limit)*interval
+		}
+	}
+	if until > 0 {
+		args["endTime"] = until
+	}
+	items := make([]*banexg.FundingRate, 0)
+	for {
+		list, hasMore, err := e.getFundRateHis(marketType, method, until, args)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, list...)
+		if !hasMore {
+			break
+		}
+		// 有未完成的数据，需要继续请求
+		intv := list[1].Timestamp - list[0].Timestamp
+		since = list[len(list)-1].Timestamp + intv
+		args["startTime"] = since
+	}
+	return items, nil
+}
+
+func (e *Binance) getFundRateHis(marketType, method string, until int64, args map[string]interface{}) ([]*banexg.FundingRate, bool, *errs.Error) {
+	tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, false, rsp.Error
+	}
+	var items = make([]*FundingRate, 0)
+	err := utils.UnmarshalString(rsp.Content, &items)
+	if err != nil {
+		return nil, false, errs.NewFull(errs.CodeUnmarshalFail, err, "decode option kline fail")
+	}
+	var lastMS int64
+	var list = make([]*banexg.FundingRate, 0, len(items))
+	for _, it := range items {
+		code := e.SafeSymbol(it.Symbol, "", marketType)
+		stamp := it.FundingTime
+		if stamp > lastMS {
+			lastMS = stamp
+		}
+		if code == "" {
+			continue
+		}
+		rate, _ := strconv.ParseFloat(it.FundingRate, 64)
+		list = append(list, &banexg.FundingRate{
+			Symbol:      code,
+			FundingRate: rate,
+			Timestamp:   stamp,
+			Info:        it,
+		})
+	}
+	interval := int64(60 * 60 * 8 * 1000)
+	hasMore := until > 0 && len(items) == maxFundRateBatch && lastMS+interval < until
+	return list, hasMore, nil
 }

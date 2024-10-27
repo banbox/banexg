@@ -184,3 +184,9 @@ type FutureTicker struct {
 	DeliveryTime      string `json:"deliveryTime"`
 	Basis             string `json:"basis"`
 }
+
+type FundRate struct {
+	Symbol               string `json:"symbol"`
+	FundingRate          string `json:"fundingRate"`
+	FundingRateTimestamp string `json:"fundingRateTimestamp"`
+}

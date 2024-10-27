@@ -639,6 +639,10 @@ func (e *Exchange) FetchIncomeHistory(inType string, symbol string, since int64,
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*FundingRate, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
 func (e *Exchange) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*OrderBook, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
@@ -1478,6 +1482,10 @@ func (e *Exchange) SetMarketType(marketType, contractType string) *errs.Error {
 
 func (e *Exchange) GetID() string {
 	return e.ID
+}
+
+func (e *Exchange) GetExg() *Exchange {
+	return e
 }
 
 func (e *Exchange) Close() *errs.Error {
