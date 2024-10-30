@@ -7,13 +7,11 @@ import (
 	"math/rand"
 	"net/url"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/banbox/banexg/log"
 	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/decoder"
 	"go.uber.org/zap"
 )
 
@@ -265,10 +263,7 @@ UnmarshalString
 Replace sonic.UnmarshalString. The default function converts int64 long integers to float64 when deserializing, resulting in precision loss. Here, int64 decoding is forced to be used.
 */
 func UnmarshalString(text string, out interface{}) error {
-	dc := decoder.NewDecoder(text)
-	if runtime.GOARCH == "amd64" {
-		dc.UseInt64()
-	}
+	var dc = sonic.Config{UseInt64: true}.Froze().NewDecoder(strings.NewReader(text))
 	return dc.Decode(out)
 }
 

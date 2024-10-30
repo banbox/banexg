@@ -25,9 +25,47 @@ for _, k := range res {
 ```
 
 # Note
-### sonic's large integer deserialization problem
-This project uses sonic as the json serialization library. It is known that float64 will be used when deserializing int64 long integers, resulting in precision loss. Currently, `UseInt64` is used to force the use of int64 to parse long integers, but this item is only effective under the `amd64` chip. Others such as `arm64` or `mac m1` will still use sonic's default behavior.
-
 ### Use `Options` instead of `direct fields assign` to initialized a Exchange 
 When an exchange object is initialized, some fields of simple types like int will have default type values. When setting these in the `Init` method, it's impossible to distinguish whether the current value is one set by the user or the default value. 
 Therefore, any configuration needed from outside should be passed in through `Options`, and then these `Options` should be read and set onto the corresponding fields in the `Init` method.
+
+### Market Type
+<table>
+<tr>
+    <th rowspan="2"></th>
+    <th rowspan="2">Spot</th>
+    <th rowspan="2">Margin</th>
+    <th colspan="2">Contract Linear</th>
+    <th colspan="2">Contract Inverse</th>
+    <th colspan="2">Option</th>
+</tr>
+<tr>
+    <th>Swap Linear</th>
+    <th>future Linear</th>
+    <th>swap Inverse</th>
+    <th>future Inverse</th>
+    <th>option linear</th>
+    <th>option inverse</th>
+</tr>
+<tr>
+    <td>Desc</td>
+    <td>spot</td>
+    <td>margin</td>
+    <td>USDⓈ-M Perpetual</td>
+    <td>USDⓈ-M Futures</td>
+    <td>COIN-M Perpetual</td>
+    <td>COIN-M Futures</td>
+    <td>USDⓈ-M Option</td>
+    <td>COIN-M Option</td>
+</tr>
+</table>
+
+### Common parameter naming adjustments
+**`ccxt.defaultType` -> `MarketType`**  
+The default market type of the current exchange. It can be set during initialization using `OptMarketType` or by modifying the `MarketType` property of the exchange at any time.  
+Valid Values: `MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption`  
+In ccxt, the naming of `defaultType` for Binance is inconsistent with other exchanges. In banexg, a unified naming convention has been applied.  
+
+**`ContractType`**  
+The contract type for the current exchange, with options of `swap` for perpetual contracts and `future` for contracts with an expiration date.   
+It can be set during initialization using `OptContractType` or by modifying the `ContractType` property of the exchange after initialization.
