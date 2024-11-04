@@ -768,3 +768,21 @@ type FundingRate struct {
 	FundingRate string `json:"fundingRate"`
 	MarkPrice   string `json:"markPrice"`
 }
+
+type FundingRateCur struct {
+	Symbol               string `json:"symbol"`
+	MarkPrice            string `json:"markPrice"`
+	IndexPrice           string `json:"indexPrice"`
+	EstimatedSettlePrice string `json:"estimatedSettlePrice"`
+	LastFundingRate      string `json:"lastFundingRate"`
+	NextFundingTime      int64  `json:"nextFundingTime"`
+	InterestRate         string `json:"interestRate"`
+	Time                 int64  `json:"time"`
+}
+
+type LastPrice struct {
+	Symbol string `json:"symbol"`
+	Price  string `json:"price"`
+	Time   int64  `json:"time,omitempty"` // linear/inverse
+	PS     string `json:"ps,omitempty"`   //inverse
+}

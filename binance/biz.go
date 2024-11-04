@@ -973,6 +973,67 @@ func makeCalcRateLimiterCost(e *Binance) banexg.FuncCalcRateLimiterCost {
 	}
 }
 
+func (e *Binance) FetchFundingRate(symbol string, params map[string]interface{}) (*banexg.FundingRateCur, *errs.Error) {
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, err
+	}
+	args["symbol"] = market.Symbol
+	var method string
+	if market.Linear {
+		method = "fapiPublicGetPremiumIndex"
+	} else if market.Inverse {
+		method = "dapiPublicGetPremiumIndex"
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport market: %v", market.Type)
+	}
+	tryNum := e.GetRetryNum("FetchFundingRate", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var ft = FundingRateCur{}
+	err_ := utils.UnmarshalString(rsp.Content, &ft)
+	if err_ != nil {
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
+	}
+	return ft.ToStd(e, market.Type), nil
+}
+
+func (e *Binance) FetchFundingRates(symbols []string, params map[string]interface{}) ([]*banexg.FundingRateCur, *errs.Error) {
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
+	if err != nil {
+		return nil, err
+	}
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPublicGetPremiumIndex"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPublicGetPremiumIndex"
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport market: %v", marketType)
+	}
+	tryNum := e.GetRetryNum("FetchFundingRates", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var items = make([]*FundingRateCur, 0)
+	err_ := utils.UnmarshalString(rsp.Content, &items)
+	if err_ != nil {
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
+	}
+	var list = make([]*banexg.FundingRateCur, 0, len(items))
+	for _, it := range items {
+		item := it.ToStd(e, marketType)
+		if item.Symbol != "" {
+			list = append(list, item)
+		}
+	}
+	return list, nil
+}
+
 const maxFundRateBatch = 1000 // 一次最多返回1000个
 
 func (e *Binance) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.FundingRate, *errs.Error) {
@@ -1066,4 +1127,64 @@ func (e *Binance) getFundRateHis(marketType, method string, until int64, args ma
 	interval := int64(60 * 60 * 8 * 1000)
 	hasMore := until > 0 && len(items) == maxFundRateBatch && lastMS+interval < until
 	return list, hasMore, nil
+}
+
+func (f *FundingRateCur) ToStd(e *Binance, marketType string) *banexg.FundingRateCur {
+	code := e.SafeSymbol(f.Symbol, "", marketType)
+	markPrice, _ := strconv.ParseFloat(f.MarkPrice, 64)
+	indexPrice, _ := strconv.ParseFloat(f.IndexPrice, 64)
+	estSettlePrice, _ := strconv.ParseFloat(f.EstimatedSettlePrice, 64)
+	lastRate, _ := strconv.ParseFloat(f.LastFundingRate, 64)
+	interestRate, _ := strconv.ParseFloat(f.InterestRate, 64)
+	return &banexg.FundingRateCur{
+		Symbol:               code,
+		FundingRate:          lastRate,
+		Timestamp:            f.Time,
+		Info:                 f,
+		MarkPrice:            markPrice,
+		IndexPrice:           indexPrice,
+		EstimatedSettlePrice: estSettlePrice,
+		InterestRate:         interestRate,
+		NextFundingTimestamp: f.NextFundingTime,
+	}
+}
+
+func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{}) ([]*banexg.LastPrice, *errs.Error) {
+	args := utils.SafeParams(params)
+	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
+	if err != nil {
+		return nil, err
+	}
+	var method string
+	if marketType == banexg.MarketLinear {
+		method = "fapiPublicV2GetTickerPrice"
+	} else if marketType == banexg.MarketInverse {
+		method = "dapiPublicGetTickerPrice"
+	} else if marketType == banexg.MarketSpot {
+		method = "publicGetTickerPrice"
+	} else {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported market: %v", marketType)
+	}
+	tryNum := e.GetRetryNum("FetchLastPrices", 1)
+	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	var items = make([]*LastPrice, 0)
+	err_ := utils.UnmarshalString(rsp.Content, &items)
+	if err_ != nil {
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
+	}
+	var list = make([]*banexg.LastPrice, 0, len(items))
+	for _, it := range items {
+		code := e.SafeSymbol(it.Symbol, "", marketType)
+		price, _ := strconv.ParseFloat(it.Price, 64)
+		list = append(list, &banexg.LastPrice{
+			Symbol:    code,
+			Timestamp: it.Time,
+			Price:     price,
+			Info:      it,
+		})
+	}
+	return list, nil
 }

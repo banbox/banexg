@@ -527,6 +527,30 @@ type FundingRate struct {
 	Info        interface{} `json:"info"`
 }
 
+type FundingRateCur struct {
+	Symbol               string      `json:"symbol"`
+	FundingRate          float64     `json:"fundingRate"`
+	Timestamp            int64       `json:"timestamp"`
+	MarkPrice            float64     `json:"markPrice,omitempty"`
+	IndexPrice           float64     `json:"indexPrice,omitempty"`
+	InterestRate         float64     `json:"interestRate,omitempty"`
+	EstimatedSettlePrice float64     `json:"estimatedSettlePrice,omitempty"`
+	FundingTimestamp     int64       `json:"fundingTimestamp,omitempty"`
+	NextFundingRate      float64     `json:"nextFundingRate,omitempty"`
+	NextFundingTimestamp int64       `json:"nextFundingTimestamp,omitempty"`
+	PrevFundingRate      float64     `json:"prevFundingRate,omitempty"`
+	PrevFundingTimestamp int64       `json:"prevFundingTimestamp,omitempty"`
+	Interval             string      `json:"interval,omitempty"`
+	Info                 interface{} `json:"info"`
+}
+
+type LastPrice struct {
+	Symbol    string      `json:"symbol"`
+	Timestamp int64       `json:"timestamp"`
+	Price     float64     `json:"price"`
+	Info      interface{} `json:"info"`
+}
+
 /*
 **************************   WebSockets   **************************
  */

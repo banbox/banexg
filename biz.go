@@ -639,7 +639,19 @@ func (e *Exchange) FetchIncomeHistory(inType string, symbol string, since int64,
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 
+func (e *Exchange) FetchFundingRate(symbol string, params map[string]interface{}) (*FundingRateCur, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
+func (e *Exchange) FetchFundingRates(symbols []string, params map[string]interface{}) ([]*FundingRateCur, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
 func (e *Exchange) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*FundingRate, *errs.Error) {
+	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
+}
+
+func (e *Exchange) FetchLastPrices(symbols []string, params map[string]interface{}) ([]*LastPrice, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }
 

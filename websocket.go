@@ -94,8 +94,8 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				// 已关闭，禁止继续使用
 				ws.Conn = nil
 				code = closeErr.Code
+				tryReConn = true
 				if code == 1006 || code == 1011 || code == 1012 || code == 1013 {
-					tryReConn = true
 					if code == 1013 {
 						// 等10s重试
 						wait = time.Millisecond * 10000
@@ -103,8 +103,9 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 						wait = time.Millisecond * 500
 					}
 				} else if code == 1008 && strings.Contains(errText, "Pong timeout") {
-					tryReConn = true
 					wait = time.Millisecond * 500
+				} else {
+					wait = time.Millisecond * 1000
 				}
 			} else {
 				if strings.Contains(errText, "EOF") {
