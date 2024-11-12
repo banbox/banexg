@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 )
 
 type TFOrigin struct {
@@ -15,6 +16,7 @@ type TFOrigin struct {
 var (
 	tfSecsMap = map[string]int{}
 	secsTfMap = map[int]string{}
+	tfLock    sync.Mutex
 	tfOrigins = []*TFOrigin{{604800, 345600, "1970-01-05"}}
 )
 
@@ -29,10 +31,12 @@ const (
 )
 
 func RegTfSecs(items map[string]int) {
+	tfLock.Lock()
 	for key, val := range items {
 		tfSecsMap[key] = val
 		secsTfMap[val] = key
 	}
+	tfLock.Unlock()
 }
 
 func parseTimeFrame(timeframe string) (int, error) {
@@ -81,6 +85,7 @@ Supporting units: s, m, h, d, M, Q, Y
 支持单位：s, m, h, d, M, Q, Y
 */
 func TFToSecs(timeFrame string) int {
+	tfLock.Lock()
 	secs, ok := tfSecsMap[timeFrame]
 	var err error
 	if !ok {
@@ -91,6 +96,7 @@ func TFToSecs(timeFrame string) int {
 		tfSecsMap[timeFrame] = secs
 		secsTfMap[secs] = timeFrame
 	}
+	tfLock.Unlock()
 	return secs
 }
 
@@ -164,6 +170,7 @@ Convert the seconds of a time period into a time period
 将时间周期的秒数，转为时间周期
 */
 func SecsToTF(tfSecs int) string {
+	tfLock.Lock()
 	timeFrame, ok := secsTfMap[tfSecs]
 	if !ok {
 		switch {
@@ -188,5 +195,6 @@ func SecsToTF(tfSecs int) string {
 		}
 		secsTfMap[tfSecs] = timeFrame
 	}
+	tfLock.Unlock()
 	return timeFrame
 }
