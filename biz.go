@@ -9,7 +9,6 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"
@@ -814,7 +813,7 @@ func (e *Exchange) DumpWS(name string, data interface{}) {
 	if e.WsEncoder == nil || data == nil {
 		return
 	}
-	dataStr, err_ := sonic.MarshalString(data)
+	dataStr, err_ := utils.MarshalString(data)
 	if err_ != nil {
 		log.Warn("marshal data fail for DumpWs", zap.String("name", name), zap.Error(err_))
 		return
@@ -1125,7 +1124,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, ap
 		if sign.Private {
 			log.Warn("cache private api result is not recommend:" + sign.Url)
 		}
-		cacheText, err_ := sonic.MarshalString(&result)
+		cacheText, err_ := utils.MarshalString(&result)
 		if err_ != nil {
 			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
 		} else {
@@ -1147,7 +1146,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 	// 检查是否有缓存
 	var cacheKey string
 	if api.CacheSecs > 0 {
-		paramStr, _ := sonic.MarshalString(params)
+		paramStr, _ := utils.MarshalString(params)
 		cacheKey = fmt.Sprintf("%s_%s_%s.json", e.ID, endpoint, utils.MD5([]byte(paramStr))[:10])
 		cacheText, err := utils.ReadCacheFile(cacheKey)
 		if err != nil {

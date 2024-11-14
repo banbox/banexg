@@ -3,7 +3,7 @@ package binance
 import (
 	"fmt"
 	"github.com/banbox/banexg"
-	"github.com/bytedance/sonic"
+	"github.com/banbox/banexg/utils"
 	"testing"
 )
 
@@ -14,7 +14,7 @@ func TestFetchTicker(t *testing.T) {
 		panic(err)
 	}
 	ticker.Info = nil
-	fmt.Println(sonic.MarshalString(ticker))
+	fmt.Println(utils.MarshalString(ticker))
 }
 
 func TestFetchTicker2(t *testing.T) {
@@ -24,7 +24,7 @@ func TestFetchTicker2(t *testing.T) {
 		panic(err)
 	}
 	ticker.Info = nil
-	fmt.Println(sonic.MarshalString(ticker))
+	fmt.Println(utils.MarshalString(ticker))
 }
 
 func TestFetchTicker3(t *testing.T) {
@@ -34,7 +34,7 @@ func TestFetchTicker3(t *testing.T) {
 		panic(err)
 	}
 	ticker.Info = nil
-	fmt.Println(sonic.MarshalString(ticker))
+	fmt.Println(utils.MarshalString(ticker))
 }
 
 func TestFetchTickers(t *testing.T) {
@@ -48,7 +48,7 @@ func TestFetchTickers(t *testing.T) {
 	for _, ticker := range tickers {
 		ticker.Info = nil
 	}
-	fmt.Println(sonic.MarshalString(tickers))
+	fmt.Println(utils.MarshalString(tickers))
 }
 
 func TestFetchTickerPrice(t *testing.T) {
@@ -59,5 +59,5 @@ func TestFetchTickerPrice(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(sonic.MarshalString(prices))
+	fmt.Println(utils.MarshalString(prices))
 }

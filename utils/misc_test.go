@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"github.com/banbox/banexg/log"
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"math"
 	"testing"
@@ -21,13 +20,13 @@ func TestSonicUnmarshal(t *testing.T) {
 }
 
 func runSonicItem[T comparable](name string, val T) {
-	text, err := sonic.MarshalString(val)
+	text, err := MarshalString(val)
 	if err != nil {
 		panic(fmt.Sprintf("marshal %v fail: %v", name, err))
 	}
 	textWrap := fmt.Sprintf("{\"val\":%v}", text)
 	var res = make(map[string]interface{})
-	// err2 := sonic.UnmarshalString(textWrap, &res)
+	// err2 := UnmarshalString(textWrap, &res)
 	err2 := UnmarshalString(textWrap, &res)
 	if err2 != nil {
 		log.Error("unmarshal fail", zap.String("name", name), zap.Error(err2))

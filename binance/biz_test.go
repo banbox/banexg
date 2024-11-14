@@ -9,8 +9,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/bytedance/sonic"
 )
 
 func TestSign(t *testing.T) {
@@ -19,7 +17,7 @@ func TestSign(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	text, err_ := sonic.MarshalString(res)
+	text, err_ := utils.MarshalString(res)
 	if err_ != nil {
 		panic(err_)
 	}
@@ -287,8 +285,8 @@ func TestGetOHLCV(t *testing.T) {
 		first, out := c.FirstBar, klines[0]
 		if first.Time != out.Time || first.Open != out.Open || first.High != out.High ||
 			first.Low != out.Low || first.Close != out.Close || first.Volume != out.Volume {
-			outText, _ := sonic.MarshalString(out)
-			expText, _ := sonic.MarshalString(first)
+			outText, _ := utils.MarshalString(out)
+			expText, _ := utils.MarshalString(first)
 			t.Errorf("Fail %s out: %s exp: %s", c.Symbol, outText, expText)
 		}
 	}
@@ -317,13 +315,13 @@ func TestFetchBalances(t *testing.T) {
 		{"market": "funding"},
 	}
 	for _, item := range cases {
-		text, _ := sonic.MarshalString(item)
+		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchBalance(item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
 		res.Info = nil
-		resText, _ := sonic.MarshalString(res)
+		resText, _ := utils.MarshalString(res)
 		t.Logf("%s balance: %s", text, resText)
 	}
 }
@@ -466,7 +464,7 @@ func TestLoadLeverageBrackets(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	text, err2 := sonic.MarshalString(exg.LeverageBrackets)
+	text, err2 := utils.MarshalString(exg.LeverageBrackets)
 	if err2 != nil {
 		panic(err2)
 	}
@@ -503,7 +501,7 @@ func TestParseLinearPositionRisk(t *testing.T) {
 	}
 	var pos = posList[0]
 	pos.Info = nil
-	text, _ := sonic.MarshalString(pos)
+	text, _ := utils.MarshalString(pos)
 	var out = map[string]interface{}{}
 	_ = utils.UnmarshalString(text, &out)
 	var expect = map[string]interface{}{}
@@ -528,7 +526,7 @@ func TestFetchPositionsRisk(t *testing.T) {
 	for _, p := range posList {
 		p.Info = nil
 	}
-	text, _ := sonic.MarshalString(posList)
+	text, _ := utils.MarshalString(posList)
 	fmt.Println(text)
 }
 
@@ -542,6 +540,6 @@ func TestFetchAccountPositions(t *testing.T) {
 	for _, p := range posList {
 		p.Info = nil
 	}
-	text, _ := sonic.MarshalString(posList)
+	text, _ := utils.MarshalString(posList)
 	fmt.Println(text)
 }

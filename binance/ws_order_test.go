@@ -6,7 +6,6 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
 	"go.uber.org/zap/buffer"
@@ -36,7 +35,7 @@ func testWatchOrderBook(symbol string, depthLimit int) {
 	for {
 		select {
 		case msg := <-out:
-			msgText, err := sonic.MarshalString(msg)
+			msgText, err := utils.MarshalString(msg)
 			if err != nil {
 				log.Error("marshal msg fail", zap.Error(err))
 				continue

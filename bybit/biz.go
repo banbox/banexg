@@ -7,7 +7,6 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,7 +54,7 @@ func makeSign(e *Bybit) banexg.FuncSign {
 			if strings.Contains(url, "openapi") {
 				body = "{}"
 				if len(params) > 0 {
-					body, err_ = sonic.MarshalString(params)
+					body, err_ = utils.MarshalString(params)
 					if err_ != nil {
 						return &banexg.HttpReq{Error: errs.New(errs.CodeMarshalFail, err_), Private: true}
 					}
@@ -77,7 +76,7 @@ func makeSign(e *Bybit) banexg.FuncSign {
 				if api.Method == "POST" {
 					body = "{}"
 					if len(params) > 0 {
-						body, err_ = sonic.MarshalString(params)
+						body, err_ = utils.MarshalString(params)
 						if err_ != nil {
 							return &banexg.HttpReq{Error: errs.New(errs.CodeMarshalFail, err_), Private: true}
 						}

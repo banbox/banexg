@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/url"
@@ -11,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/banbox/banexg/log"
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 )
 
@@ -197,7 +197,7 @@ func MapValStr(input map[string]interface{}) map[string]string {
 		case string:
 			result[key] = v
 		default:
-			data, _ := sonic.MarshalString(v)
+			data, _ := MarshalString(v)
 			result[key] = data
 		}
 	}
@@ -259,20 +259,31 @@ func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
 }
 
 /*
-UnmarshalString
-Replace sonic.UnmarshalString. The default function converts int64 long integers to float64 when deserializing, resulting in precision loss. Here, int64 decoding is forced to be used.
+UnmarshalString decode json
 */
 func UnmarshalString(text string, out interface{}) error {
-	var dc = sonic.Config{UseInt64: true}.Froze().NewDecoder(strings.NewReader(text))
-	return dc.Decode(out)
+	return json.Unmarshal([]byte(text), out)
+	//var dc = sonic.Config{UseInt64: true}.Froze().NewDecoder(strings.NewReader(text))
+	//return dc.Decode(out)
 }
 
 /*
-Unmarshal
-Replace sonic.Unmarshal, force to use int64 to decode json
+Unmarshal decode json
 */
 func Unmarshal(data []byte, out interface{}) error {
-	return UnmarshalString(string(data), out)
+	return json.Unmarshal(data, out)
+}
+
+func Marshal(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func MarshalString(v any) (string, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func MD5(data []byte) string {

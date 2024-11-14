@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"github.com/banbox/banexg/errs"
-	"github.com/bytedance/sonic"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,7 +32,7 @@ func WriteFile(path string, data []byte) error {
 }
 
 func WriteJsonFile(path string, data interface{}) error {
-	bytes, err := sonic.Marshal(data)
+	bytes, err := Marshal(data)
 	if err != nil {
 		return err
 	}

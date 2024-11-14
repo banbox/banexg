@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/log"
-	"github.com/bytedance/sonic"
+	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
 	"testing"
 )
@@ -17,12 +17,12 @@ func TestFetchOrder(t *testing.T) {
 
 	symbol := "BTC/USDT:USDT"
 	for orderId, item := range cases {
-		text, _ := sonic.MarshalString(item)
+		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOrder(symbol, orderId, item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
-		resText, _ := sonic.MarshalString(res)
+		resText, _ := utils.MarshalString(res)
 		t.Logf("%s result: %s", text, resText)
 	}
 }
@@ -39,12 +39,12 @@ func TestFetchOrders(t *testing.T) {
 	symbol := "BTC/USDT:USDT"
 	since := int64(1708511530259)
 	for _, item := range cases {
-		text, _ := sonic.MarshalString(item)
+		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOrders(symbol, since, 0, item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
-		resText, _ := sonic.MarshalString(res)
+		resText, _ := utils.MarshalString(res)
 		t.Logf("%s result: %s", text, resText)
 	}
 }
@@ -60,12 +60,12 @@ func TestFetchOpenOrders(t *testing.T) {
 	symbol := "ETH/USDT:USDT"
 	since := int64(1702991965921)
 	for _, item := range cases {
-		text, _ := sonic.MarshalString(item)
+		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOpenOrders(symbol, since, 0, item)
 		if err != nil {
 			panic(fmt.Errorf("%s Error: %v", text, err))
 		}
-		resText, _ := sonic.MarshalString(res)
+		resText, _ := utils.MarshalString(res)
 		t.Logf("%s result: %s", text, resText)
 	}
 }
@@ -76,7 +76,7 @@ func printCreateOrder(symbol string, odType string, side string, amount float64,
 	if err != nil {
 		panic(err)
 	}
-	resStr, err2 := sonic.MarshalString(res)
+	resStr, err2 := utils.MarshalString(res)
 	if err2 != nil {
 		panic(err2)
 	}
@@ -105,6 +105,6 @@ func TestCalcelOrder(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	resStr, _ := sonic.MarshalString(res)
+	resStr, _ := utils.MarshalString(res)
 	log.Info("cancel order", zap.String("res", resStr))
 }

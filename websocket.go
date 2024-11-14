@@ -6,7 +6,6 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
-	"github.com/bytedance/sonic"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"io"
@@ -373,7 +372,7 @@ func CheckWsError(msg map[string]string) *errs.Error {
 	errRaw, ok := msg["error"]
 	if ok {
 		var err = &errs.Error{}
-		errData, _ := sonic.Marshal(errRaw)
+		errData, _ := utils.Marshal(errRaw)
 		_ = utils.Unmarshal(errData, err)
 		return err
 	}
@@ -383,7 +382,7 @@ func CheckWsError(msg map[string]string) *errs.Error {
 		if e != nil {
 			return nil
 		}
-		msgStr, _ := sonic.MarshalString(msg)
+		msgStr, _ := utils.MarshalString(msg)
 		return errs.NewMsg(statusVal, msgStr)
 	}
 	return nil
@@ -401,7 +400,7 @@ func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *err
 		// skip write ws msg in replay mode
 		return nil
 	}
-	data, err2 := sonic.Marshal(msg)
+	data, err2 := utils.Marshal(msg)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
