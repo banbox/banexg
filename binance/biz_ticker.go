@@ -178,7 +178,7 @@ func (e *Binance) FetchTickerPrice(symbol string, params map[string]interface{})
 func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, *errs.Error) {
 	var data = make([]T, 0)
 	rspText := banexg.EnsureArrStr(rsp.Content)
-	err := utils.UnmarshalString(rspText, &data)
+	err := utils.UnmarshalString(rspText, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -195,7 +195,7 @@ func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType stri
 
 func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) (*banexg.Ticker, *errs.Error) {
 	var data = new(T)
-	err := utils.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -341,7 +341,7 @@ func (t *SymbolPrice) ToStdPrice(e *Binance, marketType string) (string, float64
 func parsePrices[T ITickerPrice](rsp *banexg.HttpRes, e *Binance, marketType string) (map[string]float64, *errs.Error) {
 	var data = make([]T, 0)
 	rspText := banexg.EnsureArrStr(rsp.Content)
-	err := utils.UnmarshalString(rspText, &data)
+	err := utils.UnmarshalString(rspText, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}

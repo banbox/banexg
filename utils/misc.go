@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/url"
@@ -149,7 +151,7 @@ func SafeMapVal[T any](items map[string]string, key string, defVal T) (result T,
 		case reflect.String:
 			result = any(text).(T)
 		default:
-			err = UnmarshalString(text, &result)
+			err = UnmarshalString(text, &result, JsonNumDefault)
 		}
 		if err != nil {
 			return defVal, err
@@ -242,14 +244,14 @@ func IsNil(i interface{}) bool {
 ByteToStruct
 将[]byte类型的chan通道，转为指定类型通道
 */
-func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
+func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T, numType int) {
 	defer close(outChan)
 
 	for b := range byteChan {
 		// 初始化目标类型的值
 		var val T
 		// 解析数据
-		err := Unmarshal(b, &val)
+		err := Unmarshal(b, &val, numType)
 		if err != nil {
 			log.Error("Error unmarshalling chan", zap.Error(err))
 			continue // or handle the error as necessary
@@ -258,20 +260,42 @@ func ByteToStruct[T any](byteChan <-chan []byte, outChan chan<- T) {
 	}
 }
 
+const (
+	JsonNumDefault = 0 // equal to JsonNumFloat
+	JsonNumFloat   = 0 // parse number in json to float64
+	JsonNumStr     = 1 // keep number in json as json.Number type
+	JsonNumAuto    = 2 // auto parse json.Number to int64/float64 in []interface{} map[string]interface{}
+)
+
 /*
-UnmarshalString decode json
+UnmarshalString decode json (big int as float64)
+
+numType: JsonNumDefault(JsonNumFloat), JsonNumStr, JsonNumAuto
 */
-func UnmarshalString(text string, out interface{}) error {
-	return json.Unmarshal([]byte(text), out)
-	//var dc = sonic.Config{UseInt64: true}.Froze().NewDecoder(strings.NewReader(text))
-	//return dc.Decode(out)
+func UnmarshalString(text string, out interface{}, numType int) error {
+	return Unmarshal([]byte(text), out, numType)
 }
 
 /*
 Unmarshal decode json
+
+numType: JsonNumDefault(JsonNumFloat), JsonNumStr, JsonNumAuto
 */
-func Unmarshal(data []byte, out interface{}) error {
-	return json.Unmarshal(data, out)
+func Unmarshal(data []byte, out interface{}, numType int) error {
+	if numType == JsonNumDefault {
+		return json.Unmarshal(data, out)
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	err := dec.Decode(out)
+	if err != nil {
+		return err
+	}
+	if numType != JsonNumAuto {
+		return nil
+	}
+	_, err = parseJsonNumber(out)
+	return err
 }
 
 func Marshal(v any) ([]byte, error) {
@@ -284,6 +308,54 @@ func MarshalString(v any) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+/*
+ParseJsonNumber
+
+parse json.Number to int64/float64 in *[]interface{} *map[string]interface{}
+*/
+func ParseJsonNumber(data interface{}) error {
+	_, err := parseJsonNumber(data)
+	return err
+}
+
+func parseJsonNumber(data interface{}) (interface{}, error) {
+	switch value := data.(type) {
+	case *map[string]interface{}:
+		m := *value
+		for k, v := range m {
+			val, err := parseJsonNumber(v)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = val
+		}
+		return value, nil
+	case *[]interface{}:
+		arr := *value
+		for i, v := range arr {
+			val, err := parseJsonNumber(v)
+			if err != nil {
+				return nil, err
+			}
+			arr[i] = val
+		}
+		return value, nil
+	case json.Number:
+		if !strings.ContainsRune(string(value), '.') {
+			if intValue, err := value.Int64(); err == nil {
+				return intValue, nil
+			}
+		}
+		if floatValue, err := value.Float64(); err == nil {
+			return floatValue, nil
+		} else {
+			return nil, errors.New("invalid json.Number value")
+		}
+	default:
+		return value, nil
+	}
 }
 
 func MD5(data []byte) string {

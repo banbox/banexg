@@ -211,7 +211,7 @@ func (e *Binance) FetchIncomeHistory(inType string, symbol string, since int64, 
 		return nil, rsp.Error
 	}
 	var data = make([]*Income, 0)
-	err_ := utils.UnmarshalString(rsp.Content, &data)
+	err_ := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
 	if err_ != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err_)
 	}
@@ -242,7 +242,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 	var posList = make([]IAccPosition, 0)
 	if marketType == banexg.MarketLinear {
 		var res = LinearAccPositions{}
-		err := utils.UnmarshalString(rsp.Content, &res)
+		err := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -254,7 +254,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 		}
 	} else {
 		var res = InverseAccPositions{}
-		err := utils.UnmarshalString(rsp.Content, &res)
+		err := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -390,7 +390,7 @@ func (p *InversePosition) GetNotional() string {
 func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
 	var data = make([]T, 0)
 	// fmt.Println(rsp.Content)
-	err := utils.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -557,7 +557,7 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 }
 
 func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {
-	err := utils.UnmarshalString(content, data)
+	err := utils.UnmarshalString(content, data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}

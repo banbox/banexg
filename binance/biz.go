@@ -179,7 +179,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			return nil, errs.NewMsg(errs.CodeInvalidResponse, "FetchCurrencies api fail: %s", res.Content)
 		}
 		var currList []*BnbCurrency
-		err := utils.UnmarshalString(res.Content, &currList)
+		err := utils.UnmarshalString(res.Content, &currList, utils.JsonNumDefault)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
@@ -434,7 +434,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				continue
 			}
 			var res BnbMarketRsp
-			err := utils.UnmarshalString(rsp.Content, &res)
+			err := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
 			if err != nil {
 				log.Error("Unmarshal bnb market fail", zap.String("text", rsp.Content))
 				continue
@@ -452,7 +452,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 
 func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([]*BnbOptionKline, 0)
-	err := utils.UnmarshalString(rsp.Content, &klines)
+	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "decode option kline fail")
 	}
@@ -477,7 +477,7 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 
 func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
-	err := utils.UnmarshalString(rsp.Content, &klines)
+	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumStr)
 	if err != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "parse bnb ohlcv fail")
 	}
@@ -486,6 +486,10 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 	}
 	var res = make([]*banexg.Kline, len(klines))
 	for i, bar := range klines {
+		err = utils.ParseJsonNumber(&bar)
+		if err != nil {
+			return nil, errs.New(errs.CodeUnmarshalFail, err)
+		}
 		barTime, _ := bar[0].(int64)
 		openStr, _ := bar[1].(string)
 		highStr, _ := bar[2].(string)
@@ -641,7 +645,7 @@ func (e *Binance) SetLeverage(leverage float64, symbol string, params map[string
 		return nil, rsp.Error
 	}
 	var res = make(map[string]interface{})
-	err2 := utils.UnmarshalString(rsp.Content, &res)
+	err2 := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumAuto)
 	if err2 != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "%s decode rsp fail", e.Name)
 	}
@@ -671,7 +675,7 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params map[string]interface{
 		return rsp.Error
 	}
 	var res = make([]LinearSymbolLvgBrackets, 0)
-	err2 := utils.UnmarshalString(rsp.Content, &res)
+	err2 := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
@@ -756,7 +760,7 @@ func (e *Binance) CalcMaintMargin(symbol string, cost float64) (float64, *errs.E
 
 func parseLvgBrackets[T ISymbolLvgBracket](mapSymbol func(string) string, rsp *banexg.HttpRes) (map[string]*SymbolLvgBrackets, *errs.Error) {
 	var data = make([]T, 0)
-	err := utils.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
@@ -855,7 +859,7 @@ func (e *Binance) regReplayHandles() {
 	e.WsReplayFn = map[string]func(item *banexg.WsLog) *errs.Error{
 		"WatchOrderBooks": func(item *banexg.WsLog) *errs.Error {
 			var symbols = make([]string, 0)
-			err_ := utils.UnmarshalString(item.Content, &symbols)
+			err_ := utils.UnmarshalString(item.Content, &symbols, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -865,7 +869,7 @@ func (e *Binance) regReplayHandles() {
 		},
 		"WatchTrades": func(item *banexg.WsLog) *errs.Error {
 			var symbols = make([]string, 0)
-			err_ := utils.UnmarshalString(item.Content, &symbols)
+			err_ := utils.UnmarshalString(item.Content, &symbols, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -875,7 +879,7 @@ func (e *Binance) regReplayHandles() {
 		},
 		"WatchOHLCVs": func(item *banexg.WsLog) *errs.Error {
 			var jobs = make([][2]string, 0)
-			err_ := utils.UnmarshalString(item.Content, &jobs)
+			err_ := utils.UnmarshalString(item.Content, &jobs, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -891,7 +895,7 @@ func (e *Binance) regReplayHandles() {
 		},
 		"WatchMarkPrices": func(item *banexg.WsLog) *errs.Error {
 			var symbols = make([]string, 0)
-			err_ := utils.UnmarshalString(item.Content, &symbols)
+			err_ := utils.UnmarshalString(item.Content, &symbols, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -901,7 +905,7 @@ func (e *Binance) regReplayHandles() {
 		},
 		"OdBookShot": func(item *banexg.WsLog) *errs.Error {
 			var pak = &banexg.OdBookShotLog{}
-			err_ := utils.UnmarshalString(item.Content, pak)
+			err_ := utils.UnmarshalString(item.Content, pak, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -910,7 +914,7 @@ func (e *Binance) regReplayHandles() {
 		},
 		"wsMsg": func(item *banexg.WsLog) *errs.Error {
 			var arr = make([]string, 0)
-			err_ := utils.UnmarshalString(item.Content, &arr)
+			err_ := utils.UnmarshalString(item.Content, &arr, utils.JsonNumDefault)
 			if err_ != nil {
 				return errs.New(errs.CodeUnmarshalFail, err_)
 			}
@@ -993,7 +997,7 @@ func (e *Binance) FetchFundingRate(symbol string, params map[string]interface{})
 		return nil, rsp.Error
 	}
 	var ft = FundingRateCur{}
-	err_ := utils.UnmarshalString(rsp.Content, &ft)
+	err_ := utils.UnmarshalString(rsp.Content, &ft, utils.JsonNumDefault)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}
@@ -1020,7 +1024,7 @@ func (e *Binance) FetchFundingRates(symbols []string, params map[string]interfac
 		return nil, rsp.Error
 	}
 	var items = make([]*FundingRateCur, 0)
-	err_ := utils.UnmarshalString(rsp.Content, &items)
+	err_ := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}
@@ -1101,7 +1105,7 @@ func (e *Binance) getFundRateHis(marketType, method string, until int64, args ma
 		return nil, false, rsp.Error
 	}
 	var items = make([]*FundingRate, 0)
-	err := utils.UnmarshalString(rsp.Content, &items)
+	err := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
 	if err != nil {
 		return nil, false, errs.NewFull(errs.CodeUnmarshalFail, err, "decode option kline fail")
 	}
@@ -1171,7 +1175,7 @@ func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{
 		return nil, rsp.Error
 	}
 	var items = make([]*LastPrice, 0)
-	err_ := utils.UnmarshalString(rsp.Content, &items)
+	err_ := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}

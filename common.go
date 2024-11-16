@@ -100,7 +100,7 @@ func (a *Asset) IsEmpty() bool {
 
 func (b *OrderBook) SetSide(text string, isBuy, replace bool) {
 	var arr = make([][2]string, 0)
-	err := utils.UnmarshalString(text, &arr)
+	err := utils.UnmarshalString(text, &arr, utils.JsonNumDefault)
 	if err != nil {
 		log.Error("unmarshal od book side fail", zap.Error(err))
 		return

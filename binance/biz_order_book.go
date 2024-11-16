@@ -50,7 +50,7 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params map[string]int
 
 func parseOrderBook[T IBnbOrderBook](m *banexg.Market, rsp *banexg.HttpRes) (*banexg.OrderBook, *errs.Error) {
 	var data = new(T)
-	err := utils.UnmarshalString(rsp.Content, &data)
+	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}

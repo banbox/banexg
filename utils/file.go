@@ -61,12 +61,17 @@ func ReadFile(path string) ([]byte, error) {
 	return content, nil
 }
 
-func ReadJsonFile(path string, obj interface{}) error {
+/*
+ReadJsonFile
+
+numType: JsonNumDefault(JsonNumFloat), JsonNumStr, JsonNumAuto
+*/
+func ReadJsonFile(path string, obj interface{}, numType int) error {
 	data, err := ReadFile(path)
 	if err != nil {
 		return err
 	}
-	return Unmarshal(data, obj)
+	return Unmarshal(data, obj, numType)
 }
 
 func WriteCacheFile(key, content string, expSecs int) *errs.Error {

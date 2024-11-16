@@ -232,7 +232,7 @@ func TestLoadMarkets(t *testing.T) {
 	exg := getBinance(nil)
 	// read ccxt markets
 	var ccxtMarkets banexg.MarketMap
-	err := utils.ReadJsonFile("testdata/ccxt_markets.json", &ccxtMarkets)
+	err := utils.ReadJsonFile("testdata/ccxt_markets.json", &ccxtMarkets, utils.JsonNumDefault)
 	if err != nil {
 		panic(err)
 	}
@@ -245,7 +245,7 @@ func TestLoadMarkets(t *testing.T) {
 		panic(err)
 	}
 	var ccxtCurrs banexg.CurrencyMap
-	err = utils.ReadJsonFile("testdata/ccxt_currs.json", &ccxtCurrs)
+	err = utils.ReadJsonFile("testdata/ccxt_currs.json", &ccxtCurrs, utils.JsonNumDefault)
 	if err != nil {
 		panic(err)
 	}
@@ -503,9 +503,9 @@ func TestParseLinearPositionRisk(t *testing.T) {
 	pos.Info = nil
 	text, _ := utils.MarshalString(pos)
 	var out = map[string]interface{}{}
-	_ = utils.UnmarshalString(text, &out)
+	_ = utils.UnmarshalString(text, &out, utils.JsonNumAuto)
 	var expect = map[string]interface{}{}
-	_ = utils.UnmarshalString(expectStr, &expect)
+	_ = utils.UnmarshalString(expectStr, &expect, utils.JsonNumAuto)
 	for k, v := range expect {
 		if outv, ok := out[k]; ok {
 			if outv != v {

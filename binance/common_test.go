@@ -21,7 +21,7 @@ LoadGockItems
 */
 func LoadGockItems(path string) error {
 	var items = make([]GockItem, 0)
-	err := utils.ReadJsonFile(path, &items)
+	err := utils.ReadJsonFile(path, &items, utils.JsonNumFloat)
 	if err != nil {
 		return err
 	}

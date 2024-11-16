@@ -372,8 +372,7 @@ func CheckWsError(msg map[string]string) *errs.Error {
 	errRaw, ok := msg["error"]
 	if ok {
 		var err = &errs.Error{}
-		errData, _ := utils.Marshal(errRaw)
-		_ = utils.Unmarshal(errData, err)
+		_ = utils.UnmarshalString(errRaw, err, utils.JsonNumDefault)
 		return err
 	}
 	status, ok := msg["status"]
@@ -646,7 +645,7 @@ func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {
 	var err_ error
 	if strings.HasPrefix(msgText, "{") {
 		var msg = make(map[string]interface{})
-		err_ = utils.UnmarshalString(msgText, &msg)
+		err_ = utils.UnmarshalString(msgText, &msg, utils.JsonNumStr)
 		if err_ == nil {
 			var obj = utils.MapValStr(msg)
 			event, _ := utils.SafeMapVal(obj, "e", "")
@@ -655,7 +654,7 @@ func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {
 		}
 	} else if strings.HasPrefix(msgText, "[") {
 		var msgs = make([]map[string]interface{}, 0)
-		err_ = utils.UnmarshalString(msgText, &msgs)
+		err_ = utils.UnmarshalString(msgText, &msgs, utils.JsonNumStr)
 		if err_ == nil && len(msgs) > 0 {
 			var event string
 			var itemList = make([]map[string]string, len(msgs))

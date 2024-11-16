@@ -27,7 +27,7 @@ func runSonicItem[T comparable](name string, val T) {
 	textWrap := fmt.Sprintf("{\"val\":%v}", text)
 	var res = make(map[string]interface{})
 	// err2 := UnmarshalString(textWrap, &res)
-	err2 := UnmarshalString(textWrap, &res)
+	err2 := UnmarshalString(textWrap, &res, JsonNumAuto)
 	if err2 != nil {
 		log.Error("unmarshal fail", zap.String("name", name), zap.Error(err2))
 	}

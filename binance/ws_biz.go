@@ -139,7 +139,7 @@ func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface
 		return rsp.Error
 	}
 	var res = AuthRes{}
-	err2 := utils.UnmarshalString(rsp.Content, &res)
+	err2 := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
@@ -472,7 +472,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 		return
 	}
 	var k = WsKline{}
-	err = utils.UnmarshalString(kText, &k)
+	err = utils.UnmarshalString(kText, &k, utils.JsonNumDefault)
 	if err != nil {
 		log.Error("unmarshal ws kline fail", zap.String("k", kText), zap.Error(err))
 		return
@@ -587,7 +587,7 @@ func (e *Binance) handleBalance(client *banexg.WsClient, msg map[string]string) 
 			Free  string `json:"f"`
 			Lock  string `json:"l"`
 		}, 0)
-		err := utils.UnmarshalString(text, &items)
+		err := utils.UnmarshalString(text, &items, utils.JsonNumDefault)
 		if err != nil {
 			log.Error("unmarshal balance fail", zap.String("text", text), zap.Error(err))
 			return
@@ -674,7 +674,7 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			Balances  []ContractAsset      `json:"B"`
 			Positions []WSContractPosition `json:"P"`
 		}{}
-		err := utils.UnmarshalString(text, &Data)
+		err := utils.UnmarshalString(text, &Data, utils.JsonNumDefault)
 		if err != nil {
 			log.Error("unmarshal account update fail", zap.Error(err), zap.String("text", text))
 			return
@@ -748,7 +748,7 @@ func (e *Binance) handleOrderUpdate(client *banexg.WsClient, msg map[string]stri
 	if event == "ORDER_TRADE_UPDATE" {
 		objText, _ := utils.SafeMapVal(msg, "o", "")
 		var obj = map[string]interface{}{}
-		err := utils.UnmarshalString(objText, &obj)
+		err := utils.UnmarshalString(objText, &obj, utils.JsonNumStr)
 		if err != nil {
 			log.Error("unmarshal ORDER_TRADE_UPDATE fail", zap.String("o", objText), zap.Error(err))
 			return
@@ -775,7 +775,7 @@ func (e *Binance) handleAccountConfigUpdate(client *banexg.WsClient, msg map[str
 		return
 	}
 	var data = make(map[string]interface{})
-	err_ := utils.UnmarshalString(acText, &data)
+	err_ := utils.UnmarshalString(acText, &data, utils.JsonNumAuto)
 	if err_ != nil {
 		log.Error("unmarshal AccountConfigUpdate fail", zap.String("ac", acText), zap.Error(err_))
 		return

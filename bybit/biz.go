@@ -126,7 +126,7 @@ func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tr
 		RetExtInfo json.RawMessage `json:"retExtInfo"`
 		Time       int64           `json:"time"`
 	}{}
-	err := utils.UnmarshalString(res.Content, &rsp)
+	err := utils.UnmarshalString(res.Content, &rsp, utils.JsonNumDefault)
 	if err != nil {
 		res.Error = errs.New(errs.CodeUnmarshalFail, err)
 		return res

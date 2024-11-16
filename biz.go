@@ -1106,7 +1106,7 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, ap
 		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
 		result.Error = errs.NewMsg(result.Status, msg)
 		var resData = make(map[string]interface{})
-		err = utils.UnmarshalString(result.Content, &resData)
+		err = utils.UnmarshalString(result.Content, &resData, utils.JsonNumAuto)
 		if err == nil {
 			result.Error.BizCode = int(utils.GetMapVal(resData, "code", int64(0)))
 		}
@@ -1155,7 +1155,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			}
 		} else {
 			var res = &HttpRes{}
-			err_ := utils.UnmarshalString(cacheText, res)
+			err_ := utils.UnmarshalString(cacheText, res, utils.JsonNumDefault)
 			if err_ != nil {
 				log.Warn("unmarshal api cache fail", zap.String("url", api.Path), zap.Error(err_))
 			} else {

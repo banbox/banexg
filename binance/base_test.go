@@ -9,7 +9,10 @@ func getBinance(param map[string]interface{}) *Binance {
 	log.Setup("info", "")
 	args := utils.SafeParams(param)
 	local := make(map[string]interface{})
-	_ = utils.ReadJsonFile("local.json", &local)
+	err_ := utils.ReadJsonFile("local.json", &local, utils.JsonNumAuto)
+	if err_ != nil {
+		panic(err_)
+	}
 	for k, v := range local {
 		args[k] = v
 	}

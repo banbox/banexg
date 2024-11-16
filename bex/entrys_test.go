@@ -10,7 +10,7 @@ func getExchange(name string, param map[string]interface{}) map[string]interface
 	args := utils.SafeParams(param)
 	local := make(map[string]interface{})
 	localpath := name + "/local.json"
-	err := utils.ReadJsonFile(localpath, &local)
+	err := utils.ReadJsonFile(localpath, &local, utils.JsonNumAuto)
 	if err != nil {
 		panic(fmt.Sprintf("read %s fail: %v", localpath, err))
 	}
