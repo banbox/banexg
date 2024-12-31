@@ -204,8 +204,7 @@ func Level() zap.AtomicLevel {
 
 // SetupLogger is used to initialize the log with config.
 func SetupLogger(cfg *Config) {
-	// Initialize logger.
-	logger, p, err := InitLogger(cfg, zap.AddStacktrace(zap.ErrorLevel))
+	logger, p, err := InitLogger(cfg)
 	if err == nil {
 		ReplaceGlobals(logger, p)
 	} else {
@@ -215,7 +214,7 @@ func SetupLogger(cfg *Config) {
 
 func Setup(level, logFile string, handlers ...zapcore.Core) {
 	var file *FileLogConfig
-	if len(logFile) > 0 {
+	if logFile != "" {
 		file = &FileLogConfig{
 			LogPath: logFile,
 		}
