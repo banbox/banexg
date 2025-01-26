@@ -106,12 +106,10 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				} else {
 					wait = time.Millisecond * 1000
 				}
-			} else {
-				if strings.Contains(errText, "EOF") {
-					ws.Conn = nil
-					tryReConn = true
-					wait = time.Millisecond * 500
-				}
+			} else if strings.Contains(errText, "EOF") || strings.Contains(errText, "connection timed out") {
+				ws.Conn = nil
+				tryReConn = true
+				wait = time.Millisecond * 500
 			}
 			if wait > 0 {
 				time.Sleep(wait)
