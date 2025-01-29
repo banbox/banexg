@@ -30,7 +30,7 @@ func testWatchOHLCVs(t *testing.T, isFake bool) {
 		}
 	}
 	exg := getBinance(map[string]interface{}{
-		banexg.OptDebugWS: true,
+		banexg.OptDebugWs: true,
 	})
 	if isFake {
 		gock.InterceptClient(exg.HttpClient)
