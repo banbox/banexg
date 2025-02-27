@@ -250,17 +250,17 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if timeInForce == banexg.TimeInForcePO {
 		delete(args, banexg.ParamTimeInForce)
 	}
-	method := "privatePostOrder"
+	method := MethodPrivatePostOrder
 	if sor {
-		method = "privatePostSorOrder"
+		method = MethodPrivatePostSorOrder
 	} else if market.Linear {
-		method = "fapiPrivatePostOrder"
+		method = MethodFapiPrivatePostOrder
 	} else if market.Inverse {
-		method = "dapiPrivatePostOrder"
+		method = MethodDapiPrivatePostOrder
 	} else if market.Type == banexg.MarketMargin || marginMode != "" {
-		method = "sapiPostMarginOrder"
+		method = MethodSapiPostMarginOrder
 	} else if market.Option {
-		method = "eapiPrivatePostOrder"
+		method = MethodEapiPrivatePostOrder
 	}
 	if market.Spot || market.Type == banexg.MarketMargin {
 		test := utils.GetMapVal(args, banexg.ParamTest, false)
@@ -276,11 +276,11 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	var mapSymbol = func(mid string) string {
 		return market.Symbol
 	}
-	if method == "fapiPrivatePostOrder" {
+	if method == MethodFapiPrivatePostOrder {
 		return parseOrder[*FutureOrder](mapSymbol, rsp)
-	} else if method == "dapiPrivatePostOrder" {
+	} else if method == MethodDapiPrivatePostOrder {
 		return parseOrder[*InverseOrder](mapSymbol, rsp)
-	} else if method == "eapiPrivatePostOrder" {
+	} else if method == MethodEapiPrivatePostOrder {
 		return parseOrder[*OptionOrder](mapSymbol, rsp)
 	} else {
 		// spot margin sor

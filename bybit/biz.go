@@ -149,7 +149,7 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 		}
 		res := requestRetry[struct {
 			Rows []*Currency `json:"rows"`
-		}](e, "privateGetV5AssetCoinQueryInfo", params, tryNum)
+		}](e, MethodPrivateGetV5AssetCoinQueryInfo, params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error
 		}
@@ -274,7 +274,7 @@ func makeFetchMarkets(e *Bybit) banexg.FuncFetchMarkets {
 
 func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "spot"
-	list, _, _, err := getMarkets[*SpotMarket](e, "publicGetV5MarketInstrumentsInfo", params)
+	list, _, _, err := getMarkets[*SpotMarket](e, MethodPublicGetV5MarketInstrumentsInfo, params)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +365,7 @@ func getMarketsLoop[T any](e *Bybit, method string, params map[string]interface{
 https://bybit-exchange.github.io/docs/v5/market/instrument
 */
 func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
-	method := "publicGetV5MarketInstrumentsInfo"
+	method := MethodPublicGetV5MarketInstrumentsInfo
 	items, category, err := getMarketsLoop[*FutureMarket](e, method, params)
 	if err != nil {
 		return nil, err
@@ -441,7 +441,7 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 
 func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "option"
-	method := "publicGetV5MarketInstrumentsInfo"
+	method := MethodPublicGetV5MarketInstrumentsInfo
 	items, _, err := getMarketsLoop[*OptionMarket](e, method, params)
 	if err != nil {
 		return nil, err
@@ -560,7 +560,7 @@ func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 	var method string
 	if market.Spot {
 		args["categoty"] = "spot"
-		method = "publicGetV5MarketKline"
+		method = MethodPublicGetV5MarketKline
 	} else {
 		price := utils.PopMapVal(args, "price", "")
 		if market.Linear {
@@ -571,13 +571,13 @@ func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "not support market: %v", market.Type)
 		}
 		if price == "mark" {
-			method = "publicGetV5MarketMarkPriceKline"
+			method = MethodPublicGetV5MarketMarkPriceKline
 		} else if price == "index" {
-			method = "publicGetV5MarketIndexPriceKline"
+			method = MethodPublicGetV5MarketIndexPriceKline
 		} else if price == "premiumIndex" {
-			method = "publicGetV5MarketPremiumIndexPriceKline"
+			method = MethodPublicGetV5MarketPremiumIndexPriceKline
 		} else {
-			method = "publicGetV5MarketKline"
+			method = MethodPublicGetV5MarketKline
 		}
 	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
@@ -661,7 +661,7 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 }
 
 func (e *Bybit) getFundRateHis(marketType string, until int64, args map[string]interface{}) ([]*banexg.FundingRate, bool, *errs.Error) {
-	method := "publicGetV5MarketFundingHistory"
+	method := MethodPublicGetV5MarketFundingHistory
 	tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
 	rsp := requestRetry[struct {
 		Category string      `json:"category"`

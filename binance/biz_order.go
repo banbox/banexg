@@ -17,15 +17,15 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 	args["symbol"] = market.ID
 	args["orderId"] = orderId
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-	method := "privateGetOrder"
+	method := MethodPrivateGetOrder
 	if market.Option {
-		method = "eapiPrivateGetOrder"
+		method = MethodEapiPrivateGetOrder
 	} else if market.Linear {
-		method = "fapiPrivateGetOrder"
+		method = MethodFapiPrivateGetOrder
 	} else if market.Inverse {
-		method = "dapiPrivateGetOrder"
+		method = MethodDapiPrivateGetOrder
 	} else if market.Type == banexg.MarketMargin || marginMode != "" {
-		method = "sapiGetMarginOrder"
+		method = MethodSapiGetMarginOrder
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
 		}
@@ -47,15 +47,15 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 		return market.Symbol
 	}
 	switch method {
-	case "privateGetOrder":
+	case MethodPrivateGetOrder:
 		return parseOrder[*SpotOrder](mapSymbol, rsp)
-	case "eapiPrivateGetOrder":
+	case MethodEapiPrivateGetOrder:
 		return parseOrder[*OptionOrder](mapSymbol, rsp)
-	case "fapiPrivateGetOrder":
+	case MethodFapiPrivateGetOrder:
 		return parseOrder[*FutureOrder](mapSymbol, rsp)
-	case "dapiPrivateGetOrder":
+	case MethodDapiPrivateGetOrder:
 		return parseOrder[*InverseOrder](mapSymbol, rsp)
-	case "sapiGetMarginOrder":
+	case MethodSapiGetMarginOrder:
 		return parseOrder[*MarginOrder](mapSymbol, rsp)
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
@@ -73,15 +73,15 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 	}
 	args["symbol"] = market.ID
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-	method := "privateGetAllOrders"
+	method := MethodPrivateGetAllOrders
 	if market.Option {
-		method = "eapiPrivateGetHistoryOrders"
+		method = MethodEapiPrivateGetHistoryOrders
 	} else if market.Linear {
-		method = "fapiPrivateGetAllOrders"
+		method = MethodFapiPrivateGetAllOrders
 	} else if market.Inverse {
-		method = "dapiPrivateGetAllOrders"
+		method = MethodDapiPrivateGetAllOrders
 	} else if market.Type == banexg.MarketMargin || marginMode != "" {
-		method = "sapiGetMarginAllOrders"
+		method = MethodSapiGetMarginAllOrders
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
 		}
@@ -105,15 +105,15 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 		return market.Symbol
 	}
 	switch method {
-	case "privateGetAllOrders":
+	case MethodPrivateGetAllOrders:
 		return parseOrders[*SpotOrder](mapSymbol, rsp)
-	case "eapiPrivateGetHistoryOrders":
+	case MethodEapiPrivateGetHistoryOrders:
 		return parseOrders[*OptionOrder](mapSymbol, rsp)
-	case "fapiPrivateGetAllOrders":
+	case MethodFapiPrivateGetAllOrders:
 		return parseOrders[*FutureOrder](mapSymbol, rsp)
-	case "dapiPrivateGetAllOrders":
+	case MethodDapiPrivateGetAllOrders:
 		return parseOrders[*InverseOrder](mapSymbol, rsp)
-	case "sapiGetMarginAllOrders":
+	case MethodSapiGetMarginAllOrders:
 		return parseOrders[*MarginOrder](mapSymbol, rsp)
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
@@ -156,9 +156,9 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		marketType, _ = e.GetArgsMarketType(args, "")
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-	method := "privateGetOpenOrders"
+	method := MethodPrivateGetOpenOrders
 	if marketType == banexg.MarketOption {
-		method = "eapiPrivateGetOpenOrders"
+		method = MethodEapiPrivateGetOpenOrders
 		if since > 0 {
 			args["startTime"] = since
 		}
@@ -166,11 +166,11 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 			args["limit"] = limit
 		}
 	} else if marketType == banexg.MarketLinear {
-		method = "fapiPrivateGetOpenOrders"
+		method = MethodFapiPrivateGetOpenOrders
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateGetOpenOrders"
+		method = MethodDapiPrivateGetOpenOrders
 	} else if marketType == banexg.MarketMargin || marginMode != "" {
-		method = "sapiGetMarginOpenOrders"
+		method = MethodSapiGetMarginOpenOrders
 		if marginMode == banexg.MarginIsolated {
 			args["isIsolated"] = true
 			if symbol == "" {
@@ -193,15 +193,15 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		return market.Symbol
 	}
 	switch method {
-	case "privateGetOpenOrders":
+	case MethodPrivateGetOpenOrders:
 		return parseOrders[*SpotOrder](mapSymbol, rsp)
-	case "eapiPrivateGetOpenOrders":
+	case MethodEapiPrivateGetOpenOrders:
 		return parseOrders[*OptionOrder](mapSymbol, rsp)
-	case "fapiPrivateGetOpenOrders":
+	case MethodFapiPrivateGetOpenOrders:
 		return parseOrders[*FutureOrder](mapSymbol, rsp)
-	case "dapiPrivateGetOpenOrders":
+	case MethodDapiPrivateGetOpenOrders:
 		return parseOrders[*InverseOrder](mapSymbol, rsp)
-	case "sapiGetMarginOpenOrders":
+	case MethodSapiGetMarginOpenOrders:
 		return parseOrders[*MarginOrder](mapSymbol, rsp)
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
@@ -227,9 +227,9 @@ func (e *Binance) EditOrder(symbol, orderId, side string, amount, price float64,
 	if market.Option {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "EditOrder not available in option market")
 	} else if market.Linear {
-		method = "fapiPrivatePutOrder"
+		method = MethodFapiPrivatePutOrder
 	} else if market.Inverse {
-		method = "dapiPrivatePutOrder"
+		method = MethodDapiPrivatePutOrder
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "EditOrder not available in spot/margin market")
 	}
@@ -241,9 +241,9 @@ func (e *Binance) EditOrder(symbol, orderId, side string, amount, price float64,
 	var mapSymbol = func(mid string) string {
 		return market.Symbol
 	}
-	if method == "fapiPrivatePutOrder" {
+	if method == MethodFapiPrivatePutOrder {
 		return parseOrder[*FutureOrder](mapSymbol, rsp)
-	} else if method == "dapiPrivatePutOrder" {
+	} else if method == MethodDapiPrivatePutOrder {
 		return parseOrder[*InverseOrder](mapSymbol, rsp)
 	} else {
 		return nil, errs.NewMsg(errs.CodeRunTime, "invalid method for EditOrder: %s", method)
@@ -281,15 +281,15 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	} else {
 		args["orderId"] = id
 	}
-	method := "privateDeleteOrder"
+	method := MethodPrivateDeleteOrder
 	if market.Option {
-		method = "eapiPrivateDeleteOrder"
+		method = MethodEapiPrivateDeleteOrder
 	} else if market.Linear {
-		method = "fapiPrivateDeleteOrder"
+		method = MethodFapiPrivateDeleteOrder
 	} else if market.Inverse {
-		method = "dapiPrivateDeleteOrder"
+		method = MethodDapiPrivateDeleteOrder
 	} else if market.Type == banexg.MarketMargin || marginMode != "" {
-		method = "sapiDeleteMarginOrder"
+		method = MethodSapiDeleteMarginOrder
 		if marginMode == "isolated" {
 			args["isIsolated"] = true
 		}
@@ -302,11 +302,11 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	var mapSymbol = func(mid string) string {
 		return market.Symbol
 	}
-	if method == "fapiPrivateDeleteOrder" {
+	if method == MethodFapiPrivateDeleteOrder {
 		return parseOrder[*FutureOrder](mapSymbol, rsp)
-	} else if method == "dapiPrivateDeleteOrder" {
+	} else if method == MethodDapiPrivateDeleteOrder {
 		return parseOrder[*InverseOrder](mapSymbol, rsp)
-	} else if method == "eapiPrivateDeleteOrder" {
+	} else if method == MethodEapiPrivateDeleteOrder {
 		return parseOrder[*OptionOrder](mapSymbol, rsp)
 	} else {
 		// spot margin sor

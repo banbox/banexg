@@ -171,7 +171,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 		} else if utils.GetMapVal(params, banexg.ParamAccount, "") == "" {
 			params[banexg.ParamAccount] = ":first"
 		}
-		res := e.RequestApiRetry(context.Background(), "sapiGetCapitalConfigGetall", params, tryNum)
+		res := e.RequestApiRetry(context.Background(), MethodSapiGetCapitalConfigGetall, params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error
 		}
@@ -262,10 +262,10 @@ func makeGetRetryWait(e *Binance) func(e *errs.Error) int {
 }
 
 var marketApiMap = map[string]string{
-	banexg.MarketSpot:    "publicGetExchangeInfo",
-	banexg.MarketLinear:  "fapiPublicGetExchangeInfo",
-	banexg.MarketInverse: "dapiPublicGetExchangeInfo",
-	banexg.MarketOption:  "eapiPublicGetExchangeInfo",
+	banexg.MarketSpot:    MethodPublicGetExchangeInfo,
+	banexg.MarketLinear:  MethodFapiPublicGetExchangeInfo,
+	banexg.MarketInverse: MethodDapiPublicGetExchangeInfo,
+	banexg.MarketOption:  MethodEapiPublicGetExchangeInfo,
 }
 
 func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
@@ -571,25 +571,25 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	if until > 0 {
 		args["endTime"] = until
 	}
-	method := "publicGetKlines"
+	method := MethodPublicGetKlines
 	if market.Option {
-		method = "eapiPublicGetKlines"
+		method = MethodEapiPublicGetKlines
 	} else if priceType == "mark" {
 		if market.Inverse {
-			method = "dapiPublicGetMarkPriceKlines"
+			method = MethodDapiPublicGetMarkPriceKlines
 		} else {
-			method = "fapiPublicGetMarkPriceKlines"
+			method = MethodFapiPublicGetMarkPriceKlines
 		}
 	} else if priceType == "index" {
 		if market.Inverse {
-			method = "dapiPublicGetIndexPriceKlines"
+			method = MethodDapiPublicGetIndexPriceKlines
 		} else {
-			method = "fapiPublicGetIndexPriceKlines"
+			method = MethodFapiPublicGetIndexPriceKlines
 		}
 	} else if market.Linear {
-		method = "fapiPublicGetKlines"
+		method = MethodFapiPublicGetKlines
 	} else if market.Inverse {
-		method = "dapiPublicGetKlines"
+		method = MethodDapiPublicGetKlines
 	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
@@ -631,9 +631,9 @@ func (e *Binance) SetLeverage(leverage float64, symbol string, params map[string
 	}
 	var method string
 	if market.Linear {
-		method = "fapiPrivatePostLeverage"
+		method = MethodFapiPrivatePostLeverage
 	} else if market.Inverse {
-		method = "dapiPrivatePostLeverage"
+		method = MethodDapiPrivatePostLeverage
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "%v SetLeverage supports linear and inverse contracts only", e.Name)
 	}
@@ -663,9 +663,9 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params map[string]interface{
 	}
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivateGetLeverageBracket"
+		method = MethodFapiPrivateGetLeverageBracket
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateV2GetLeverageBracket"
+		method = MethodDapiPrivateV2GetLeverageBracket
 	} else {
 		return errs.NewMsg(errs.CodeUnsupportMarket, "LoadLeverageBrackets support linear/inverse contracts only")
 	}
@@ -985,9 +985,9 @@ func (e *Binance) FetchFundingRate(symbol string, params map[string]interface{})
 	args["symbol"] = market.Symbol
 	var method string
 	if market.Linear {
-		method = "fapiPublicGetPremiumIndex"
+		method = MethodFapiPublicGetPremiumIndex
 	} else if market.Inverse {
-		method = "dapiPublicGetPremiumIndex"
+		method = MethodDapiPublicGetPremiumIndex
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport market: %v", market.Type)
 	}
@@ -1012,9 +1012,9 @@ func (e *Binance) FetchFundingRates(symbols []string, params map[string]interfac
 	}
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPublicGetPremiumIndex"
+		method = MethodFapiPublicGetPremiumIndex
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPublicGetPremiumIndex"
+		method = MethodDapiPublicGetPremiumIndex
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport market: %v", marketType)
 	}
@@ -1063,9 +1063,9 @@ func (e *Binance) FetchFundingRateHistory(symbol string, since int64, limit int,
 	args["limit"] = min(limit, maxFundRateBatch)
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPublicGetFundingRate"
+		method = MethodFapiPublicGetFundingRate
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPublicGetFundingRate"
+		method = MethodDapiPublicGetFundingRate
 	} else {
 		return nil, errs.NewMsg(errs.CodeNotSupport, "market not support: %s", marketType)
 	}
@@ -1161,11 +1161,11 @@ func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{
 	}
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPublicV2GetTickerPrice"
+		method = MethodFapiPublicV2GetTickerPrice
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPublicGetTickerPrice"
+		method = MethodDapiPublicGetTickerPrice
 	} else if marketType == banexg.MarketSpot {
-		method = "publicGetTickerPrice"
+		method = MethodPublicGetTickerPrice
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported market: %v", marketType)
 	}

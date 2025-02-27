@@ -35,13 +35,13 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 		return nil, err
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-	method := "privateGetAccount"
+	method := MethodPrivateGetAccount
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivateV2GetAccount"
+		method = MethodFapiPrivateV2GetAccount
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateGetAccount"
+		method = MethodDapiPrivateGetAccount
 	} else if marginMode == "isolated" {
-		method = "sapiGetMarginIsolatedAccount"
+		method = MethodSapiGetMarginIsolatedAccount
 		symbols := utils.GetMapVal(args, "symbols", []string{})
 		if len(symbols) > 0 {
 			b := strings.Builder{}
@@ -60,9 +60,9 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 			args["symbols"] = b.String()
 		}
 	} else if marketType == banexg.MarketMargin || marginMode == banexg.MarginCross {
-		method = "sapiGetMarginAccount"
+		method = MethodSapiGetMarginAccount
 	} else if marketType == "funding" {
-		method = "sapiPostAssetGetFundingAsset"
+		method = MethodSapiPostAssetGetFundingAsset
 	}
 	tryNum := e.GetRetryNum("FetchBalance", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
@@ -73,17 +73,17 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 		return e.SafeCurrencyCode(currId)
 	}
 	switch method {
-	case "privateGetAccount":
+	case MethodPrivateGetAccount:
 		return parseSpotBalances(getCurrCode, rsp)
-	case "sapiGetMarginAccount":
+	case MethodSapiGetMarginAccount:
 		return parseMarginCrossBalances(getCurrCode, rsp)
-	case "sapiGetMarginIsolatedAccount":
+	case MethodSapiGetMarginIsolatedAccount:
 		return parseMarginIsolatedBalances(e, rsp)
-	case "fapiPrivateV2GetAccount":
+	case MethodFapiPrivateV2GetAccount:
 		return parseLinearBalances(getCurrCode, rsp)
-	case "dapiPrivateGetAccount":
+	case MethodDapiPrivateGetAccount:
 		return parseInverseBalances(getCurrCode, rsp)
-	case "sapiPostAssetGetFundingAsset":
+	case MethodSapiPostAssetGetFundingAsset:
 		return parseFundingBalances(e, rsp)
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "unsupport parse balance method: %s", method)
@@ -114,9 +114,9 @@ func (e *Binance) FetchPositionsRisk(symbols []string, params map[string]interfa
 	}
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivateV2GetPositionRisk"
+		method = MethodFapiPrivateV2GetPositionRisk
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateGetPositionRisk"
+		method = MethodDapiPrivateGetPositionRisk
 	} else {
 		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchPositionsRisk support linear/inverse contracts only")
 	}
@@ -153,9 +153,9 @@ func (e *Binance) FetchAccountPositions(symbols []string, params map[string]inte
 	}
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivateV2GetAccount"
+		method = MethodFapiPrivateV2GetAccount
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateGetAccount"
+		method = MethodDapiPrivateGetAccount
 	} else {
 		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchAccountPositions support linear/inverse contracts only")
 	}
@@ -199,9 +199,9 @@ func (e *Binance) FetchIncomeHistory(inType string, symbol string, since int64, 
 	args["incomeType"] = inType
 	var method string
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivateGetIncome"
+		method = MethodFapiPrivateGetIncome
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivateGetIncome"
+		method = MethodDapiPrivateGetIncome
 	} else {
 		return nil, errs.NewMsg(errs.CodeUnsupportMarket, "FetchIncomeHistory not support: "+marketType)
 	}

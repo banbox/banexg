@@ -686,6 +686,19 @@ func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.
 	return 0, nil
 }
 
+func (e *Exchange) Call(method string, params map[string]interface{}) (*HttpRes, *errs.Error) {
+	params = utils.SafeParams(params)
+	tryNum := utils.PopMapVal(params, ParamRetry, -1)
+	if tryNum < 0 {
+		tryNum = e.GetRetryNum(method, 1)
+	}
+	rsp := e.RequestApiRetry(context.Background(), method, params, tryNum)
+	if rsp.Error != nil {
+		return nil, rsp.Error
+	}
+	return rsp, nil
+}
+
 func (e *Exchange) WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error) {
 	return nil, errs.NewMsg(errs.CodeNotImplement, "method not implement")
 }

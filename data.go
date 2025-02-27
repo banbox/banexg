@@ -37,6 +37,7 @@ const (
 	ParamBrokerId           = "brokerId"
 	ParamLimit              = "limit"
 	ParamUntil              = "until"
+	ParamRetry              = "retry"
 )
 
 var (

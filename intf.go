@@ -55,6 +55,7 @@ type BanExchange interface {
 	CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
 	SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
 	CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
+	Call(method string, params map[string]interface{}) (*HttpRes, *errs.Error)
 
 	WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error)
 	UnWatchOrderBooks(symbols []string, params map[string]interface{}) *errs.Error

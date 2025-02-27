@@ -45,7 +45,7 @@ func (e *Bybit) fetchTickers(marketType string, args map[string]interface{}) ([]
 	default:
 		args["category"] = "spot"
 	}
-	method := "publicGetV5MarketTickers"
+	method := MethodPublicGetV5MarketTickers
 	tryNum := e.GetRetryNum("FetchTicker", 1)
 	if marketType == banexg.MarketOption {
 		return parseTickers[*OptionTicker](e, marketType, method, args, tryNum)

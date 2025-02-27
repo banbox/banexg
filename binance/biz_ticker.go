@@ -31,24 +31,24 @@ func (e *Binance) FetchTickers(symbols []string, params map[string]interface{}) 
 	if inMethod == "" {
 		switch marketType {
 		case banexg.MarketOption:
-			method = "eapiPublicGetTicker"
+			method = MethodEapiPublicGetTicker
 		case banexg.MarketLinear:
-			method = "fapiPublicGetTicker24hr"
+			method = MethodFapiPublicGetTicker24hr
 		case banexg.MarketInverse:
-			method = "dapiPublicGetTicker24hr"
+			method = MethodDapiPublicGetTicker24hr
 		default:
-			method = "publicGetTicker24hr"
+			method = MethodPublicGetTicker24hr
 		}
 	} else if inMethod == "bookTicker" {
 		switch marketType {
 		case banexg.MarketOption:
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "option market dont support bookTicker")
 		case banexg.MarketLinear:
-			method = "fapiPublicGetTickerBookTicker"
+			method = MethodFapiPublicGetTickerBookTicker
 		case banexg.MarketInverse:
-			method = "dapiPublicGetTickerBookTicker"
+			method = MethodDapiPublicGetTickerBookTicker
 		default:
-			method = "publicGetTickerBookTicker"
+			method = MethodPublicGetTickerBookTicker
 		}
 	} else {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported method: %v", inMethod)
@@ -89,17 +89,17 @@ func (e *Binance) FetchTicker(symbol string, params map[string]interface{}) (*ba
 	args["symbol"] = market.ID
 	var method string
 	if market.Option {
-		method = "eapiPublicGetTicker"
+		method = MethodEapiPublicGetTicker
 	} else if market.Linear {
-		method = "fapiPublicGetTicker24hr"
+		method = MethodFapiPublicGetTicker24hr
 	} else if market.Inverse {
-		method = "dapiPublicGetTicker24hr"
+		method = MethodDapiPublicGetTicker24hr
 	} else {
 		rolling := utils.PopMapVal(args, banexg.ParamRolling, false)
 		if rolling {
-			method = "publicGetTicker"
+			method = MethodPublicGetTicker
 		} else {
-			method = "publicGetTicker24hr"
+			method = MethodPublicGetTicker24hr
 		}
 	}
 	tryNum := e.GetRetryNum("FetchTicker", 1)
@@ -107,23 +107,23 @@ func (e *Binance) FetchTicker(symbol string, params map[string]interface{}) (*ba
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
-	if method == "eapiPublicGetTicker" {
+	if method == MethodEapiPublicGetTicker {
 		tickers, err := parseTickers[*OptionTicker](rsp, e, market.Type)
 		if len(tickers) > 0 {
 			return tickers[0], err
 		}
 		return nil, err
-	} else if method == "fapiPublicGetTicker24hr" {
+	} else if method == MethodFapiPublicGetTicker24hr {
 		return parseTicker[*LinearTicker](rsp, e, market.Type)
-	} else if method == "dapiPublicGetTicker24hr" {
+	} else if method == MethodDapiPublicGetTicker24hr {
 		tickers, err := parseTickers[*InverseTicker24hr](rsp, e, market.Type)
 		if len(tickers) > 0 {
 			return tickers[0], err
 		}
 		return nil, err
-	} else if method == "publicGetTicker" {
+	} else if method == MethodPublicGetTicker {
 		return parseTicker[*SpotTicker](rsp, e, market.Type)
-	} else if method == "publicGetTicker24hr" {
+	} else if method == MethodPublicGetTicker24hr {
 		return parseTicker[*SpotTicker24hr](rsp, e, market.Type)
 	} else {
 		return nil, errs.NewMsg(errs.CodeNotSupport, "unsupport method: %v", method)
@@ -143,13 +143,13 @@ func (e *Binance) FetchTickerPrice(symbol string, params map[string]interface{})
 	var method string
 	switch marketType {
 	case banexg.MarketOption:
-		method = "eapiPublicGetTicker"
+		method = MethodEapiPublicGetTicker
 	case banexg.MarketLinear:
-		method = "fapiPublicV2GetTickerPrice"
+		method = MethodFapiPublicV2GetTickerPrice
 	case banexg.MarketInverse:
-		method = "dapiPublicGetTickerPrice"
+		method = MethodDapiPublicGetTickerPrice
 	default:
-		method = "publicGetTickerPrice"
+		method = MethodPublicGetTickerPrice
 	}
 	if symbol != "" {
 		market, err := e.GetMarket(symbol)

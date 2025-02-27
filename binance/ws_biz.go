@@ -119,20 +119,20 @@ func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface
 		return nil
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
-	method := "publicPostUserDataStream"
+	method := MethodPublicPostUserDataStream
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivatePostListenKey"
+		method = MethodFapiPrivatePostListenKey
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivatePostListenKey"
+		method = MethodDapiPrivatePostListenKey
 	} else if marginMode == banexg.MarginIsolated {
-		method = "sapiPostUserDataStreamIsolated"
+		method = MethodSapiPostUserDataStreamIsolated
 		marketId, err := e.GetMarketIDByArgs(args, true)
 		if err != nil {
 			return err
 		}
 		args["symbol"] = marketId
 	} else if marketType == banexg.MarketMargin {
-		method = "sapiPostUserDataStream"
+		method = MethodSapiPostUserDataStream
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
@@ -182,15 +182,15 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 			log.Warn("renew listenKey fail, close ws client", zap.String("key", clientKey))
 		}
 	}()
-	method := "publicPutUserDataStream"
+	method := MethodPublicPutUserDataStream
 	if marketType == banexg.MarketLinear {
-		method = "fapiPrivatePutListenKey"
+		method = MethodFapiPrivatePutListenKey
 	} else if marketType == banexg.MarketInverse {
-		method = "dapiPrivatePutListenKey"
+		method = MethodDapiPrivatePutListenKey
 	} else {
 		args[banexg.MidListenKey] = listenKey
 		if marketType == banexg.MarketMargin {
-			method = "sapiPutUserDataStream"
+			method = MethodSapiPutUserDataStream
 			marketId, err := e.GetMarketIDByArgs(args, true)
 			if err != nil {
 				log.Error("keepAliveListenKey fail", zap.Error(err))

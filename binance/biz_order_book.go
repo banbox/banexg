@@ -19,13 +19,13 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params map[string]int
 	}
 	var method string
 	if market.Option {
-		method = "eapiPublicGetDepth"
+		method = MethodEapiPublicGetDepth
 	} else if market.Linear {
-		method = "fapiPublicGetDepth"
+		method = MethodFapiPublicGetDepth
 	} else if market.Inverse {
-		method = "dapiPublicGetDepth"
+		method = MethodDapiPublicGetDepth
 	} else {
-		method = "publicGetDepth"
+		method = MethodPublicGetDepth
 	}
 	tryNum := e.GetRetryNum("FetchOrderBook", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
