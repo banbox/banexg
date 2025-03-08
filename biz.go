@@ -81,6 +81,10 @@ func (e *Exchange) Init() *errs.Error {
 	if err != nil {
 		return err
 	}
+	apiEnv := utils.GetMapVal(e.Options, OptEnv, "")
+	if apiEnv == "test" {
+		e.Hosts.TestNet = true
+	}
 	// 更新手续费比率
 	fees := utils.GetMapVal(e.Options, OptFees, map[string]map[string]float64{})
 	e.SetFees(fees)

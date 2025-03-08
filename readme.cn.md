@@ -1,6 +1,5 @@
 # BanExg - 数字货币交易所SDK
-一个Go版本的数字货币交易SDK，主要接口和[CCXT](https://github.com/ccxt/ccxt)保持一致。  
-注意：此项目目前处于预发行状态，主要接口测试通过，但尚未进行长期生产环境测试。  
+一个Go版本的数字货币交易SDK  
 目前支持交易所：`binance`, `china`。都实现了接口`BanExchange`  
 
 # 如何使用
@@ -173,6 +172,7 @@ SetFees(fees map[string]map[string]float64)
 CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
 SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
 CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
+Call(method string, params map[string]interface{}) (*HttpRes, *errs.Error)
 
 // websocket相关：订阅订单簿、K线、标记价格、交易流、余额、仓位、账户配置
 WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error)

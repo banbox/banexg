@@ -1,6 +1,5 @@
 # BanExg - CryptoCurrency Exchange Trading Library
-A Go library for cryptocurrency trading, whose most interfaces are consistent with [CCXT](https://github.com/ccxt/ccxt).  
-Note: This project is currently in the pre-release state, the main interface test has passed, but it has not yet been tested in the long-term production environment.  
+A Go library for cryptocurrency trading.    
 Currently supported exchanges: `binance`, `china`. Both implement the interface `BanExchange`  
 
 # How to Use
@@ -174,6 +173,7 @@ SetFees(fees map[string]map[string]float64)
 CalculateFee(symbol, odType, side string, amount float64, price float64, isMaker bool, params map[string]interface{}) (*Fee, *errs.Error)
 SetLeverage(leverage float64, symbol string, params map[string]interface{}) (map[string]interface{}, *errs.Error)
 CalcMaintMargin(symbol string, cost float64) (float64, *errs.Error)
+Call(method string, params map[string]interface{}) (*HttpRes, *errs.Error)
 
 // WebSocket related: watch orderbook, klines, mark price, trades, balance, positions, account config
 WatchOrderBooks(symbols []string, limit int, params map[string]interface{}) (chan *OrderBook, *errs.Error)

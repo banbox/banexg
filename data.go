@@ -105,6 +105,7 @@ const (
 	OptDumpPath        = "DumpPath"
 	OptDumpBatchSize   = "DumpBatchSize"
 	OptReplayPath      = "ReplayPath"
+	OptEnv             = "Env"
 )
 
 const (
