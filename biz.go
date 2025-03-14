@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -837,7 +838,7 @@ func (e *Exchange) DumpWS(name string, data interface{}) {
 	}
 	item := &WsLog{
 		Name:    name,
-		TimeMS:  time.Now().UnixMilli(),
+		TimeMS:  bntp.UTCStamp(),
 		Content: dataStr,
 	}
 	e.WsCache = append(e.WsCache, item)
@@ -1023,7 +1024,7 @@ func (e *Exchange) MilliSeconds() int64 {
 	if e.WsDecoder != nil {
 		return e.WsReplayTo
 	}
-	return time.Now().UnixMilli()
+	return bntp.UTCStamp()
 }
 
 func (e *Exchange) Nonce() int64 {

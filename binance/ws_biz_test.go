@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/h2non/gock"
@@ -38,7 +39,7 @@ func testWatchOHLCVs(t *testing.T, isFake bool) {
 
 	var err *errs.Error
 	jobs := [][2]string{
-		{"ETH/USDT:USDT", "1m"},
+		{"ETH/USDT", "1s"},
 	}
 	out, err_ := exg.WatchOHLCVs(jobs, nil)
 	if err_ != nil {
@@ -150,7 +151,7 @@ mainFor:
 				log.Info("read out chan fail, break")
 				break mainFor
 			}
-			timeStr := time.Now().Format("2006-01-02 15:04:05")
+			timeStr := bntp.Now().Format("2006-01-02 15:04:05")
 			builder := strings.Builder{}
 			builder.WriteString("============== " + timeStr + " ===============\n")
 			for symbol, price := range data {

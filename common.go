@@ -2,6 +2,7 @@ package banexg
 
 import (
 	"fmt"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -11,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func (p *Precision) ToString() string {
@@ -72,7 +72,7 @@ func (l *CodeLimits) ToString() string {
 
 func (b *Balances) Init() *Balances {
 	if b.TimeStamp == 0 {
-		b.TimeStamp = time.Now().UnixMilli()
+		b.TimeStamp = bntp.UTCStamp()
 	}
 	if b.Free == nil {
 		b.Free = map[string]float64{}
@@ -431,7 +431,7 @@ func GetHostRetryWait(host string, randAdd bool) int64 {
 	var waitMS int64
 	hostWaitLock.Lock()
 	if until, ok := HostRetryWaits[host]; ok {
-		waitMS = until - time.Now().UnixMilli()
+		waitMS = until - bntp.UTCStamp()
 		if waitMS < 0 {
 			delete(HostRetryWaits, host)
 		} else if randAdd {
@@ -446,7 +446,7 @@ func GetHostRetryWait(host string, randAdd bool) int64 {
 
 func SetHostRetryWait(host string, waitMS int64) {
 	hostWaitLock.Lock()
-	HostRetryWaits[host] = time.Now().UnixMilli() + waitMS
+	HostRetryWaits[host] = bntp.UTCStamp() + waitMS
 	hostWaitLock.Unlock()
 }
 

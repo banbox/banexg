@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/shopspring/decimal"
@@ -166,7 +167,7 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 	expiry := int64(0) // 过期时间，13位毫秒
 	if len(parts) > 1 && parts[1].Type == utils.StrInt {
 		// 第二部分是数字，表示期货
-		var curTime = time.Now()
+		var curTime = bntp.Now()
 		p1val := parts[1].Val
 		if len(p1val) == 3 {
 			// 至少两部分，第二部分是3个数字，改为4个数字
