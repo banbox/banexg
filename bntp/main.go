@@ -39,6 +39,19 @@ var (
 	cachedOffset atomic.Int64
 	// 缓存有效期（毫秒）
 	cacheValidDurationMs int64 = 1000 // 默认1秒
+	// 默认时区
+	LangCode = LangNone
+)
+
+const (
+	LangNone   = "none"
+	LangZhCN   = "zh-CN"
+	LangZhHK   = "zh-HK"
+	LangZhTW   = "zh-TW"
+	LangJaJP   = "ja-JP"
+	LangKoKr   = "ko-KR"
+	LangZhSg   = "zh-SG"
+	LangGlobal = "global"
 )
 
 // 按地区组织的NTP服务器
@@ -95,6 +108,9 @@ func WithRandomRate(rate float64) Option {
 // WithCountryCode 设置国家代码
 func WithCountryCode(code string) Option {
 	return func(ts *TimeSync) {
+		if _, ok := regionNTPServers[code]; !ok {
+			panic(fmt.Sprintf("invalid lang code for bntp: %s", code))
+		}
 		ts.langCode = code
 	}
 }
@@ -157,11 +173,15 @@ func SetTimeSync(options ...Option) *TimeSync {
 
 	// 创建新实例或重用现有实例
 	if timeSyncer == nil {
+		curLang := LangCode
+		if curLang == LangNone {
+			curLang = LangGlobal
+		}
 		timeSyncer = &TimeSync{
 			syncPeriod:  24 * time.Hour,
 			filePath:    filepath.Join(os.TempDir(), "ban_ntp.json"),
 			randomRate:  0.1,
-			langCode:    "global",
+			langCode:    curLang,
 			loopRefresh: false, // 默认不启用定期刷新
 			stopChan:    make(chan struct{}),
 		}
@@ -387,6 +407,10 @@ func (ts *TimeSync) syncTime() error {
 func UTCStamp() int64 {
 	nowMs := time.Now().UnixMilli()
 
+	if LangCode == LangNone {
+		return nowMs
+	}
+
 	// 快速路径: 检查缓存是否有效
 	lastUpdate := lastUpdateTimeMs.Load()
 	cacheDuration := atomic.LoadInt64(&cacheValidDurationMs)
@@ -425,6 +449,9 @@ func Now() time.Time {
 
 // GetTimeOffset get time offset in milliseconds(>0 means local < standard)
 func GetTimeOffset() int64 {
+	if LangCode == LangNone {
+		return 0
+	}
 	ts := GetTimeSync()
 
 	// 如果未初始化，尝试初始化
