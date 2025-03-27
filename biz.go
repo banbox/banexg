@@ -29,15 +29,29 @@ import (
 
 func (e *Exchange) Init() *errs.Error {
 	e.HttpClient = &http.Client{}
+	// 代理解析：优先传入Proxy，其次环境变量HTTP(S)_PROXY，最后系统代理配置
 	proxyUrl := utils.GetMapVal(e.Options, OptProxy, "")
+	if proxyUrl == "" {
+		proxyUrl = utils.GetSystemEnvProxy()
+		if proxyUrl == "" {
+			prx, err := utils.GetSystemProxy()
+			if err != nil {
+				log.Error("GetSystemProxy fail, skip", zap.Error(err))
+			} else if prx != nil {
+				proxyUrl = fmt.Sprintf("%s://%s:%s", prx.Protocol, prx.Host, prx.Port)
+			}
+		}
+	} else if proxyUrl == "no" {
+		proxyUrl = ""
+	}
 	if proxyUrl != "" {
 		proxy, err := url.Parse(proxyUrl)
 		if err != nil {
 			return errs.New(errs.CodeParamInvalid, err)
 		}
-		e.Proxy = proxy
+		e.Proxy = http.ProxyURL(proxy)
 		e.HttpClient.Transport = &http.Transport{
-			Proxy: http.ProxyURL(proxy),
+			Proxy: e.Proxy,
 		}
 	}
 	e.parseOptCreds()

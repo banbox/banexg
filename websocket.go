@@ -160,10 +160,10 @@ func (ws *WebSocket) SetID(v int) {
 func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*AsyncConn, error) {
 	var dialer = &websocket.Dialer{}
 	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
-	var defProxy *url.URL
+	var defProxy func(*http.Request) (*url.URL, error)
 	var proxy = utils.GetMapVal(args, ParamProxy, defProxy)
 	if proxy != nil {
-		dialer.Proxy = http.ProxyURL(proxy)
+		dialer.Proxy = proxy
 	}
 	res := &WebSocket{id: id, dialer: dialer, url: reqUrl, onReConnect: onReConnect}
 	err := res.initConn()

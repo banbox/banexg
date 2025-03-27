@@ -37,7 +37,7 @@ type Exchange struct {
 	Apis    map[string]*Entry         // 所有API的路径
 	Has     map[string]map[string]int // 是否定义了某个API
 	Options map[string]interface{}    // 用户传入的配置
-	Proxy   *url.URL
+	Proxy   func(*http.Request) (*url.URL, error)
 	onHost  func(name string) string
 
 	CredKeys   map[string]bool     // cred keys required for exchange

@@ -38,3 +38,14 @@ func runSonicItem[T comparable](name string, val T) {
 			zap.String("text", text), zap.String("output", output))
 	}
 }
+
+func TestGetSystemProxy(t *testing.T) {
+	prx, err := GetSystemProxy()
+	if err != nil {
+		panic(err)
+	}
+	systemProxy := fmt.Sprintf("%s://%s:%s", prx.Protocol, prx.Host, prx.Port)
+
+	envProxy := GetSystemEnvProxy()
+	fmt.Printf("envProxy: %s, systemProxy: %s\n", envProxy, systemProxy)
+}

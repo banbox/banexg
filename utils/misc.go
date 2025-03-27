@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"os"
+	"os/exec"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -364,4 +367,175 @@ func MD5(data []byte) string {
 	hashInBytes := hash.Sum(nil)
 
 	return hex.EncodeToString(hashInBytes)
+}
+
+func GetSystemEnvProxy() string {
+	proxyEnvVars := []string{
+		"HTTPS_PROXY",
+		"HTTP_PROXY",
+	}
+
+	for _, envVar := range proxyEnvVars {
+		proxyStr := os.Getenv(envVar)
+		if proxyStr != "" {
+			return proxyStr
+		}
+	}
+
+	return ""
+}
+
+// ProxyInfo 包含代理服务器的详细信息
+type ProxyInfo struct {
+	Host     string
+	Port     string
+	Protocol string // http, https, socks等
+}
+
+// GetSystemProxy 获取系统代理设置
+func GetSystemProxy() (*ProxyInfo, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return getWindowsProxy()
+	case "darwin":
+		return getMacOSProxy()
+	case "linux":
+		return getLinuxProxy()
+	default:
+		return nil, errors.New("unsupported operating system")
+	}
+}
+
+// getWindowsProxy 从 Windows 注册表获取代理设置
+func getWindowsProxy() (*ProxyInfo, error) {
+	cmd := exec.Command("reg", "query", "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	proxyEnable := false
+	var proxyServer string
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.Contains(line, "ProxyEnable") {
+			proxyEnable = strings.Contains(line, "0x1")
+		}
+		if strings.Contains(line, "ProxyServer") {
+			parts := strings.Split(line, "REG_SZ")
+			if len(parts) > 1 {
+				proxyServer = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	if !proxyEnable || proxyServer == "" {
+		return nil, errors.New("no proxy configured")
+	}
+
+	// 解析代理服务器字符串
+	parts := strings.Split(proxyServer, ":")
+	if len(parts) != 2 {
+		return nil, errors.New("invalid proxy server format")
+	}
+
+	return &ProxyInfo{
+		Host:     parts[0],
+		Port:     parts[1],
+		Protocol: "http", // Windows 注册表通常只返回 HTTP 代理
+	}, nil
+}
+
+// getMacOSProxy 从 macOS 系统偏好设置获取代理
+func getMacOSProxy() (*ProxyInfo, error) {
+	cmd := exec.Command("osascript", "-e",
+		`tell application "System Events"
+			tell network preferences
+				set httpProxy to HTTP proxy
+				set httpProxyPort to HTTP proxy port
+				if httpProxy is not "" then
+					return httpProxy & ":" & httpProxyPort
+				end if
+			end tell
+		end tell`)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	proxyStr := strings.TrimSpace(string(output))
+	if proxyStr == "" {
+		return nil, errors.New("no proxy configured")
+	}
+
+	parts := strings.Split(proxyStr, ":")
+	if len(parts) != 2 {
+		return nil, errors.New("invalid proxy server format")
+	}
+
+	return &ProxyInfo{
+		Host:     parts[0],
+		Port:     parts[1],
+		Protocol: "http",
+	}, nil
+}
+
+// getLinuxProxy 从 Linux 系统获取代理设置
+func getLinuxProxy() (*ProxyInfo, error) {
+	// 尝试使用 gsettings
+	cmd := exec.Command("gsettings", "get", "org.gnome.system.proxy", "mode")
+	output, err := cmd.Output()
+	if err == nil && strings.Contains(string(output), "manual") {
+		// 如果是手动模式，获取 HTTP 代理
+		cmd = exec.Command("gsettings", "get", "org.gnome.system.proxy.http", "host")
+		host, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+
+		cmd = exec.Command("gsettings", "get", "org.gnome.system.proxy.http", "port")
+		port, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+
+		hostStr := strings.Trim(strings.TrimSpace(string(host)), "'")
+		portStr := strings.Trim(strings.TrimSpace(string(port)), "'")
+
+		if hostStr != "" && portStr != "" {
+			return &ProxyInfo{
+				Host:     hostStr,
+				Port:     portStr,
+				Protocol: "http",
+			}, nil
+		}
+	}
+
+	// 如果 gsettings 失败，尝试使用 NetworkManager
+	cmd = exec.Command("nmcli", "-t", "-f", "proxy.http.method,proxy.http.url", "connection", "show", "--active")
+	output, err = cmd.Output()
+	if err == nil {
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			parts := strings.Split(line, ":")
+			if len(parts) == 2 && parts[0] == "manual" {
+				// 解析 URL
+				proxyURL := strings.TrimSpace(parts[1])
+				if proxyURL != "" {
+					// 假设 URL 格式为 http://host:port
+					urlParts := strings.Split(proxyURL, ":")
+					if len(urlParts) == 3 {
+						return &ProxyInfo{
+							Host:     strings.TrimPrefix(urlParts[1], "//"),
+							Port:     urlParts[2],
+							Protocol: "http",
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
+	return nil, errors.New("no proxy configured")
 }
