@@ -77,6 +77,7 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 			e.handleOrderUpdate(client, msg)
 		case "ACCOUNT_CONFIG_UPDATE":
 			e.handleAccountConfigUpdate(client, msg)
+		case "TRADE_LITE":
 		default:
 			log.Warn("unhandle ws msg", zap.String("msg", item.Text))
 		}

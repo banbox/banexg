@@ -402,7 +402,8 @@ func GetSystemProxy() (*ProxyInfo, error) {
 	case "linux":
 		return getLinuxProxy()
 	default:
-		return nil, errors.New("unsupported operating system")
+		log.Warn("GetSystemProxy unsupported", zap.String("os", runtime.GOOS))
+		return nil, nil
 	}
 }
 
@@ -430,7 +431,7 @@ func getWindowsProxy() (*ProxyInfo, error) {
 	}
 
 	if !proxyEnable || proxyServer == "" {
-		return nil, errors.New("no proxy configured")
+		return nil, nil
 	}
 
 	// 解析代理服务器字符串
@@ -466,7 +467,7 @@ func getMacOSProxy() (*ProxyInfo, error) {
 
 	proxyStr := strings.TrimSpace(string(output))
 	if proxyStr == "" {
-		return nil, errors.New("no proxy configured")
+		return nil, nil
 	}
 
 	parts := strings.Split(proxyStr, ":")
@@ -537,5 +538,5 @@ func getLinuxProxy() (*ProxyInfo, error) {
 		}
 	}
 
-	return nil, errors.New("no proxy configured")
+	return nil, nil
 }
