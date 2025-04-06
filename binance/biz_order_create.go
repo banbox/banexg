@@ -9,10 +9,9 @@ import (
 )
 
 func isBnbOrderType(market *banexg.Market, odType string) bool {
-	if m, ok := market.Info.(*BnbMarket); ok {
-		return utils.ArrContains(m.OrderTypes, odType)
-	}
-	return false
+	var allows []string
+	allows = utils.GetMapVal(market.Info, "orderTypes", allows)
+	return utils.ArrContains(allows, odType)
 }
 
 /*

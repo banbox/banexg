@@ -207,12 +207,14 @@ type HttpReq struct {
 }
 
 type HttpRes struct {
-	AccName string      `json:"acc_name"`
-	Url     string      `json:"url"`
-	Status  int         `json:"status"`
-	Headers http.Header `json:"headers"`
-	Content string      `json:"content"`
-	Error   *errs.Error
+	AccName  string      `json:"acc_name"`
+	Url      string      `json:"url"`
+	Status   int         `json:"status"`
+	Headers  http.Header `json:"headers"`
+	Content  string      `json:"content"`
+	IsCache  bool
+	CacheKey string
+	Error    *errs.Error
 }
 
 type ApiRes[T any] struct {
@@ -240,7 +242,7 @@ type Currency struct {
 	Fee       float64
 	Fees      map[string]float64
 	Limits    *CodeLimits
-	Info      interface{}
+	Info      map[string]interface{}
 }
 
 type ChainNetwork struct {
@@ -253,7 +255,7 @@ type ChainNetwork struct {
 	Deposit   bool
 	Withdraw  bool
 	Limits    *CodeLimits
-	Info      interface{}
+	Info      map[string]interface{}
 }
 
 type CodeLimits struct {
@@ -272,41 +274,42 @@ type LimitRange struct {
  */
 
 type Market struct {
-	ID             string        `json:"id"`
-	LowercaseID    string        `json:"lowercaseId"`
-	Symbol         string        `json:"symbol"`
-	Base           string        `json:"base"`
-	Quote          string        `json:"quote"`
-	Settle         string        `json:"settle"`
-	BaseID         string        `json:"baseId"`
-	QuoteID        string        `json:"quoteId"`
-	SettleID       string        `json:"settleId"`
-	ExgReal        string        `json:"exgReal"`
-	Type           string        `json:"type"`     // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
-	Combined       bool          `json:"combined"` // 是否是二次组合的数据
-	Spot           bool          `json:"spot"`     // 现货市场
-	Margin         bool          `json:"margin"`   // 保证金杠杆市场
-	Swap           bool          `json:"swap"`     // 期货永续合约市场
-	Future         bool          `json:"future"`   // 期货市场
-	Option         bool          `json:"option"`   // 期权市场
-	Active         bool          `json:"active"`   // 是否可交易
-	Contract       bool          `json:"contract"` // 是否是合约
-	Linear         bool          `json:"linear"`   // usd-based contract
-	Inverse        bool          `json:"inverse"`  // coin-based contract
-	Taker          float64       `json:"taker"`    // 吃单方费率
-	Maker          float64       `json:"maker"`    // 挂单方费率
-	ContractSize   float64       `json:"contractSize"`
-	Expiry         int64         `json:"expiry"` // 过期的13毫秒数
-	ExpiryDatetime string        `json:"expiryDatetime"`
-	Strike         float64       `json:"strike"`
-	OptionType     string        `json:"optionType"`
-	DayTimes       [][2]int64    `json:"dayTimes"`   // 日盘交易时间
-	NightTimes     [][2]int64    `json:"nightTimes"` // 夜盘交易时间
-	Precision      *Precision    `json:"precision"`
-	Limits         *MarketLimits `json:"limits"`
-	Created        int64         `json:"created"`
-	FeeSide        string        `json:"feeSide"` // get/give/base/quote/other
-	Info           interface{}   `json:"info"`
+	ID             string                 `json:"id"`
+	LowercaseID    string                 `json:"lowercaseId"`
+	Symbol         string                 `json:"symbol"`
+	Base           string                 `json:"base"`
+	Quote          string                 `json:"quote"`
+	Settle         string                 `json:"settle"`
+	BaseID         string                 `json:"baseId"`
+	QuoteID        string                 `json:"quoteId"`
+	SettleID       string                 `json:"settleId"`
+	ExgReal        string                 `json:"exgReal"`
+	Type           string                 `json:"type"`     // spot/linear/inverse/option 无法区分margin 和ccxt的值不同
+	Combined       bool                   `json:"combined"` // 是否是二次组合的数据
+	Spot           bool                   `json:"spot"`     // 现货市场
+	Margin         bool                   `json:"margin"`   // 保证金杠杆市场
+	Swap           bool                   `json:"swap"`     // 期货永续合约市场
+	Future         bool                   `json:"future"`   // 期货市场
+	Option         bool                   `json:"option"`   // 期权市场
+	Active         bool                   `json:"active"`   // 是否可交易
+	Contract       bool                   `json:"contract"` // 是否是合约
+	Linear         bool                   `json:"linear"`   // usd-based contract
+	Inverse        bool                   `json:"inverse"`  // coin-based contract
+	Taker          float64                `json:"taker"`    // 吃单方费率
+	Maker          float64                `json:"maker"`    // 挂单方费率
+	ContractSize   float64                `json:"contractSize"`
+	Expiry         int64                  `json:"expiry"` // 过期的13毫秒数
+	ExpiryDatetime string                 `json:"expiryDatetime"`
+	Strike         float64                `json:"strike"`
+	OptionType     string                 `json:"optionType"`
+	DayTimes       [][2]int64             `json:"dayTimes"`   // 日盘交易时间
+	NightTimes     [][2]int64             `json:"nightTimes"` // 夜盘交易时间
+	Precision      *Precision             `json:"precision"`
+	Limits         *MarketLimits          `json:"limits"`
+	Created        int64                  `json:"created"`
+	FeeSide        string                 `json:"feeSide"` // get/give/base/quote/other
+	Info           map[string]interface{} `json:"info"`
+	Fee            interface{}
 }
 
 type Precision struct {
@@ -333,27 +336,27 @@ type MarketMap = map[string]*Market
 type MarketArrMap = map[string][]*Market
 
 type Ticker struct {
-	Symbol        string      `json:"symbol"`
-	TimeStamp     int64       `json:"timestamp"`
-	Bid           float64     `json:"bid"`
-	BidVolume     float64     `json:"bidVolume"`
-	Ask           float64     `json:"ask"`
-	AskVolume     float64     `json:"askVolume"`
-	High          float64     `json:"high"`
-	Low           float64     `json:"low"`
-	Open          float64     `json:"open"`
-	Close         float64     `json:"close"`
-	Last          float64     `json:"last"`
-	Change        float64     `json:"change"`
-	Percentage    float64     `json:"percentage"`
-	Average       float64     `json:"average"`
-	Vwap          float64     `json:"vwap"`
-	BaseVolume    float64     `json:"baseVolume"`
-	QuoteVolume   float64     `json:"quoteVolume"`
-	PreviousClose float64     `json:"previousClose"`
-	MarkPrice     float64     `json:"markPrice"`
-	IndexPrice    float64     `json:"indexPrice"`
-	Info          interface{} `json:"info"`
+	Symbol        string                 `json:"symbol"`
+	TimeStamp     int64                  `json:"timestamp"`
+	Bid           float64                `json:"bid"`
+	BidVolume     float64                `json:"bidVolume"`
+	Ask           float64                `json:"ask"`
+	AskVolume     float64                `json:"askVolume"`
+	High          float64                `json:"high"`
+	Low           float64                `json:"low"`
+	Open          float64                `json:"open"`
+	Close         float64                `json:"close"`
+	Last          float64                `json:"last"`
+	Change        float64                `json:"change"`
+	Percentage    float64                `json:"percentage"`
+	Average       float64                `json:"average"`
+	Vwap          float64                `json:"vwap"`
+	BaseVolume    float64                `json:"baseVolume"`
+	QuoteVolume   float64                `json:"quoteVolume"`
+	PreviousClose float64                `json:"previousClose"`
+	MarkPrice     float64                `json:"markPrice"`
+	IndexPrice    float64                `json:"indexPrice"`
+	Info          map[string]interface{} `json:"info"`
 }
 
 /*
@@ -385,7 +388,7 @@ type Balances struct {
 	Total          map[string]float64
 	Assets         map[string]*Asset
 	IsolatedAssets map[string]map[string]*Asset // 逐仓账户资产，键是symbol
-	Info           interface{}
+	Info           map[string]interface{}
 }
 
 type Asset struct {
@@ -398,85 +401,85 @@ type Asset struct {
 }
 
 type Position struct {
-	ID               string      `json:"id"`
-	Symbol           string      `json:"symbol"`
-	TimeStamp        int64       `json:"timestamp"`
-	Isolated         bool        `json:"isolated"`                    // 隔离
-	Hedged           bool        `json:"hedged"`                      // 对冲
-	Side             string      `json:"side"`                        // long or short
-	Contracts        float64     `json:"contracts"`                   // 合约数量
-	ContractSize     float64     `json:"contractSize"`                // 单份合约价值
-	EntryPrice       float64     `json:"entryPrice"`                  // 入场价格
-	MarkPrice        float64     `json:"markPrice"`                   // 标记价格
-	Notional         float64     `json:"notional"`                    // 名义价值
-	Leverage         int         `json:"leverage"`                    // 杠杆倍数
-	Collateral       float64     `json:"collateral"`                  // 当前保证金：初始保证金+未实现盈亏
-	InitialMargin    float64     `json:"initialMargin"`               // 初始保证金额
-	MaintMargin      float64     `json:"maintenanceMargin"`           // 维持保证金额
-	InitialMarginPct float64     `json:"initialMarginPercentage"`     // 初始保证金率
-	MaintMarginPct   float64     `json:"maintenanceMarginPercentage"` // 维持保证金率
-	UnrealizedPnl    float64     `json:"unrealizedPnl"`               // 未实现盈亏
-	LiquidationPrice float64     `json:"liquidationPrice"`            // 清算价格
-	MarginMode       string      `json:"marginMode"`                  // cross/isolated
-	MarginRatio      float64     `json:"marginRatio"`
-	Percentage       float64     `json:"percentage"` // 未实现盈亏百分比
-	Info             interface{} `json:"info"`
+	ID               string                 `json:"id"`
+	Symbol           string                 `json:"symbol"`
+	TimeStamp        int64                  `json:"timestamp"`
+	Isolated         bool                   `json:"isolated"`                    // 隔离
+	Hedged           bool                   `json:"hedged"`                      // 对冲
+	Side             string                 `json:"side"`                        // long or short
+	Contracts        float64                `json:"contracts"`                   // 合约数量
+	ContractSize     float64                `json:"contractSize"`                // 单份合约价值
+	EntryPrice       float64                `json:"entryPrice"`                  // 入场价格
+	MarkPrice        float64                `json:"markPrice"`                   // 标记价格
+	Notional         float64                `json:"notional"`                    // 名义价值
+	Leverage         int                    `json:"leverage"`                    // 杠杆倍数
+	Collateral       float64                `json:"collateral"`                  // 当前保证金：初始保证金+未实现盈亏
+	InitialMargin    float64                `json:"initialMargin"`               // 初始保证金额
+	MaintMargin      float64                `json:"maintenanceMargin"`           // 维持保证金额
+	InitialMarginPct float64                `json:"initialMarginPercentage"`     // 初始保证金率
+	MaintMarginPct   float64                `json:"maintenanceMarginPercentage"` // 维持保证金率
+	UnrealizedPnl    float64                `json:"unrealizedPnl"`               // 未实现盈亏
+	LiquidationPrice float64                `json:"liquidationPrice"`            // 清算价格
+	MarginMode       string                 `json:"marginMode"`                  // cross/isolated
+	MarginRatio      float64                `json:"marginRatio"`
+	Percentage       float64                `json:"percentage"` // 未实现盈亏百分比
+	Info             map[string]interface{} `json:"info"`
 }
 
 type Order struct {
-	Info                interface{} `json:"info"`
-	ID                  string      `json:"id"`
-	ClientOrderID       string      `json:"clientOrderId"`
-	Datetime            string      `json:"datetime"`
-	Timestamp           int64       `json:"timestamp"`
-	LastTradeTimestamp  int64       `json:"lastTradeTimestamp"`
-	LastUpdateTimestamp int64       `json:"lastUpdateTimestamp"`
-	Status              string      `json:"status"`
-	Symbol              string      `json:"symbol"`
-	Type                string      `json:"type"`
-	TimeInForce         string      `json:"timeInForce"`
-	PositionSide        string      `json:"positionSide"`
-	Side                string      `json:"side"`
-	Price               float64     `json:"price"`
-	Average             float64     `json:"average"`
-	Amount              float64     `json:"amount"`
-	Filled              float64     `json:"filled"`
-	Remaining           float64     `json:"remaining"`
-	TriggerPrice        float64     `json:"triggerPrice"`
-	StopPrice           float64     `json:"stopPrice"`
-	TakeProfitPrice     float64     `json:"takeProfitPrice"`
-	StopLossPrice       float64     `json:"stopLossPrice"`
-	Cost                float64     `json:"cost"`
-	PostOnly            bool        `json:"postOnly"`
-	ReduceOnly          bool        `json:"reduceOnly"`
-	Trades              []*Trade    `json:"trades"`
-	Fee                 *Fee        `json:"fee"`
+	Info                map[string]interface{} `json:"info"`
+	ID                  string                 `json:"id"`
+	ClientOrderID       string                 `json:"clientOrderId"`
+	Datetime            string                 `json:"datetime"`
+	Timestamp           int64                  `json:"timestamp"`
+	LastTradeTimestamp  int64                  `json:"lastTradeTimestamp"`
+	LastUpdateTimestamp int64                  `json:"lastUpdateTimestamp"`
+	Status              string                 `json:"status"`
+	Symbol              string                 `json:"symbol"`
+	Type                string                 `json:"type"`
+	TimeInForce         string                 `json:"timeInForce"`
+	PositionSide        string                 `json:"positionSide"`
+	Side                string                 `json:"side"`
+	Price               float64                `json:"price"`
+	Average             float64                `json:"average"`
+	Amount              float64                `json:"amount"`
+	Filled              float64                `json:"filled"`
+	Remaining           float64                `json:"remaining"`
+	TriggerPrice        float64                `json:"triggerPrice"`
+	StopPrice           float64                `json:"stopPrice"`
+	TakeProfitPrice     float64                `json:"takeProfitPrice"`
+	StopLossPrice       float64                `json:"stopLossPrice"`
+	Cost                float64                `json:"cost"`
+	PostOnly            bool                   `json:"postOnly"`
+	ReduceOnly          bool                   `json:"reduceOnly"`
+	Trades              []*Trade               `json:"trades"`
+	Fee                 *Fee                   `json:"fee"`
 }
 
 type Trade struct {
-	ID        string      `json:"id"`        // 交易ID
-	Symbol    string      `json:"symbol"`    // 币种ID
-	Side      string      `json:"side"`      // buy/sell
-	Type      string      `json:"type"`      // market/limit
-	Amount    float64     `json:"amount"`    // 当前交易的数量
-	Price     float64     `json:"price"`     // 价格
-	Cost      float64     `json:"cost"`      // 当前交易花费
-	Order     string      `json:"order"`     // 当前交易所属订单号
-	Timestamp int64       `json:"timestamp"` // 时间戳
-	Maker     bool        `json:"maker"`     // 是否maker
-	Fee       *Fee        `json:"fee"`       // 手续费
-	Info      interface{} `json:"info"`
+	ID        string                 `json:"id"`        // 交易ID
+	Symbol    string                 `json:"symbol"`    // 币种ID
+	Side      string                 `json:"side"`      // buy/sell
+	Type      string                 `json:"type"`      // market/limit
+	Amount    float64                `json:"amount"`    // 当前交易的数量
+	Price     float64                `json:"price"`     // 价格
+	Cost      float64                `json:"cost"`      // 当前交易花费
+	Order     string                 `json:"order"`     // 当前交易所属订单号
+	Timestamp int64                  `json:"timestamp"` // 时间戳
+	Maker     bool                   `json:"maker"`     // 是否maker
+	Fee       *Fee                   `json:"fee"`       // 手续费
+	Info      map[string]interface{} `json:"info"`
 }
 
 type MyTrade struct {
 	Trade
-	Filled     float64     `json:"filled"`     // 订单累计成交量（不止当前交易）
-	ClientID   string      `json:"clientID"`   // 客户端订单ID
-	Average    float64     `json:"average"`    // 平均成交价格
-	State      string      `json:"state"`      // 状态
-	PosSide    string      `json:"posSide"`    // 持仓方向 long/short
-	ReduceOnly bool        `json:"reduceOnly"` // 是否是只减仓单
-	Info       interface{} `json:"info"`
+	Filled     float64                `json:"filled"`     // 订单累计成交量（不止当前交易）
+	ClientID   string                 `json:"clientID"`   // 客户端订单ID
+	Average    float64                `json:"average"`    // 平均成交价格
+	State      string                 `json:"state"`      // 状态
+	PosSide    string                 `json:"posSide"`    // 持仓方向 long/short
+	ReduceOnly bool                   `json:"reduceOnly"` // 是否是只减仓单
+	Info       map[string]interface{} `json:"info"`
 }
 
 type Fee struct {
@@ -502,10 +505,10 @@ On one side of the order book. No need to add a lock, as only one goroutine can 
 订单簿一侧。不需要加锁，因为只有一个goroutine可以修改
 */
 type OdBookSide struct {
-	IsBuy bool
-	Price []float64 // bid: desc   ask: asc
-	Size  []float64
-	Depth int
+	IsBuy bool      `json:"is_buy"`
+	Price []float64 `json:"price"` // bid: desc   ask: asc
+	Size  []float64 `json:"size"`
+	Depth int       `json:"depth"`
 	Lock  sync.Mutex
 }
 
@@ -521,34 +524,34 @@ type Income struct {
 }
 
 type FundingRate struct {
-	Symbol      string      `json:"symbol"`
-	FundingRate float64     `json:"fundingRate"`
-	Timestamp   int64       `json:"timestamp"`
-	Info        interface{} `json:"info"`
+	Symbol      string                 `json:"symbol"`
+	FundingRate float64                `json:"fundingRate"`
+	Timestamp   int64                  `json:"timestamp"`
+	Info        map[string]interface{} `json:"info"`
 }
 
 type FundingRateCur struct {
-	Symbol               string      `json:"symbol"`
-	FundingRate          float64     `json:"fundingRate"`
-	Timestamp            int64       `json:"timestamp"`
-	MarkPrice            float64     `json:"markPrice,omitempty"`
-	IndexPrice           float64     `json:"indexPrice,omitempty"`
-	InterestRate         float64     `json:"interestRate,omitempty"`
-	EstimatedSettlePrice float64     `json:"estimatedSettlePrice,omitempty"`
-	FundingTimestamp     int64       `json:"fundingTimestamp,omitempty"`
-	NextFundingRate      float64     `json:"nextFundingRate,omitempty"`
-	NextFundingTimestamp int64       `json:"nextFundingTimestamp,omitempty"`
-	PrevFundingRate      float64     `json:"prevFundingRate,omitempty"`
-	PrevFundingTimestamp int64       `json:"prevFundingTimestamp,omitempty"`
-	Interval             string      `json:"interval,omitempty"`
-	Info                 interface{} `json:"info"`
+	Symbol               string                 `json:"symbol"`
+	FundingRate          float64                `json:"fundingRate"`
+	Timestamp            int64                  `json:"timestamp"`
+	MarkPrice            float64                `json:"markPrice,omitempty"`
+	IndexPrice           float64                `json:"indexPrice,omitempty"`
+	InterestRate         float64                `json:"interestRate,omitempty"`
+	EstimatedSettlePrice float64                `json:"estimatedSettlePrice,omitempty"`
+	FundingTimestamp     int64                  `json:"fundingTimestamp,omitempty"`
+	NextFundingRate      float64                `json:"nextFundingRate,omitempty"`
+	NextFundingTimestamp int64                  `json:"nextFundingTimestamp,omitempty"`
+	PrevFundingRate      float64                `json:"prevFundingRate,omitempty"`
+	PrevFundingTimestamp int64                  `json:"prevFundingTimestamp,omitempty"`
+	Interval             string                 `json:"interval,omitempty"`
+	Info                 map[string]interface{} `json:"info"`
 }
 
 type LastPrice struct {
-	Symbol    string      `json:"symbol"`
-	Timestamp int64       `json:"timestamp"`
-	Price     float64     `json:"price"`
-	Info      interface{} `json:"info"`
+	Symbol    string                 `json:"symbol"`
+	Timestamp int64                  `json:"timestamp"`
+	Price     float64                `json:"price"`
+	Info      map[string]interface{} `json:"info"`
 }
 
 /*

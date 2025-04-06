@@ -287,8 +287,14 @@ func parseMarket(symbol string, year int, isRaw bool) (*banexg.Market, *errs.Err
 				Min: rawMar.Multiplier,
 			},
 		},
-		Info: rawMar,
+		Fee: rawMar.Fee,
 	}
+	var info map[string]interface{}
+	err_ := utils.DecodeStructMap(rawMar, &info, "yaml")
+	if err_ != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err_)
+	}
+	mar.Info = info
 	if len(rawMar.DayRanges) > 0 {
 		mar.DayTimes, err = utils.ParseTimeRanges(rawMar.DayRanges, banexg.LocUTC)
 		if err != nil {
@@ -328,9 +334,9 @@ func (e *China) GetLeverage(symbol string, notional float64, account string) (fl
 	if mar.Type == banexg.MarketSpot {
 		return 1, 1
 	}
-	raw, _ := mar.Info.(*ItemMarket)
-	if raw != nil {
-		leverage := 100 / raw.MarginPct
+	marginPct := utils.GetMapVal(mar.Info, "margin_pct", float64(0))
+	if marginPct != 0 {
+		leverage := 100 / marginPct
 		return leverage, leverage
 	}
 	return 0, 0
@@ -395,16 +401,16 @@ func (e *China) CalcMaintMargin(symbol string, cost float64) (float64, *errs.Err
 
 func makeCalcFee(e *China) banexg.FuncCalcFee {
 	return func(market *banexg.Market, curr string, maker bool, amount, price decimal.Decimal, params map[string]interface{}) (*banexg.Fee, *errs.Error) {
-		raw, _ := market.Info.(*ItemMarket)
-		if raw == nil {
+		rawFee, _ := market.Fee.(*Fee)
+		if rawFee == nil {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "raw market invalid")
 		}
 		closeToday, _ := params["closeToday"]
-		unit := raw.Fee.Unit
-		feeVal := raw.Fee.Val
+		unit := rawFee.Unit
+		feeVal := rawFee.Val
 		if closeToday != nil {
 			// 平今手续费
-			feeVal = raw.Fee.ValCT
+			feeVal = rawFee.ValCT
 		}
 		feeValDc := decimal.NewFromFloat(feeVal)
 		var costVal float64
@@ -412,7 +418,8 @@ func makeCalcFee(e *China) banexg.FuncCalcFee {
 			wanDc := decimal.NewFromInt(10000)
 			costVal, _ = amount.Mul(price).Mul(feeValDc).Div(wanDc).Float64()
 		} else if unit == "lot" {
-			mulDc := decimal.NewFromFloat(raw.Multiplier)
+			multiplier := utils.GetMapVal(market.Info, "multiplier", float64(0))
+			mulDc := decimal.NewFromFloat(multiplier)
 			costVal, _ = amount.Div(mulDc).Mul(feeValDc).Float64()
 		} else {
 			return nil, errs.NewMsg(errs.CodeRunTime, "invalid fee unit: %s", unit)

@@ -1066,7 +1066,7 @@ Concurrent control: Same host, default concurrent 3 times at the same time
 请求交易所API，不检查缓存
 并发控制：同一个host，默认同时并发3
 */
-func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, api *Entry, params map[string]interface{}) *HttpRes {
+func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, params map[string]interface{}, cache bool) *HttpRes {
 	// Traffic control, block if concurrency is full
 	// 流量控制，如果并发已满则阻塞
 	sem := GetHostFlowChan(api.RawHost)
@@ -1120,7 +1120,8 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, ap
 		return &HttpRes{Url: sign.Url, AccName: sign.AccName, Error: errs.New(errs.CodeNetFail, err)}
 	}
 	defer rsp.Body.Close()
-	var result = HttpRes{Url: sign.Url, AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header}
+	var result = HttpRes{Url: sign.Url, AccName: sign.AccName, Status: rsp.StatusCode, Headers: rsp.Header,
+		CacheKey: cacheKey}
 	rspData, err := io.ReadAll(rsp.Body)
 	if err != nil {
 		result.Error = errs.New(errs.CodeNetFail, err)
@@ -1152,24 +1153,46 @@ func (e *Exchange) RequestApi(ctx context.Context, endpoint, cacheKey string, ap
 			result.Error.Data = waitSecs
 			SetHostRetryWait(api.RawHost, waitSecs*1000)
 		}
-	} else if api.CacheSecs > 0 {
+	} else if cache && api.CacheSecs > 0 {
 		if sign.Private {
 			log.Warn("cache private api result is not recommend:" + sign.Url)
 		}
-		cacheText, err_ := utils.MarshalString(&result)
-		if err_ != nil {
-			log.Error("cache api rsp fail", zap.String("url", sign.Url), zap.Error(err_))
-		} else {
-			err2 := utils.WriteCacheFile(cacheKey, cacheText, api.CacheSecs)
-			if err2 != nil {
-				log.Error("write api rsp cache fail", zap.String("url", sign.Url), zap.Error(err2))
-			}
-		}
+		e.cacheApiRes(api, &result)
 	}
 	return &result
 }
 
 func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {
+	return e.RequestApiRetryAdv(ctx, endpoint, params, retryNum, true, true)
+}
+
+func (e *Exchange) GetCacheKey(endpoint string, params map[string]interface{}) string {
+	paramStr, _ := utils.MarshalString(params)
+	return fmt.Sprintf("%s_%s_%s.json", e.ID, endpoint, utils.MD5([]byte(paramStr))[:10])
+}
+
+func (e *Exchange) CacheApiRes(endpoint string, res *HttpRes) {
+	if !res.IsCache {
+		api, _ := e.Apis[endpoint]
+		if api != nil && api.CacheSecs > 0 {
+			e.cacheApiRes(api, res)
+		}
+	}
+}
+
+func (e *Exchange) cacheApiRes(api *Entry, res *HttpRes) {
+	cacheText, err_ := utils.MarshalString(&res)
+	if err_ != nil {
+		log.Error("cache api rsp fail", zap.String("url", res.Url), zap.Error(err_))
+	} else {
+		err2 := utils.WriteCacheFile(res.CacheKey, cacheText, api.CacheSecs)
+		if err2 != nil {
+			log.Error("write api rsp cache fail", zap.String("url", res.Url), zap.Error(err2))
+		}
+	}
+}
+
+func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int, readCache, writeCache bool) *HttpRes {
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))
@@ -1177,9 +1200,8 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 	}
 	// 检查是否有缓存
 	var cacheKey string
-	if api.CacheSecs > 0 {
-		paramStr, _ := utils.MarshalString(params)
-		cacheKey = fmt.Sprintf("%s_%s_%s.json", e.ID, endpoint, utils.MD5([]byte(paramStr))[:10])
+	if readCache && api.CacheSecs > 0 {
+		cacheKey = e.GetCacheKey(endpoint, params)
 		cacheText, err := utils.ReadCacheFile(cacheKey)
 		if err != nil {
 			if e.DebugAPI {
@@ -1191,6 +1213,8 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			if err_ != nil {
 				log.Warn("unmarshal api cache fail", zap.String("url", api.Path), zap.Error(err_))
 			} else {
+				res.IsCache = true
+				res.CacheKey = cacheKey
 				return res
 			}
 		}
@@ -1213,7 +1237,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 			time.Sleep(time.Second * time.Duration(sleep))
 			sleep = 0
 		}
-		rsp = e.RequestApi(ctx, endpoint, cacheKey, api, params)
+		rsp = e.RequestApi(ctx, cacheKey, api, params, writeCache)
 		if rsp.Error != nil {
 			if rsp.Error.Code == errs.CodeNetFail {
 				// 网络错误等待3s重试
@@ -1242,6 +1266,7 @@ func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params 
 		}
 		break
 	}
+	rsp.CacheKey = cacheKey
 	return rsp
 }
 

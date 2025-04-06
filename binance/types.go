@@ -332,7 +332,7 @@ type InversePositionRisk struct {
 }
 
 type IBnbPosRisk interface {
-	ToStdPos(*Binance) (*banexg.Position, *errs.Error)
+	ToStdPos(*Binance, map[string]interface{}) (*banexg.Position, *errs.Error)
 }
 
 /*
@@ -552,7 +552,7 @@ type SpotFill struct {
 }
 
 type IBnbOrder interface {
-	ToStdOrder(func(string) string) *banexg.Order
+	ToStdOrder(func(string) string, map[string]interface{}) *banexg.Order
 }
 
 /*
@@ -659,7 +659,7 @@ type OptionTicker struct {
 }
 
 type IBnbTicker interface {
-	ToStdTicker(e *Binance, marketType string) *banexg.Ticker
+	ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker
 }
 
 /*

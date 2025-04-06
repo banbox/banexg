@@ -316,24 +316,24 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 
 func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
 	var data = make([]T, 0)
-	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
+	rawList, err := utils.UnmarshalStringMapArr(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = make([]*banexg.Order, len(data))
 	for i, item := range data {
-		result[i] = item.ToStdOrder(mapSymbol)
+		result[i] = item.ToStdOrder(mapSymbol, rawList[i])
 	}
 	return result, nil
 }
 
 func parseOrder[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) (*banexg.Order, *errs.Error) {
 	var data = new(T)
-	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
+	raw, err := utils.UnmarshalStringMap(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	result := (*data).ToStdOrder(mapSymbol)
+	result := (*data).ToStdOrder(mapSymbol, raw)
 	return result, nil
 }
 
@@ -357,7 +357,7 @@ func mapOrderStatus(status string) string {
 	return status
 }
 
-func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *OrderBase) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	status := mapOrderStatus(o.Status)
 	filled, _ := strconv.ParseFloat(o.ExecutedQty, 64)
 	lastTradeTimestamp := int64(0)
@@ -397,7 +397,7 @@ func (o *OrderBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	}
 }
 
-func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *SpotBase) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	timeStamp := int64(0)
 	if o.Time > 0 {
 		timeStamp = o.Time
@@ -409,7 +409,7 @@ func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
 	cost, _ := strconv.ParseFloat(o.CummulativeQuoteQty, 64)
-	result := o.OrderBase.ToStdOrder(mapSymbol)
+	result := o.OrderBase.ToStdOrder(mapSymbol, info)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.TriggerPrice = stopPrice
@@ -418,9 +418,9 @@ func (o *SpotBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	return result
 }
 
-func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
-	result := o.SpotBase.ToStdOrder(mapSymbol)
-	result.Info = o
+func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(mapSymbol, info)
+	result.Info = info
 	timeStamp := int64(0)
 	if o.Time > 0 {
 		timeStamp = o.Time
@@ -454,20 +454,20 @@ func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	return result
 }
 
-func (o *MarginOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
-	result := o.SpotBase.ToStdOrder(mapSymbol)
-	result.Info = o
+func (o *MarginOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
+	result := o.SpotBase.ToStdOrder(mapSymbol, info)
+	result.Info = info
 	return result
 }
 
-func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	timeStamp := o.CreateTime
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
 	}
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
-	result := o.OrderBase.ToStdOrder(mapSymbol)
-	result.Info = o
+	result := o.OrderBase.ToStdOrder(mapSymbol, info)
+	result.Info = info
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.ReduceOnly = o.ReduceOnly
@@ -479,7 +479,7 @@ func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	return result
 }
 
-func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *FutureBase) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	timeStamp := o.Time
 	if timeStamp == 0 {
 		timeStamp = o.UpdateTime
@@ -487,7 +487,7 @@ func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	stopPrice, _ := strconv.ParseFloat(o.StopPrice, 64)
 	avgPrice, _ := strconv.ParseFloat(o.AvgPrice, 64)
 	amount, _ := strconv.ParseFloat(o.OrigQty, 64)
-	result := o.OrderBase.ToStdOrder(mapSymbol)
+	result := o.OrderBase.ToStdOrder(mapSymbol, info)
 	result.Timestamp = timeStamp
 	result.Datetime = utils.ISO8601(timeStamp)
 	result.ReduceOnly = o.ReduceOnly
@@ -498,18 +498,18 @@ func (o *FutureBase) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
 	return result
 }
 
-func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumQuote, 64)
-	result := o.FutureBase.ToStdOrder(mapSymbol)
-	result.Info = o
+	result := o.FutureBase.ToStdOrder(mapSymbol, info)
+	result.Info = info
 	result.Cost = cost
 	return result
 }
 
-func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string) *banexg.Order {
+func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
 	cost, _ := strconv.ParseFloat(o.CumBase, 64)
-	result := o.FutureBase.ToStdOrder(mapSymbol)
-	result.Info = o
+	result := o.FutureBase.ToStdOrder(mapSymbol, info)
+	result.Info = info
 	result.Cost = cost
 	return result
 }

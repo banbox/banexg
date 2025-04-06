@@ -1,7 +1,8 @@
 package binance
 
 import (
-	"fmt"
+	"github.com/banbox/banexg/log"
+	"go.uber.org/zap"
 	"testing"
 )
 
@@ -12,5 +13,5 @@ func TestFetchOrderBook(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("fetch order book %v", res)
+	log.Info("fetch order book", zap.Any("v", res))
 }

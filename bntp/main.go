@@ -1,8 +1,8 @@
 package bntp
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/banbox/banexg/utils"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -225,7 +225,7 @@ func (ts *TimeSync) saveOffsetToFile() error {
 		Offset:    ts.offset,
 	}
 
-	data, err := json.Marshal(record)
+	data, err := utils.Marshal(record)
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func (ts *TimeSync) loadOffsetFromFile() (bool, error) {
 	}
 
 	var record OffsetRecord
-	if err = json.Unmarshal(data, &record); err != nil {
+	if err = utils.Unmarshal(data, &record, utils.JsonNumAuto); err != nil {
 		return false, err
 	}
 

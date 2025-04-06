@@ -125,7 +125,7 @@ type OptionMarket struct {
  */
 
 type ITicker interface {
-	ToStdTicker(e *Bybit, marketType string) *banexg.Ticker
+	ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker
 }
 
 type BaseTicker struct {

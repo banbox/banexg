@@ -432,7 +432,7 @@ func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
 		Cost:      price * quality,
 		Timestamp: tradeTime,
 		Maker:     maker,
-		Info:      msg,
+		Info:      utils.ToStdMap(msg),
 	}
 	if maker {
 		trade.Side = banexg.OdSideSell
@@ -675,9 +675,9 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			Balances  []ContractAsset      `json:"B"`
 			Positions []WSContractPosition `json:"P"`
 		}{}
-		err := utils.UnmarshalString(text, &Data, utils.JsonNumDefault)
-		if err != nil {
-			log.Error("unmarshal account update fail", zap.Error(err), zap.String("text", text))
+		raw, err_ := utils.UnmarshalStringMap(text, &Data)
+		if err_ != nil {
+			log.Error("unmarshal account update fail", zap.Error(err_), zap.String("text", text))
 			return
 		}
 		for _, item := range Data.Balances {
@@ -695,7 +695,9 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 				balances.Assets[code] = asset
 			}
 		}
-		for _, pos := range Data.Positions {
+		var posList []map[string]interface{}
+		posList = utils.GetMapVal(raw, "P", posList)
+		for i, pos := range Data.Positions {
 			symbol := e.SafeSymbol(pos.Symbol, "", client.MarketType)
 			if symbol == "" {
 				continue
@@ -705,7 +707,7 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			p, ok := posMap[key]
 			if !ok {
 				p = &banexg.Position{
-					Info:       pos,
+					Info:       posList[i],
 					Symbol:     symbol,
 					Side:       side,
 					Hedged:     side != banexg.PosSideBoth,

@@ -571,7 +571,7 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.PosSide = strings.ToLower(posSide)
 	res.ReduceOnly, _ = utils.SafeMapVal(msg, "R", false)
 
-	res.Info = msg
+	res.Info = utils.ToStdMap(msg)
 	res.Timestamp, _ = utils.SafeMapVal(msg, "T", int64(0))
 	res.Symbol, _ = utils.SafeMapVal(msg, "s", "")
 	side, _ := utils.SafeMapVal(msg, "S", "")
@@ -587,10 +587,10 @@ func parsePubTrade(msg map[string]string) banexg.Trade {
 	res.Amount, _ = utils.SafeMapVal(msg, "q", zeroFlt)
 	res.Cost = res.Price * res.Amount
 
-	res.Info = msg
 	res.Timestamp, _ = utils.SafeMapVal(msg, "T", int64(0))
 	res.Symbol, _ = utils.SafeMapVal(msg, "s", "")
 	side, _ := utils.SafeMapVal(msg, "S", "")
 	res.Side = strings.ToLower(side)
+	res.Info = utils.ToStdMap(msg)
 	return res
 }

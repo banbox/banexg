@@ -265,6 +265,11 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 			posList = append(posList, p)
 		}
 	}
+	var info = make(map[string]interface{})
+	err := utils.UnmarshalString(rsp.Content, &info, utils.JsonNumAuto)
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
 	isLinear := marketType == banexg.MarketLinear
 	var result = make([]*banexg.Position, 0)
 	for _, p := range posList {
@@ -288,7 +293,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 		if pos == nil {
 			continue
 		}
-		pos.Info = p
+		pos.Info = info
 		result = append(result, pos)
 	}
 	return result, nil
@@ -390,13 +395,13 @@ func (p *InversePosition) GetNotional() string {
 func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
 	var data = make([]T, 0)
 	// fmt.Println(rsp.Content)
-	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
+	infoList, err := utils.UnmarshalStringMapArr(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = make([]*banexg.Position, 0)
-	for _, item := range data {
-		pos, err2 := item.ToStdPos(e)
+	for i, item := range data {
+		pos, err2 := item.ToStdPos(e, infoList[i])
 		if err2 != nil {
 			return nil, err2
 		}
@@ -449,7 +454,7 @@ func (p *ContPositionRisk) ToStdPos() *banexg.Position {
 	return res
 }
 
-func (p *LinearPositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error) {
+func (p *LinearPositionRisk) ToStdPos(e *Binance, info map[string]interface{}) (*banexg.Position, *errs.Error) {
 	var res = p.ContPositionRisk.ToStdPos()
 	if res == nil {
 		return nil, nil
@@ -458,7 +463,7 @@ func (p *LinearPositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error
 	// 名义价值
 	notional, _ := strconv.ParseFloat(p.Notional, 64)
 	res.Notional = notional
-	res.Info = p
+	res.Info = info
 	market := e.GetMarketById(p.Symbol, banexg.MarketLinear)
 	if market == nil {
 		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
@@ -466,7 +471,7 @@ func (p *LinearPositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error
 	return calcPositionRisk(res, e, market, p.IsolatedMargin)
 }
 
-func (p *InversePositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Error) {
+func (p *InversePositionRisk) ToStdPos(e *Binance, info map[string]interface{}) (*banexg.Position, *errs.Error) {
 	var res = p.ContPositionRisk.ToStdPos()
 	if res == nil {
 		return nil, nil
@@ -475,7 +480,7 @@ func (p *InversePositionRisk) ToStdPos(e *Binance) (*banexg.Position, *errs.Erro
 	// 名义价值
 	notional, _ := strconv.ParseFloat(p.NotionalValue, 64)
 	res.Notional = notional
-	res.Info = p
+	res.Info = info
 	market := e.GetMarketById(p.Symbol, banexg.MarketInverse)
 	if market == nil {
 		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
@@ -557,12 +562,12 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 }
 
 func unmarshalBalance(content string, data interface{}) (*banexg.Balances, *errs.Error) {
-	err := utils.UnmarshalString(content, data, utils.JsonNumDefault)
+	info, err := utils.UnmarshalStringMap(content, data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = banexg.Balances{
-		Info:   data,
+		Info:   info,
 		Assets: map[string]*banexg.Asset{},
 	}
 	return &result, nil
@@ -669,9 +674,13 @@ func parseInverseBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) 
 
 func parseFundingBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
 	var data = make([]*FundingAsset, 0)
-	result, err := unmarshalBalance(rsp.Content, &data)
+	info, err := utils.UnmarshalStringMapArr(rsp.Content, &data)
 	if err != nil {
-		return nil, err
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
+	var result = banexg.Balances{
+		Info:   map[string]interface{}{"assets": info},
+		Assets: map[string]*banexg.Asset{},
 	}
 	for _, item := range data {
 		code := e.SafeCurrencyCode(item.Asset)

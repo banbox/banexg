@@ -252,6 +252,11 @@ Therefore, any configuration needed from outside should be passed in through `Op
 </tr>
 </table>
 
+### Raw Data Dictionary Return
+The raw data returned by the exchange can be accessed through `Info`, and its type is `map[string]interface{}` or `[]map[string]interface{}`.
+
+Included types: Currency, ChainNetwork, Market, Ticker, Balances, Position, Order, Trade, MyTrade, FundingRate, FundingRateCur, LastPrice
+
 ### Common parameter naming adjustments
 **`ccxt.defaultType` -> `MarketType`**  
 The default market type of the current exchange. It can be set during initialization using `OptMarketType` or by modifying the `MarketType` property of the exchange at any time.  

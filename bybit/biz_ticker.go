@@ -58,17 +58,22 @@ func (e *Bybit) fetchTickers(marketType string, args map[string]interface{}) ([]
 
 func parseTickers[T ITicker](e *Bybit, marketType, method string, args map[string]interface{}, tryNum int) ([]*banexg.Ticker, *errs.Error) {
 	rsp := requestRetry[struct {
-		Category string `json:"category"`
-		List     []T    `json:"list"`
+		Category string                   `json:"category"`
+		List     []map[string]interface{} `json:"list"`
 	}](e, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
 	items := rsp.Result.List
+	var arr = make([]T, 0, len(items))
+	err := utils.DecodeStructMap(items, &arr, "json")
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
 	var result = make([]*banexg.Ticker, 0, len(items))
 	timeStamp := e.MilliSeconds()
-	for _, item := range items {
-		ticker := item.ToStdTicker(e, marketType)
+	for i, item := range arr {
+		ticker := item.ToStdTicker(e, marketType, items[i])
 		if ticker.Symbol == "" {
 			continue
 		}
@@ -78,7 +83,7 @@ func parseTickers[T ITicker](e *Bybit, marketType, method string, args map[strin
 	return result, nil
 }
 
-func (t *BaseTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
+func (t *BaseTicker) ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker {
 	symbol := e.SafeSymbol(t.Symbol, "", marketType)
 	bid1, _ := strconv.ParseFloat(t.Bid1Price, 64)
 	bid1Vol, _ := strconv.ParseFloat(t.Bid1Size, 64)
@@ -104,19 +109,19 @@ func (t *BaseTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
 	}
 }
 
-func (t *SpotTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
-	res := t.BaseTicker.ToStdTicker(e, marketType)
+func (t *SpotTicker) ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker {
+	res := t.BaseTicker.ToStdTicker(e, marketType, info)
 	open, _ := strconv.ParseFloat(t.PrevPrice24h, 64)
 	pcnt, _ := strconv.ParseFloat(t.Price24hPcnt, 64)
 	// indexPrice, _ := strconv.ParseFloat(t.UsdIndexPrice, 64)
 	res.Open = open
 	res.Percentage = pcnt * 100
-	res.Info = t
+	res.Info = info
 	return res
 }
 
-func (t *ContractTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
-	res := t.BaseTicker.ToStdTicker(e, marketType)
+func (t *ContractTicker) ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker {
+	res := t.BaseTicker.ToStdTicker(e, marketType, info)
 	indexPrice, _ := strconv.ParseFloat(t.IndexPrice, 64)
 	//delvPrice, _ := strconv.ParseFloat(t.PredictedDeliveryPrice, 64)
 	markPrice, _ := strconv.ParseFloat(t.MarkPrice, 64)
@@ -126,22 +131,22 @@ func (t *ContractTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker
 	return res
 }
 
-func (t *FutureTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
-	res := t.ContractTicker.ToStdTicker(e, marketType)
+func (t *FutureTicker) ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker {
+	res := t.ContractTicker.ToStdTicker(e, marketType, info)
 	open, _ := strconv.ParseFloat(t.PrevPrice24h, 64)
 	pcnt, _ := strconv.ParseFloat(t.Price24hPcnt, 64)
 	// PrevPrice1h, OpenInterestValue, FundingRate, NextFundingTime, BasisRate, DeliveryFeeRate
 	// DeliveryTime, Basis
 	res.Open = open
 	res.Percentage = pcnt * 100
-	res.Info = t
+	res.Info = info
 	return res
 }
 
-func (t *OptionTicker) ToStdTicker(e *Bybit, marketType string) *banexg.Ticker {
-	res := t.ContractTicker.ToStdTicker(e, marketType)
+func (t *OptionTicker) ToStdTicker(e *Bybit, marketType string, info map[string]interface{}) *banexg.Ticker {
+	res := t.ContractTicker.ToStdTicker(e, marketType, info)
 	// Bid1Iv, Ask1Iv, MarkIv, UnderlyingPrice, TotalVolume, TotalTurnover, Delta
 	// Gamma, Vega, Theta, Change24h
-	res.Info = t
+	res.Info = info
 	return res
 }

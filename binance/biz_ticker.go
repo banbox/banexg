@@ -178,13 +178,13 @@ func (e *Binance) FetchTickerPrice(symbol string, params map[string]interface{})
 func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) ([]*banexg.Ticker, *errs.Error) {
 	var data = make([]T, 0)
 	rspText := banexg.EnsureArrStr(rsp.Content)
-	err := utils.UnmarshalString(rspText, &data, utils.JsonNumDefault)
+	items, err := utils.UnmarshalStringMapArr(rspText, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
 	var result = make([]*banexg.Ticker, 0, len(data))
-	for _, item := range data {
-		ticker := item.ToStdTicker(e, marketType)
+	for i, item := range data {
+		ticker := item.ToStdTicker(e, marketType, items[i])
 		if ticker.Symbol == "" {
 			continue
 		}
@@ -195,15 +195,15 @@ func parseTickers[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType stri
 
 func parseTicker[T IBnbTicker](rsp *banexg.HttpRes, e *Binance, marketType string) (*banexg.Ticker, *errs.Error) {
 	var data = new(T)
-	err := utils.UnmarshalString(rsp.Content, &data, utils.JsonNumDefault)
+	info, err := utils.UnmarshalStringMap(rsp.Content, &data)
 	if err != nil {
 		return nil, errs.New(errs.CodeUnmarshalFail, err)
 	}
-	result := (*data).ToStdTicker(e, marketType)
+	result := (*data).ToStdTicker(e, marketType, info)
 	return result, nil
 }
 
-func (t *SpotTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *SpotTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
 	highPrice, _ := strconv.ParseFloat(t.HighPrice, 64)
 	lowPrice, _ := strconv.ParseFloat(t.LowPrice, 64)
 	openPrice, _ := strconv.ParseFloat(t.OpenPrice, 64)
@@ -242,55 +242,55 @@ func (t *BookTicker) SetStdTicker(ticker *banexg.Ticker) {
 	ticker.AskVolume = askQty
 }
 
-func (t *SpotBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *SpotBookTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
 	symbol := e.SafeSymbol(t.Symbol, "", marketType)
 	ticker := &banexg.Ticker{
 		Symbol: symbol,
 	}
 	t.BookTicker.SetStdTicker(ticker)
-	ticker.Info = t
+	ticker.Info = info
 	ticker.TimeStamp = e.MilliSeconds()
 	return ticker
 }
 
-func (t *LinearBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := t.SpotBookTicker.ToStdTicker(e, marketType)
+func (t *LinearBookTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
+	ticker := t.SpotBookTicker.ToStdTicker(e, marketType, info)
 	ticker.TimeStamp = t.Time
-	ticker.Info = t
+	ticker.Info = info
 	return ticker
 }
 
-func (t *InverseBookTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := t.LinearBookTicker.ToStdTicker(e, marketType)
-	ticker.Info = t
+func (t *InverseBookTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
+	ticker := t.LinearBookTicker.ToStdTicker(e, marketType, info)
+	ticker.Info = info
 	return ticker
 }
 
-func (t *LinearTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := t.SpotTicker.ToStdTicker(e, marketType)
-	ticker.Info = t
+func (t *LinearTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
+	ticker := t.SpotTicker.ToStdTicker(e, marketType, info)
+	ticker.Info = info
 	return ticker
 }
 
-func (t *SpotTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := t.LinearTicker.ToStdTicker(e, marketType)
+func (t *SpotTicker24hr) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
+	ticker := t.LinearTicker.ToStdTicker(e, marketType, info)
 	ticker.Symbol = e.SafeSymbol(t.Symbol, "", marketType)
-	ticker.Info = t
+	ticker.Info = info
 	t.BookTicker.SetStdTicker(ticker)
 	pClosePrice, _ := strconv.ParseFloat(t.PrevClosePrice, 64)
 	ticker.PreviousClose = pClosePrice
 	return ticker
 }
 
-func (t *InverseTicker24hr) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
-	ticker := t.SpotTicker.ToStdTicker(e, marketType)
-	ticker.Info = t
+func (t *InverseTicker24hr) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
+	ticker := t.SpotTicker.ToStdTicker(e, marketType, info)
+	ticker.Info = info
 	baseVolume, _ := strconv.ParseFloat(t.BaseVolume, 64)
 	ticker.BaseVolume = baseVolume
 	return ticker
 }
 
-func (t *OptionTicker) ToStdTicker(e *Binance, marketType string) *banexg.Ticker {
+func (t *OptionTicker) ToStdTicker(e *Binance, marketType string, info map[string]interface{}) *banexg.Ticker {
 	ticker := &banexg.Ticker{
 		Symbol:      e.SafeSymbol(t.Symbol, "", marketType),
 		TimeStamp:   t.CloseTime,

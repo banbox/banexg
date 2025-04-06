@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/decoder"
+	"github.com/go-viper/mapstructure/v2"
 	"math/rand"
 	"net/url"
 	"os"
@@ -98,8 +101,47 @@ func GetMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 	if val, ok := items[key]; ok {
 		if tVal, ok := val.(T); ok {
 			return tVal
+		} else if _, isDestSliceMap := any(defVal).([]map[string]interface{}); isDestSliceMap {
+			// 特殊处理 []interface{} 到 []map[string]interface{} 的转换
+			if srcSlice, ok := val.([]interface{}); ok {
+				result := make([]map[string]interface{}, len(srcSlice))
+				for i, item := range srcSlice {
+					if mapItem, ok := item.(map[string]interface{}); ok {
+						result[i] = mapItem
+					} else {
+						panic(fmt.Sprintf("[%d] option %s should be map[string]interface{}, but got %T", i, key, item))
+					}
+				}
+				return any(result).(T)
+			}
 		} else {
+			// 处理切片类型的特殊情况
 			var zero T
+			dstType := reflect.TypeOf(zero)
+			srcType := reflect.TypeOf(val)
+
+			// 如果目标是切片类型且源是[]interface{}
+			if dstType.Kind() == reflect.Slice && srcType.String() == "[]interface {}" {
+				srcSlice := val.([]interface{})
+				dstElemType := dstType.Elem()
+
+				// 创建目标类型的新切片
+				dstSlice := reflect.MakeSlice(dstType, len(srcSlice), len(srcSlice))
+
+				// 尝试转换每个元素
+				for i, elem := range srcSlice {
+					if reflect.TypeOf(elem).ConvertibleTo(dstElemType) {
+						dstSlice.Index(i).Set(reflect.ValueOf(elem).Convert(dstElemType))
+					} else {
+						reqType := reflect.TypeOf(zero).String()
+						curType := reflect.TypeOf(val).String()
+						panic(fmt.Sprintf("[%d] option %s should be %s, but is %s", i, key, reqType, curType))
+					}
+				}
+
+				return dstSlice.Interface().(T)
+			}
+
 			reqType := reflect.TypeOf(zero).String()
 			curType := reflect.TypeOf(val).String()
 			panic(fmt.Sprintf("option %s should be %s, but is %s", key, reqType, curType))
@@ -270,6 +312,12 @@ const (
 	JsonNumAuto    = 2 // auto parse json.Number to int64/float64 in []interface{} map[string]interface{}
 )
 
+var (
+	Sonic = sonic.Config{
+		EncodeNullForInfOrNan: true,
+	}.Froze()
+)
+
 /*
 UnmarshalString decode json (big int as float64)
 
@@ -286,31 +334,74 @@ numType: JsonNumDefault(JsonNumFloat), JsonNumStr, JsonNumAuto
 */
 func Unmarshal(data []byte, out interface{}, numType int) error {
 	if numType == JsonNumDefault {
-		return json.Unmarshal(data, out)
+		return sonic.Unmarshal(data, out)
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	err := dec.Decode(out)
+	dec := decoder.NewStreamDecoder(bytes.NewReader(data))
+	if numType == JsonNumAuto {
+		dec.UseInt64()
+	} else {
+		dec.UseNumber()
+	}
+	return dec.Decode(out)
+}
+
+func UnmarshalStringMap(text string, out interface{}) (map[string]interface{}, error) {
+	err := UnmarshalString(text, out, JsonNumDefault)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if numType != JsonNumAuto {
-		return nil
+	var raw = make(map[string]interface{})
+	err = UnmarshalString(text, &raw, JsonNumAuto)
+	if err != nil {
+		return nil, err
 	}
-	_, err = parseJsonNumber(out)
-	return err
+	return raw, nil
+}
+
+func UnmarshalStringMapArr(text string, out interface{}) ([]map[string]interface{}, error) {
+	err := UnmarshalString(text, out, JsonNumDefault)
+	if err != nil {
+		return nil, err
+	}
+	arrLen := reflect.ValueOf(out).Elem().Len()
+	var raw = make([]map[string]interface{}, 0, arrLen)
+	err = UnmarshalString(text, &raw, JsonNumAuto)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 func Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
+	return Sonic.Marshal(v)
 }
 
 func MarshalString(v any) (string, error) {
-	data, err := json.Marshal(v)
+	data, err := Sonic.MarshalToString(v)
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	return data, nil
+}
+
+func DecodeStructMap(input, output interface{}, tag string) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName: tag,
+		Squash:  true,
+		Result:  output,
+	})
+	if err != nil {
+		return err
+	}
+	return decoder.Decode(input)
+}
+
+func ToStdMap[T any](m map[string]T) map[string]interface{} {
+	var result = make(map[string]interface{})
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
 }
 
 /*

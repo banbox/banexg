@@ -179,13 +179,14 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 			return nil, errs.NewMsg(errs.CodeInvalidResponse, "FetchCurrencies api fail: %s", res.Content)
 		}
 		var currList []*BnbCurrency
-		err := utils.UnmarshalString(res.Content, &currList, utils.JsonNumDefault)
+		currArr, err := utils.UnmarshalStringMapArr(res.Content, &currList)
 		if err != nil {
 			return nil, errs.New(errs.CodeUnmarshalFail, err)
 		}
 		var result = make(banexg.CurrencyMap)
-		for _, item := range currList {
+		for ic, item := range currList {
 			isWithDraw, isDeposit := false, false
+			raw := currArr[ic]
 			var curr = banexg.Currency{
 				ID:       item.Coin,
 				Name:     item.Name,
@@ -193,8 +194,10 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 				Networks: make([]*banexg.ChainNetwork, len(item.NetworkList)),
 				Fee:      -1,
 				Fees:     make(map[string]float64),
-				Info:     item,
+				Info:     raw,
 			}
+			var nets []map[string]interface{}
+			nets = utils.GetMapVal(raw, "networkList", nets)
 			for i, net := range item.NetworkList {
 				if !isWithDraw && net.WithdrawEnable {
 					isWithDraw = true
@@ -223,7 +226,7 @@ func makeFetchCurr(e *Binance) banexg.FuncFetchCurr {
 					Precision: precisionTick,
 					Deposit:   net.DepositEnable,
 					Withdraw:  net.WithdrawEnable,
-					Info:      net,
+					Info:      nets[i],
 				}
 			}
 			curr.Active = isDeposit && isWithDraw && item.Trading
@@ -268,7 +271,7 @@ var marketApiMap = map[string]string{
 	banexg.MarketOption:  MethodEapiPublicGetExchangeInfo,
 }
 
-func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
+func (e *Binance) mapMarket(mar *BnbMarket, info map[string]interface{}) *banexg.Market {
 	isSwap, isFuture, isOption := false, false, false
 	var symParts = strings.Split(mar.Symbol, "-")
 	var baseId = mar.BaseAsset
@@ -385,7 +388,7 @@ func (e *Binance) mapMarket(mar *BnbMarket) *banexg.Market {
 		Precision:      prec,
 		Limits:         limits,
 		Created:        mar.OnboardDate,
-		Info:           mar,
+		Info:           info,
 	}
 	return &market
 }
@@ -434,14 +437,16 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				continue
 			}
 			var res BnbMarketRsp
-			err := utils.UnmarshalString(rsp.Content, &res, utils.JsonNumDefault)
+			rawRsp, err := utils.UnmarshalStringMap(rsp.Content, &res)
 			if err != nil {
 				log.Error("Unmarshal bnb market fail", zap.String("text", rsp.Content))
 				continue
 			}
+			var rawList []map[string]interface{}
+			rawList = utils.GetMapVal(rawRsp, "symbols", rawList)
 			if res.Symbols != nil {
-				for _, item := range res.Symbols {
-					market := e.mapMarket(item)
+				for j, item := range res.Symbols {
+					market := e.mapMarket(item, rawList[j])
 					result[market.Symbol] = market
 				}
 			}
@@ -997,11 +1002,11 @@ func (e *Binance) FetchFundingRate(symbol string, params map[string]interface{})
 		return nil, rsp.Error
 	}
 	var ft = FundingRateCur{}
-	err_ := utils.UnmarshalString(rsp.Content, &ft, utils.JsonNumDefault)
+	raw, err_ := utils.UnmarshalStringMap(rsp.Content, &ft)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}
-	return ft.ToStd(e, market.Type), nil
+	return ft.ToStd(e, market.Type, raw), nil
 }
 
 func (e *Binance) FetchFundingRates(symbols []string, params map[string]interface{}) ([]*banexg.FundingRateCur, *errs.Error) {
@@ -1024,13 +1029,13 @@ func (e *Binance) FetchFundingRates(symbols []string, params map[string]interfac
 		return nil, rsp.Error
 	}
 	var items = make([]*FundingRateCur, 0)
-	err_ := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
+	raws, err_ := utils.UnmarshalStringMapArr(rsp.Content, &items)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}
 	var list = make([]*banexg.FundingRateCur, 0, len(items))
-	for _, it := range items {
-		item := it.ToStd(e, marketType)
+	for i, it := range items {
+		item := it.ToStd(e, marketType, raws[i])
 		if item.Symbol != "" {
 			list = append(list, item)
 		}
@@ -1105,13 +1110,13 @@ func (e *Binance) getFundRateHis(marketType, method string, until int64, args ma
 		return nil, false, rsp.Error
 	}
 	var items = make([]*FundingRate, 0)
-	err := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
+	rawList, err := utils.UnmarshalStringMapArr(rsp.Content, &items)
 	if err != nil {
 		return nil, false, errs.NewFull(errs.CodeUnmarshalFail, err, "decode option kline fail")
 	}
 	var lastMS int64
 	var list = make([]*banexg.FundingRate, 0, len(items))
-	for _, it := range items {
+	for i, it := range items {
 		code := e.SafeSymbol(it.Symbol, "", marketType)
 		stamp := it.FundingTime
 		if stamp > lastMS {
@@ -1125,7 +1130,7 @@ func (e *Binance) getFundRateHis(marketType, method string, until int64, args ma
 			Symbol:      code,
 			FundingRate: rate,
 			Timestamp:   stamp,
-			Info:        it,
+			Info:        rawList[i],
 		})
 	}
 	interval := int64(60 * 60 * 8 * 1000)
@@ -1133,7 +1138,7 @@ func (e *Binance) getFundRateHis(marketType, method string, until int64, args ma
 	return list, hasMore, nil
 }
 
-func (f *FundingRateCur) ToStd(e *Binance, marketType string) *banexg.FundingRateCur {
+func (f *FundingRateCur) ToStd(e *Binance, marketType string, info map[string]interface{}) *banexg.FundingRateCur {
 	code := e.SafeSymbol(f.Symbol, "", marketType)
 	markPrice, _ := strconv.ParseFloat(f.MarkPrice, 64)
 	indexPrice, _ := strconv.ParseFloat(f.IndexPrice, 64)
@@ -1144,7 +1149,7 @@ func (f *FundingRateCur) ToStd(e *Binance, marketType string) *banexg.FundingRat
 		Symbol:               code,
 		FundingRate:          lastRate,
 		Timestamp:            f.Time,
-		Info:                 f,
+		Info:                 info,
 		MarkPrice:            markPrice,
 		IndexPrice:           indexPrice,
 		EstimatedSettlePrice: estSettlePrice,
@@ -1175,19 +1180,19 @@ func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{
 		return nil, rsp.Error
 	}
 	var items = make([]*LastPrice, 0)
-	err_ := utils.UnmarshalString(rsp.Content, &items, utils.JsonNumDefault)
+	raws, err_ := utils.UnmarshalStringMapArr(rsp.Content, &items)
 	if err_ != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err_, "decode fail")
 	}
 	var list = make([]*banexg.LastPrice, 0, len(items))
-	for _, it := range items {
+	for i, it := range items {
 		code := e.SafeSymbol(it.Symbol, "", marketType)
 		price, _ := strconv.ParseFloat(it.Price, 64)
 		list = append(list, &banexg.LastPrice{
 			Symbol:    code,
 			Timestamp: it.Time,
 			Price:     price,
-			Info:      it,
+			Info:      raws[i],
 		})
 	}
 	return list, nil

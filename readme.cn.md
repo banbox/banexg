@@ -251,6 +251,11 @@ Close() *errs.Error
 </tr>
 </table>
 
+### 原始数据字典返回
+可通过`Info`访问交易所返回的原始数据，类型是`map[string]interface{}`或`[]map[string]interface{}`。
+
+包含的类型：Currency, ChainNetwork, Market, Ticker, Balances, Position, Order, Trade, MyTrade, FundingRate, FundingRateCur, LastPrice
+
 ### 常见参数命名调整
 **`ccxt.defaultType` -> `MarketType`**  
 当前交易所的默认市场类型。可在初始化时传入`OptMarketType`设置，也可随时设置交易所的`MarketType`属性。  

@@ -232,26 +232,26 @@ func TestLoadMarkets(t *testing.T) {
 	exg := getBinance(nil)
 	// read ccxt markets
 	var ccxtMarkets banexg.MarketMap
-	err := utils.ReadJsonFile("testdata/ccxt_markets.json", &ccxtMarkets, utils.JsonNumDefault)
-	if err != nil {
-		panic(err)
+	err_ := utils.ReadJsonFile("testdata/ccxt_markets.json", &ccxtMarkets, utils.JsonNumDefault)
+	if err_ != nil {
+		panic(err_)
 	}
 	markets, err := exg.LoadMarkets(false, nil)
 	if err != nil {
 		panic(err)
 	}
-	err = compareMarkets(t, markets, ccxtMarkets)
-	if err != nil {
-		panic(err)
+	err_ = compareMarkets(t, markets, ccxtMarkets)
+	if err_ != nil {
+		panic(err_)
 	}
 	var ccxtCurrs banexg.CurrencyMap
-	err = utils.ReadJsonFile("testdata/ccxt_currs.json", &ccxtCurrs, utils.JsonNumDefault)
-	if err != nil {
-		panic(err)
+	err_ = utils.ReadJsonFile("testdata/ccxt_currs.json", &ccxtCurrs, utils.JsonNumDefault)
+	if err_ != nil {
+		panic(err_)
 	}
-	err = compareCurrs(t, exg.CurrenciesByCode, ccxtCurrs)
-	if err != nil {
-		panic(err)
+	err_ = compareCurrs(t, exg.CurrenciesByCode, ccxtCurrs)
+	if err_ != nil {
+		panic(err_)
 	}
 }
 
@@ -404,7 +404,12 @@ func TestGetMarketById(t *testing.T) {
 		panic(err)
 	}
 	btcSwap := "BTC/USDT:USDT"
-	btcFut := "BTC/USDT:USDT-242903"
+	btcFut := "BTC/USDT:USDT-252609"
+	//for key := range exg.MarketsById {
+	//	if strings.Contains(key, "BTCUSDT") {
+	//		fmt.Println(key)
+	//	}
+	//}
 	btcFutMar := *exg.Markets[btcSwap]
 	btcFutMar.Symbol = btcFut
 	exg.MarketsById[btcFut] = []*banexg.Market{
@@ -417,8 +422,7 @@ func TestGetMarketById(t *testing.T) {
 	}{
 		{"BTCUSDT", "spot", "BTC/USDT"},
 		{"BTCUSDT", "linear", "BTC/USDT:USDT"},
-		{"BTCUSDT", "swap", btcSwap},
-		{"BTCUSDT", "future", btcSwap},
+		{"BTCUSDT_250926", "linear", btcFut},
 	}
 	for _, it := range items {
 		mar := exg.GetMarketById(it.symbol, it.market)

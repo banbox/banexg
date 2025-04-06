@@ -114,7 +114,7 @@ func makeSign(e *Bybit) banexg.FuncSign {
 }
 
 func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tryNum int) *banexg.ApiRes[T] {
-	res_ := e.RequestApiRetry(context.Background(), api, params, tryNum)
+	res_ := e.RequestApiRetryAdv(context.Background(), api, params, tryNum, true, false)
 	res := &banexg.ApiRes[T]{HttpRes: res_}
 	if res.Error != nil {
 		return res
@@ -135,6 +135,7 @@ func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tr
 		res.Error = errs.NewMsg(errs.CodeRunTime, "[%v] %s", rsp.RetCode, rsp.RetMsg)
 	} else {
 		res.Result = rsp.Result
+		e.CacheApiRes(api, res_)
 	}
 	return res
 }
@@ -148,14 +149,20 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 			params[banexg.ParamAccount] = ":first"
 		}
 		res := requestRetry[struct {
-			Rows []*Currency `json:"rows"`
+			Rows []map[string]interface{} `json:"rows"`
 		}](e, MethodPrivateGetV5AssetCoinQueryInfo, params, tryNum)
 		if res.Error != nil {
 			return nil, res.Error
 		}
 		var currList = res.Result
+		var currArr []*Currency
+		err := utils.DecodeStructMap(currList.Rows, &currArr, "json")
+		if err != nil {
+			return nil, errs.New(errs.CodeUnmarshalFail, err)
+		}
 		var result = make(banexg.CurrencyMap)
-		for _, row := range currList.Rows {
+		for i, row := range currArr {
+			raw := currList.Rows[i]
 			nets := make([]*banexg.ChainNetwork, 0, len(row.Chains))
 			curr := &banexg.Currency{
 				ID:       row.Coin,
@@ -169,10 +176,12 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 					Withdraw: &banexg.LimitRange{},
 					Deposit:  &banexg.LimitRange{},
 				},
-				Info: row,
+				Info: raw,
 			}
+			var chains []map[string]interface{}
+			chains = utils.GetMapVal(raw, "chains", chains)
 			deposit, withDraw := false, false
-			for _, ch := range row.Chains {
+			for j, ch := range row.Chains {
 				depositAllow := ch.ChainDeposit == "1"
 				withdrawAllow := ch.ChainWithdraw == "1"
 				if depositAllow {
@@ -218,7 +227,7 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 							Min: minDeposit,
 						},
 					},
-					Info: ch,
+					Info: chains[j],
 				})
 			}
 			curr.Active = deposit && withDraw
@@ -274,12 +283,12 @@ func makeFetchMarkets(e *Bybit) banexg.FuncFetchMarkets {
 
 func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "spot"
-	list, _, _, err := getMarkets[*SpotMarket](e, MethodPublicGetV5MarketInstrumentsInfo, params)
+	list, arr, _, _, err := getMarkets[*SpotMarket](e, MethodPublicGetV5MarketInstrumentsInfo, params)
 	if err != nil {
 		return nil, err
 	}
 	var result = make(banexg.MarketMap)
-	for _, it := range list {
+	for i, it := range arr {
 		var amtPrec, pricePrec float64
 		var minOrderQty, maxOrderQty float64
 		var minOrderAmt, maxOrderAmt float64
@@ -320,45 +329,54 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 				Max: maxOrderAmt,
 			},
 		}
-		mar.Info = it
+		mar.Info = list[i]
 		result[mar.Symbol] = mar
 	}
 	return result, nil
 }
 
-func getMarkets[T any](e *Bybit, method string, params map[string]interface{}) ([]T, string, string, *errs.Error) {
+func getMarkets[T any](e *Bybit, method string, params map[string]interface{}) ([]map[string]interface{}, []T, string, string, *errs.Error) {
 	tryNum := e.GetRetryNum("FetchMarkets", 1)
 	rsp := requestRetry[struct {
-		Category       string `json:"category"`
-		List           []T    `json:"list"`
-		NextPageCursor string `json:"nextPageCursor"`
+		Category       string                   `json:"category"`
+		List           []map[string]interface{} `json:"list"`
+		NextPageCursor string                   `json:"nextPageCursor"`
 	}](e, method, params, tryNum)
 	if rsp.Error != nil {
-		return nil, "", "", rsp.Error
+		return nil, nil, "", "", rsp.Error
 	}
 	var res = rsp.Result
-	return res.List, res.Category, res.NextPageCursor, nil
+	var arr []T
+	if len(res.List) > 0 {
+		err_ := utils.DecodeStructMap(res.List, &arr, "json")
+		if err_ != nil {
+			return nil, nil, "", "", errs.New(errs.CodeUnmarshalFail, err_)
+		}
+	}
+	return res.List, arr, res.Category, res.NextPageCursor, nil
 }
 
-func getMarketsLoop[T any](e *Bybit, method string, params map[string]interface{}) ([]T, string, *errs.Error) {
+func getMarketsLoop[T any](e *Bybit, method string, params map[string]interface{}) ([]map[string]interface{}, []T, string, *errs.Error) {
 	if _, ok := params[banexg.ParamLimit]; !ok {
 		params[banexg.ParamLimit] = 1000
 	}
 	var category string
-	var items []T
+	var items []map[string]interface{}
+	var arrList []T
 	for {
-		list, cate, cursor, err := getMarkets[T](e, method, params)
+		list, arr, cate, cursor, err := getMarkets[T](e, method, params)
 		if err != nil {
-			return nil, "", err
+			return nil, nil, "", err
 		}
 		items = append(items, list...)
+		arrList = append(arrList, arr...)
 		category = cate
 		if cursor == "" {
 			break
 		}
 		params["cursor"] = cursor
 	}
-	return items, category, nil
+	return items, arrList, category, nil
 }
 
 /*
@@ -366,14 +384,14 @@ https://bybit-exchange.github.io/docs/v5/market/instrument
 */
 func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	method := MethodPublicGetV5MarketInstrumentsInfo
-	items, category, err := getMarketsLoop[*FutureMarket](e, method, params)
+	items, arr, category, err := getMarketsLoop[*FutureMarket](e, method, params)
 	if err != nil {
 		return nil, err
 	}
 	var result = make(banexg.MarketMap)
 	isLinear := category == "linear"
 	isInverse := category == "inverse"
-	for _, it := range items {
+	for i, it := range arr {
 		mar := it.ContractMarket.ToStdMarket(e)
 		linearPerpetual := it.ContractType == "LinearPerpetual"
 		if mar.SettleID == "" {
@@ -433,7 +451,7 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 			Min: minOrderQty,
 			Max: maxOrderQty,
 		}
-		mar.Info = it
+		mar.Info = items[i]
 		result[mar.Symbol] = mar
 	}
 	return result, nil
@@ -442,12 +460,12 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "option"
 	method := MethodPublicGetV5MarketInstrumentsInfo
-	items, _, err := getMarketsLoop[*OptionMarket](e, method, params)
+	items, arr, _, err := getMarketsLoop[*OptionMarket](e, method, params)
 	if err != nil {
 		return nil, err
 	}
 	var result = make(banexg.MarketMap)
-	for _, it := range items {
+	for i, it := range arr {
 		mar := it.ContractMarket.ToStdMarket(e)
 		codeArr := strings.Split(it.Symbol, "-")
 		mar.Symbol = fmt.Sprintf("%s-%s-%s", mar.Symbol, codeArr[2], codeArr[3])
@@ -466,7 +484,7 @@ func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.Market
 			Max: maxOrderQty,
 		}
 		mar.Limits.Leverage = &banexg.LimitRange{}
-		mar.Info = it
+		mar.Info = items[i]
 		result[mar.Symbol] = mar
 	}
 	return result, nil
@@ -664,15 +682,21 @@ func (e *Bybit) getFundRateHis(marketType string, until int64, args map[string]i
 	method := MethodPublicGetV5MarketFundingHistory
 	tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
 	rsp := requestRetry[struct {
-		Category string      `json:"category"`
-		List     []*FundRate `json:"list"`
+		Category string                   `json:"category"`
+		List     []map[string]interface{} `json:"list"`
 	}](e, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, false, rsp.Error
 	}
+	var arr = rsp.Result.List
+	var items = make([]*FundRate, 0, len(arr))
+	err := utils.DecodeStructMap(arr, &items, "json")
+	if err != nil {
+		return nil, false, errs.New(errs.CodeUnmarshalFail, err)
+	}
 	var lastMS int64
 	var list = make([]*banexg.FundingRate, 0, len(rsp.Result.List))
-	for _, it := range rsp.Result.List {
+	for i, it := range items {
 		code := e.SafeSymbol(it.Symbol, "", marketType)
 		stamp, _ := strconv.ParseInt(it.FundingRateTimestamp, 10, 64)
 		if stamp > lastMS {
@@ -686,7 +710,7 @@ func (e *Bybit) getFundRateHis(marketType string, until int64, args map[string]i
 			Symbol:      code,
 			FundingRate: rate,
 			Timestamp:   stamp,
-			Info:        it,
+			Info:        arr[i],
 		})
 	}
 	interval := int64(60 * 60 * 8 * 1000)

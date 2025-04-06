@@ -7,15 +7,16 @@ import (
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
 	"testing"
+	"time"
 )
 
 func TestFetchOrder(t *testing.T) {
 	exg := getBinance(nil)
 	cases := map[string]map[string]interface{}{
-		"281077600438": {"market": banexg.MarketLinear},
+		"25578760824": {"market": banexg.MarketLinear},
 	}
 
-	symbol := "BTC/USDT:USDT"
+	symbol := "ETC/USDT:USDT"
 	for orderId, item := range cases {
 		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOrder(symbol, orderId, item)
@@ -36,8 +37,8 @@ func TestFetchOrders(t *testing.T) {
 		//{"market": banexg.MarketOption},
 	}
 
-	symbol := "BTC/USDT:USDT"
-	since := int64(1708511530259)
+	symbol := "ETC/USDT:USDT"
+	since := time.Date(2025, 4, 6, 0, 0, 0, 0, time.UTC).UnixMilli()
 	for _, item := range cases {
 		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOrders(symbol, since, 0, item)
@@ -57,8 +58,8 @@ func TestFetchOpenOrders(t *testing.T) {
 		//{"market": banexg.MarketInverse},
 		//{"market": banexg.MarketOption},
 	}
-	symbol := "ETH/USDT:USDT"
-	since := int64(1702991965921)
+	symbol := "ETC/USDT:USDT"
+	since := time.Date(2025, 4, 6, 0, 0, 0, 0, time.UTC).UnixMilli()
 	for _, item := range cases {
 		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOpenOrders(symbol, since, 0, item)
@@ -101,7 +102,7 @@ func TestCalcelOrder(t *testing.T) {
 	exg := getBinance(nil)
 	symbol := "ETH/USDT:USDT"
 
-	res, err := exg.CancelOrder("8389765637843621129", symbol, nil)
+	res, err := exg.CancelOrder("8389765870487818124", symbol, nil)
 	if err != nil {
 		panic(err)
 	}
