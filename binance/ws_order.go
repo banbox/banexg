@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -318,6 +319,7 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 		#     }
 	*/
 	marketId, _ := msg["s"]
+	client.SetSubsKeyStamp(strings.ToLower(marketId)+"@depth", bntp.UTCStamp())
 	market := e.GetMarketById(marketId, client.MarketType)
 	urlZap := zap.String("url", client.URL)
 	if market == nil {

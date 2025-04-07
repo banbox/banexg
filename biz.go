@@ -110,6 +110,7 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.DebugWS, e.Options, OptDebugWs, false)
 	utils.SetFieldBy(&e.DebugAPI, e.Options, OptDebugApi, false)
 	utils.SetFieldBy(&e.WsBatchSize, e.Options, OptDumpBatchSize, 1000)
+	utils.SetFieldBy(&e.WsTimeout, e.Options, OptWsTimeout, 10000)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}

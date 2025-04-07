@@ -49,6 +49,8 @@ type Exchange struct {
 	lastRequestMS       int64      // 上次请求的13位时间戳
 	rateM               sync.Mutex // 同步锁
 	CalcRateLimiterCost FuncCalcRateLimiterCost
+	WsTimeout           int64 // websocket msg timeout in milliseconds
+	WsChecking          bool
 
 	MarketsWait chan interface{} // whether is loading markets
 	CareMarkets []string         // markets to be fetch: spot/linear/inverse/option
@@ -89,6 +91,7 @@ type Exchange struct {
 	AuthWS          FuncAuthWS
 	CalcFee         FuncCalcFee
 	GetRetryWait    func(e *errs.Error) int // 根据错误信息计算重试间隔秒数，<0表示无需重试
+	CheckWsTimeout  func()
 
 	OnWsMsg   FuncOnWsMsg
 	OnWsErr   FuncOnWsErr

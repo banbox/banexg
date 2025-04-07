@@ -855,6 +855,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 	exg.OnWsReCon = makeHandleWsReCon(exg)
 	exg.GetRetryWait = makeGetRetryWait(exg)
 	exg.AuthWS = exg.postListenKey
+	exg.CheckWsTimeout = makeCheckWsTimeout(exg)
 	err := exg.Init()
 	return exg, err
 }

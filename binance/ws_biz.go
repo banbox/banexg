@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -50,10 +51,10 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 			e.handleOHLCV(client, msg)
 		case "markPriceUpdate":
 			// linear/inverse
-			e.handleMarkPrices(client, msgList)
+			e.handleMarkPrices(client, msgList, item.IsArray)
 		case "markPrice":
 			// option
-			e.handleMarkPrices(client, msgList)
+			e.handleMarkPrices(client, msgList, item.IsArray)
 		case "24hrTicker":
 			//spot/linear/inverse/option
 			e.handleTickers(client, msgList)
@@ -356,7 +357,7 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 	if err != nil {
 		return "", nil, err
 	}
-	if !e.IsContract(marketType) {
+	if !e.IsContract(marketType) && marketType != banexg.MarketOption {
 		return "", nil, errs.NewMsg(errs.CodeUnsupportMarket, "WatchMarkPrices support linear/inverse/option, current: %s", marketType)
 	}
 	msgHash := marketType + "@markPrice"
@@ -384,7 +385,7 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 	return chanKey, args, nil
 }
 
-func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string) {
+func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string, isArray bool) {
 	evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
 	e.KeyTimeStamps["markPrices"] = evtTime
 	data, ok := e.MarkPrices[client.MarketType]
@@ -393,15 +394,35 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 		e.MarkPrices[client.MarketType] = data
 	}
 	var res = map[string]float64{}
+	var marketId string
 	for _, msg := range msgList {
-		symbol, _ := utils.SafeMapVal(msg, "s", "")
+		marketId, _ = utils.SafeMapVal(msg, "s", "")
 		markPrice, _ := utils.SafeMapVal(msg, "p", float64(0))
-		symbol = e.SafeSymbol(symbol, "", client.MarketType)
+		symbol := e.SafeSymbol(marketId, "", client.MarketType)
 		if symbol == "" {
 			continue
 		}
 		res[symbol] = markPrice
 	}
+	marketId = strings.ToLower(marketId)
+	var subsKey string
+	if client.MarketType == banexg.MarketLinear {
+		if isArray {
+			// 仅U本位合约有全市场标记价格推送
+			subsKey = "!markPrice@arr"
+		} else {
+			subsKey = marketId + "@markPrice"
+		}
+	} else if client.MarketType == banexg.MarketInverse {
+		// 币本位合约，只取_隔开的第一个
+		marketId = strings.Split(marketId, "_")[0]
+		subsKey = marketId + "@markPrice"
+	} else {
+		// 期权，使用-隔开的第一个
+		marketId = strings.Split(marketId, "-")[0]
+		subsKey = marketId + "@markPrice"
+	}
+	client.SetSubsKeyStamp(subsKey, bntp.UTCStamp())
 	chanKey := client.Prefix(client.MarketType + "@markPrice")
 	maps.Copy(data, res)
 	banexg.WriteOutChan(e.Exchange, chanKey, res, true)
@@ -414,6 +435,7 @@ func (e *Binance) handleTrade(client *banexg.WsClient, msg map[string]string) {
 	var chanKey = client.Prefix(client.MarketType + "@" + event)
 	marketId, _ := utils.SafeMapVal(msg, "s", "")
 	var symbol = e.SafeSymbol(marketId, "", client.MarketType)
+	client.SetSubsKeyStamp(strings.ToLower(marketId)+"@"+event, bntp.UTCStamp())
 	var tradeId string
 	if isAggTrade {
 		tradeId, _ = utils.SafeMapVal(msg, "a", "")
@@ -487,6 +509,7 @@ func (e *Binance) handleOHLCV(client *banexg.WsClient, msg map[string]string) {
 	} else if k.PairSymbol != "" {
 		marketId = k.PairSymbol
 	}
+	client.SetSubsKeyStamp(strings.ToLower(marketId)+"@"+event, bntp.UTCStamp())
 	o, _ := strconv.ParseFloat(k.Open, 64)
 	c, _ := strconv.ParseFloat(k.Close, 64)
 	h, _ := strconv.ParseFloat(k.High, 64)

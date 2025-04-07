@@ -3,6 +3,7 @@ package banexg
 import (
 	"errors"
 	"fmt"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
@@ -35,6 +36,8 @@ type WsClient struct {
 	JobInfos      map[string]*WsJobInfo // request id: Sub Data
 	ChanCaps      map[string]int        // msgHash: cap size of cache msg
 	SubscribeKeys map[string]int        // Subscription key, used to restore subscription after reconnection 订阅的key，用于重连后恢复订阅
+	SubsKeyStamps map[string]int64      // 记录订阅key上次收到消息的时间戳，用于检测超时自动重新订阅
+	subsKeyMap    map[string]string     // 通用key到SubsKeyStamps中key的转换
 	OdBookLimits  map[string]int        // Record the depth of each target subscription order book for easy cancellation 记录每个标的订阅订单簿的深度，方便取消
 	OnMessage     func(client *WsClient, msg *WsMsg)
 	OnError       func(client *WsClient, err *errs.Error)
@@ -45,6 +48,7 @@ type WsClient struct {
 	connSubs      map[int]int
 	connLock      sync.Mutex
 	LimitsLock    sync.Mutex // for OdBookLimits
+	subsLock      sync.Mutex // for SubsKeyStamps
 }
 
 type AsyncConn struct {
@@ -194,15 +198,18 @@ var (
 	}
 )
 
-func newWsClient(reqUrl string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose, onReCon FuncOnWsReCon,
+func newWsClient(reqUrl, acc string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose, onReCon FuncOnWsReCon,
 	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	args := utils.SafeParams(params)
 	var result = &WsClient{
+		AccName:       acc,
 		URL:           reqUrl,
 		Debug:         debug,
 		Conns:         make(map[int]*AsyncConn),
 		JobInfos:      make(map[string]*WsJobInfo),
 		SubscribeKeys: make(map[string]int),
+		SubsKeyStamps: make(map[string]int64),
+		subsKeyMap:    make(map[string]string),
 		OdBookLimits:  make(map[string]int),
 		OnMessage:     onMsg,
 		OnError:       onErr,
@@ -253,15 +260,17 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
 	}
-	client, err := newWsClient(wsUrl, e.OnWsMsg, e.OnWsErr, onClosed, e.OnWsReCon, params, e.DebugWS)
+	client, err := newWsClient(wsUrl, accName, e.OnWsMsg, e.OnWsErr, onClosed, e.OnWsReCon, params, e.DebugWS)
 	if err != nil {
 		return nil, err
 	}
 	client.Exg = e
 	client.MarketType = marketType
-	client.AccName = accName
 	client.Key = clientKey
 	e.WSClients[clientKey] = client
+	if e.CheckWsTimeout != nil && !e.WsChecking {
+		go e.CheckWsTimeout()
+	}
 	return client, nil
 }
 
@@ -383,6 +392,67 @@ func CheckWsError(msg map[string]string) *errs.Error {
 		return errs.NewMsg(statusVal, msgStr)
 	}
 	return nil
+}
+
+func (c *WsClient) GetTimeoutSubKeys(timeout int64) map[int][]string {
+	curMS := bntp.UTCStamp()
+	c.subsLock.Lock()
+	var fails []string
+	for k, ts := range c.SubsKeyStamps {
+		if ts > 0 && curMS-ts > timeout {
+			fails = append(fails, k)
+		}
+	}
+	var result = make(map[int][]string)
+	if len(fails) > 0 {
+		for _, k := range fails {
+			if connId, ok := c.SubscribeKeys[k]; ok {
+				items, _ := result[connId]
+				result[connId] = append(items, k)
+			}
+		}
+	}
+	c.subsLock.Unlock()
+	return result
+}
+
+func (c *WsClient) SetSubsKeyStamp(key string, stamp int64) {
+	c.subsLock.Lock()
+	if target, ok := c.subsKeyMap[key]; ok {
+		c.SubsKeyStamps[target] = stamp
+	} else if _, ok := c.SubscribeKeys[key]; ok {
+		c.SubsKeyStamps[key] = stamp
+		c.subsKeyMap[key] = key
+	} else {
+		match := false
+		for k := range c.SubscribeKeys {
+			if strings.HasPrefix(k, key) {
+				c.SubsKeyStamps[k] = stamp
+				c.subsKeyMap[key] = k
+				match = true
+				break
+			}
+		}
+		if !match {
+			// 未匹配，使用@切分，分别匹配头部和中间特征；针对期权markPrice
+			arr := strings.Split(key, "@")
+			prefix := arr[0]
+			fea := "@" + strings.Join(arr[1:], "@")
+			for k := range c.SubscribeKeys {
+				if strings.HasPrefix(k, prefix) && strings.Contains(k, fea) {
+					c.SubsKeyStamps[k] = stamp
+					c.subsKeyMap[key] = k
+					match = true
+					break
+				}
+			}
+			if !match {
+				log.Warn("SetSubsKeyStamp not match", zap.String("k", key),
+					zap.Strings("has", utils.KeysOfMap(c.SubsKeyStamps)))
+			}
+		}
+	}
+	c.subsLock.Unlock()
 }
 
 /*
@@ -552,6 +622,7 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 	var conn *AsyncConn
 	if !isSub {
 		method = "UNSUBSCRIBE"
+		c.subsLock.Lock()
 		for _, key := range keys {
 			if cid, ok := c.SubscribeKeys[key]; ok {
 				num, _ := c.connSubs[cid]
@@ -561,8 +632,10 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 					c.connSubs[cid] = num - 1
 				}
 				delete(c.SubscribeKeys, key)
+				delete(c.SubsKeyStamps, key)
 			}
 		}
+		c.subsLock.Unlock()
 	} else {
 		conn, _ = c.Conns[connID]
 		// Check if there are any existing connections that have not reached the minimum number of subscriptions
@@ -592,9 +665,13 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 			conn = c.Conns[cids[rand.Intn(len(cids))]]
 		}
 		connID = conn.GetID()
+		curMS := bntp.UTCStamp()
+		c.subsLock.Lock()
 		for _, key := range keys {
 			c.SubscribeKeys[key] = connID
+			c.SubsKeyStamps[key] = curMS
 		}
+		c.subsLock.Unlock()
 		num, _ := c.connSubs[connID]
 		c.connSubs[connID] = num + len(keys)
 	}
@@ -603,11 +680,13 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 
 func (c *WsClient) GetSubKeys(connID int) []string {
 	var keys = make([]string, 0, 16)
+	c.subsLock.Lock()
 	for key, id := range c.SubscribeKeys {
 		if id == connID {
 			keys = append(keys, key)
 		}
 	}
+	c.subsLock.Unlock()
 	return keys
 }
 

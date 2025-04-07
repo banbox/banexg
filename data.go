@@ -106,6 +106,7 @@ const (
 	OptDumpBatchSize   = "DumpBatchSize"
 	OptReplayPath      = "ReplayPath"
 	OptEnv             = "Env"
+	OptWsTimeout       = "WsTimeout"
 )
 
 const (

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var secretApis = map[string]bool{
@@ -1192,4 +1193,34 @@ func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{
 		})
 	}
 	return list, nil
+}
+
+/*
+定期检查ws消息是否超时，超时则自动重新连接
+*/
+func makeCheckWsTimeout(e *Binance) func() {
+	return func() {
+		e.WsChecking = true
+		defer func() {
+			e.WsChecking = false
+		}()
+		loopIntv := time.Duration(e.WsTimeout) * time.Millisecond / 3
+		for {
+			time.Sleep(loopIntv)
+			for _, client := range e.WSClients {
+				connKeys := client.GetTimeoutSubKeys(e.WsTimeout)
+				if len(connKeys) == 0 {
+					continue
+				}
+				log.Info("Found websocket timeout keys", zap.String("url", client.URL),
+					zap.Any("keys", connKeys))
+				for connId, keys := range connKeys {
+					err := e.WriteWSMsg(client, connId, true, keys, nil, nil)
+					if err != nil {
+						log.Error("re-subscribe timeout keys fail", zap.Int("conn", connId), zap.Error(err))
+					}
+				}
+			}
+		}
+	}
 }
