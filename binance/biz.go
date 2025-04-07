@@ -482,7 +482,7 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 
 func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
-	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumStr)
+	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumAuto)
 	if err != nil {
 		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "parse bnb ohlcv fail")
 	}
@@ -491,17 +491,13 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 	}
 	var res = make([]*banexg.Kline, len(klines))
 	for i, bar := range klines {
-		err = utils.ParseJsonNumber(&bar)
-		if err != nil {
-			return nil, errs.New(errs.CodeUnmarshalFail, err)
-		}
 		barTime, _ := bar[0].(int64)
 		openStr, _ := bar[1].(string)
 		highStr, _ := bar[2].(string)
 		lowStr, _ := bar[3].(string)
 		closeStr, _ := bar[4].(string)
 		volStr, _ := bar[volIndex].(string)
-		//barTime, _ := strconv.ParseInt(timeText, 10, 64)
+		// barTime, _ := strconv.ParseInt(timeText, 10, 64)
 		open, _ := strconv.ParseFloat(openStr, 64)
 		high, _ := strconv.ParseFloat(highStr, 64)
 		low, _ := strconv.ParseFloat(lowStr, 64)

@@ -385,7 +385,7 @@ func MarshalString(v any) (string, error) {
 }
 
 func DecodeStructMap(input, output interface{}, tag string) error {
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		TagName: tag,
 		Squash:  true,
 		Result:  output,
@@ -393,7 +393,7 @@ func DecodeStructMap(input, output interface{}, tag string) error {
 	if err != nil {
 		return err
 	}
-	return decoder.Decode(input)
+	return dec.Decode(input)
 }
 
 func ToStdMap[T any](m map[string]T) map[string]interface{} {
