@@ -1196,7 +1196,8 @@ func (e *Binance) FetchLastPrices(symbols []string, params map[string]interface{
 }
 
 /*
-定期检查ws消息是否超时，超时则自动重新连接
+定期检查公开ws数据消息是否超时（每个订阅key都应该定期收到数据推送，最长不超过3s），超时则自动重新连接
+Regularly check whether the public ws data messages are timed out (each subscription key should receive data push regularly, with a maximum interval of 3 seconds). If a timeout occurs, automatically reconnect.
 */
 func makeCheckWsTimeout(e *Binance) func() {
 	return func() {
@@ -1204,10 +1205,19 @@ func makeCheckWsTimeout(e *Binance) func() {
 		defer func() {
 			e.WsChecking = false
 		}()
+		if e.WsTimeout < 3100 {
+			log.Warn("WsTimeout for binance must >= 3100")
+			e.WsTimeout = 3100
+		}
 		loopIntv := time.Duration(e.WsTimeout) * time.Millisecond / 3
 		for {
 			time.Sleep(loopIntv)
 			for _, client := range e.WSClients {
+				if client.AccName != "" {
+					// 跳过订阅账户数据推送（因不是定期稳定推送）
+					// Skip the data push for subscription account data (as it is not regularly and stably pushed).
+					continue
+				}
 				connKeys := client.GetTimeoutSubKeys(e.WsTimeout)
 				if len(connKeys) == 0 {
 					continue
