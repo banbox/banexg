@@ -428,6 +428,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 			go doReq(marketType)
 			watNum += 1
 		}
+		var err2 *errs.Error
 		var result = make(banexg.MarketMap)
 		for i := 0; i < watNum; i++ {
 			rsp, ok := <-ch
@@ -435,6 +436,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				break
 			}
 			if rsp.Error != nil {
+				err2 = rsp.Error
 				continue
 			}
 			var res BnbMarketRsp
@@ -452,7 +454,7 @@ func makeFetchMarkets(e *Binance) banexg.FuncFetchMarkets {
 				}
 			}
 		}
-		return result, nil
+		return result, err2
 	}
 }
 
