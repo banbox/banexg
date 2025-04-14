@@ -90,13 +90,15 @@ func TFToSecs(timeFrame string) int {
 	var err error
 	if !ok {
 		secs, err = parseTimeFrame(timeFrame)
-		if err != nil {
-			panic(err)
+		if err == nil {
+			tfSecsMap[timeFrame] = secs
+			secsTfMap[secs] = timeFrame
 		}
-		tfSecsMap[timeFrame] = secs
-		secsTfMap[secs] = timeFrame
 	}
 	tfLock.Unlock()
+	if err != nil {
+		panic(err)
+	}
 	return secs
 }
 
@@ -172,6 +174,7 @@ Convert the seconds of a time period into a time period
 func SecsToTF(tfSecs int) string {
 	tfLock.Lock()
 	timeFrame, ok := secsTfMap[tfSecs]
+	invalid := false
 	if !ok {
 		switch {
 		case tfSecs >= SecsYear:
@@ -191,10 +194,13 @@ func SecsToTF(tfSecs int) string {
 		case tfSecs >= 1:
 			timeFrame = strconv.Itoa(tfSecs) + "s"
 		default:
-			panic("unsupport tfSecs:" + strconv.Itoa(tfSecs))
+			invalid = true
 		}
 		secsTfMap[tfSecs] = timeFrame
 	}
 	tfLock.Unlock()
+	if invalid {
+		panic("unsupport tfSecs:" + strconv.Itoa(tfSecs))
+	}
 	return timeFrame
 }
