@@ -8,6 +8,7 @@ import (
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"github.com/gorilla/websocket"
+	"github.com/sasha-s/go-deadlock"
 	"go.uber.org/zap"
 	"io"
 	"math/rand"
@@ -16,7 +17,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -27,7 +27,7 @@ var (
 
 type WsClient struct {
 	Exg           *Exchange
-	Conns         map[int]*AsyncConn
+	conns         map[int]*AsyncConn
 	URL           string
 	AccName       string
 	MarketType    string
@@ -38,7 +38,7 @@ type WsClient struct {
 	SubscribeKeys map[string]int        // Subscription key, used to restore subscription after reconnection 订阅的key，用于重连后恢复订阅
 	SubsKeyStamps map[string]int64      // 记录订阅key上次收到消息的时间戳，用于检测超时自动重新订阅
 	subsKeyMap    map[string]string     // 通用key到SubsKeyStamps中key的转换
-	OdBookLimits  map[string]int        // Record the depth of each target subscription order book for easy cancellation 记录每个标的订阅订单簿的深度，方便取消
+	odBookLimits  map[string]int        // Record the depth of each target subscription order book for easy cancellation 记录每个标的订阅订单簿的深度，方便取消
 	OnMessage     func(client *WsClient, msg *WsMsg)
 	OnError       func(client *WsClient, err *errs.Error)
 	OnClose       func(client *WsClient, err *errs.Error)
@@ -46,9 +46,9 @@ type WsClient struct {
 	NextConnId    int
 	connArgs      map[string]interface{}
 	connSubs      map[int]int
-	connLock      sync.Mutex
-	LimitsLock    sync.Mutex // for OdBookLimits
-	subsLock      sync.Mutex // for SubsKeyStamps
+	connLock      deadlock.Mutex
+	limitsLock    deadlock.Mutex // for odBookLimits
+	subsLock      deadlock.Mutex // for SubsKeyStamps
 }
 
 type AsyncConn struct {
@@ -75,8 +75,34 @@ func (ws *WebSocket) Close() error {
 }
 
 func (ws *WebSocket) WriteClose() error {
+	if ws.Conn == nil {
+		return nil
+	}
 	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 	return ws.Conn.WriteMessage(websocket.CloseMessage, exitData)
+}
+
+func (ws *WebSocket) reConnect() error {
+	err_ := ws.initConn()
+	if err_ != nil {
+		return err_
+	}
+	log.Info("reconnect success", zap.String("url", ws.url), zap.Int("id", ws.id))
+	if ws.onReConnect != nil {
+		err2 := ws.onReConnect()
+		if err2 != nil {
+			return err2
+		}
+	}
+	return nil
+}
+
+func (ws *WebSocket) ReConnect() error {
+	var err = ws.Close()
+	if err != nil {
+		log.Warn("close ws conn fail", zap.String("url", ws.url), zap.Int("id", ws.id), zap.Error(err))
+	}
+	return ws.reConnect()
 }
 
 func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
@@ -110,7 +136,8 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				} else {
 					wait = time.Millisecond * 1000
 				}
-			} else if strings.Contains(errText, "EOF") || strings.Contains(errText, "connection timed out") {
+			} else if strings.Contains(errText, "EOF") || strings.Contains(errText, "connection timed out") ||
+				strings.Contains(errText, "connection reset") {
 				ws.Conn = nil
 				tryReConn = true
 				wait = time.Millisecond * 500
@@ -120,16 +147,9 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			}
 			if tryReConn {
 				log.Info(fmt.Sprintf("[%v] ws %v closed, reconnecting: %s, err: %T %v", code, ws.id, ws.url, err, errText))
-				err_ := ws.initConn()
+				err_ := ws.reConnect()
 				if err_ != nil {
 					return nil, err_
-				}
-				log.Info("reconnect success", zap.String("url", ws.url), zap.Int("id", ws.id))
-				if ws.onReConnect != nil {
-					err2 := ws.onReConnect()
-					if err2 != nil {
-						log.Error("OnReConnect fail", zap.Error(err2))
-					}
 				}
 				return ws.ReadMsg()
 			}
@@ -205,12 +225,12 @@ func newWsClient(reqUrl, acc string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClo
 		AccName:       acc,
 		URL:           reqUrl,
 		Debug:         debug,
-		Conns:         make(map[int]*AsyncConn),
+		conns:         make(map[int]*AsyncConn),
 		JobInfos:      make(map[string]*WsJobInfo),
 		SubscribeKeys: make(map[string]int),
 		SubsKeyStamps: make(map[string]int64),
 		subsKeyMap:    make(map[string]string),
-		OdBookLimits:  make(map[string]int),
+		odBookLimits:  make(map[string]int),
 		OnMessage:     onMsg,
 		OnError:       onErr,
 		OnClose:       onClose,
@@ -240,8 +260,13 @@ func newWsClient(reqUrl, acc string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClo
 func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
 	clientKey := accName + "@" + wsUrl
 	client, ok := e.WSClients[clientKey]
-	if ok && len(client.Conns) > 0 {
-		return client, nil
+	if ok {
+		conns, lock := client.LockConns()
+		connNum := len(conns)
+		lock.Unlock()
+		if connNum > 0 {
+			return client, nil
+		}
 	}
 	params := map[string]interface{}{}
 	if e.Proxy != nil {
@@ -394,22 +419,35 @@ func CheckWsError(msg map[string]string) *errs.Error {
 	return nil
 }
 
-func (c *WsClient) GetTimeoutSubKeys(timeout int64) map[int][]string {
+type SubStat struct {
+	Conn     *AsyncConn
+	ConnId   int
+	Timeouts map[string]int64 // 超时的key，及其毫秒数
+	Stamps   map[string]int64 // 所有key上次收到消息的时间戳
+}
+
+func (c *WsClient) GetConnSubStats(timeout int64) map[int]*SubStat {
 	curMS := bntp.UTCStamp()
 	c.subsLock.Lock()
-	var fails []string
-	for k, ts := range c.SubsKeyStamps {
-		if ts > 0 && curMS-ts > timeout {
-			fails = append(fails, k)
-		}
-	}
-	var result = make(map[int][]string)
-	if len(fails) > 0 {
-		for _, k := range fails {
-			if connId, ok := c.SubscribeKeys[k]; ok {
-				items, _ := result[connId]
-				result[connId] = append(items, k)
+	var result = make(map[int]*SubStat)
+	for k, cid := range c.SubscribeKeys {
+		stamp, _ := c.SubsKeyStamps[k]
+		stat, ok := result[cid]
+		if !ok {
+			c.connLock.Lock()
+			conn := c.conns[cid]
+			c.connLock.Unlock()
+			stat = &SubStat{
+				Conn:     conn,
+				ConnId:   cid,
+				Timeouts: make(map[string]int64),
+				Stamps:   make(map[string]int64),
 			}
+			result[cid] = stat
+		}
+		stat.Stamps[k] = stamp
+		if stamp > 0 && curMS-stamp > timeout {
+			stat.Timeouts[k] = curMS - stamp
 		}
 	}
 	c.subsLock.Unlock()
@@ -488,7 +526,10 @@ func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *err
 }
 
 func (c *WsClient) Close() {
-	for _, conn := range c.Conns {
+	c.connLock.Lock()
+	conns := utils.ValsOfMap(c.conns)
+	c.connLock.Unlock()
+	for _, conn := range conns {
 		conn.control <- ctrlDoClose
 	}
 }
@@ -503,7 +544,7 @@ func (c *WsClient) write(conn *AsyncConn) {
 		}
 		close(conn.control)
 		c.connLock.Lock()
-		delete(c.Conns, conn.GetID())
+		delete(c.conns, conn.GetID())
 		c.connLock.Unlock()
 	}()
 	for {
@@ -637,11 +678,12 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		}
 		c.subsLock.Unlock()
 	} else {
-		conn, _ = c.Conns[connID]
+		connMap, lock := c.LockConns()
+		conn, _ = connMap[connID]
 		// Check if there are any existing connections that have not reached the minimum number of subscriptions
 		// 检查已有连接，是否有未达到最低订阅数的
 		if conn == nil {
-			for cid, con := range c.Conns {
+			for cid, con := range connMap {
 				num, _ := c.connSubs[cid]
 				if num < connMinSubs {
 					conn = con
@@ -651,7 +693,9 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		}
 		// Attempt to create a new connection
 		// 尝试创建新连接
-		if conn == nil && len(c.Conns) < maxClientConn {
+		connNum := len(connMap)
+		lock.Unlock()
+		if conn == nil && connNum < maxClientConn {
 			var err *errs.Error
 			conn, err = c.newConn(true)
 			if err != nil {
@@ -661,8 +705,10 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		// Randomly select one from existing connections
 		// 从已有连接随机挑一个
 		if conn == nil {
-			cids := utils.KeysOfMap(c.Conns)
-			conn = c.Conns[cids[rand.Intn(len(cids))]]
+			lock.Lock()
+			cids := utils.KeysOfMap(connMap)
+			conn = connMap[cids[rand.Intn(len(cids))]]
+			lock.Unlock()
 		}
 		connID = conn.GetID()
 		curMS := bntp.UTCStamp()
@@ -708,14 +754,26 @@ func (c *WsClient) newConn(add bool) (*AsyncConn, *errs.Error) {
 
 func (c *WsClient) addConn(conn *AsyncConn) {
 	connID := conn.GetID()
-	if _, has := c.Conns[connID]; has {
+	c.connLock.Lock()
+	if _, has := c.conns[connID]; has {
 		conn.SetID(c.NextConnId)
 		c.NextConnId += 1
 		connID = conn.GetID()
 	}
-	c.Conns[connID] = conn
+	c.conns[connID] = conn
+	c.connLock.Unlock()
 	go c.read(conn)
 	go c.write(conn)
+}
+
+func (c *WsClient) LockConns() (map[int]*AsyncConn, *deadlock.Mutex) {
+	c.connLock.Lock()
+	return c.conns, &c.connLock
+}
+
+func (c *WsClient) LockOdBookLimits() (map[string]int, *deadlock.Mutex) {
+	c.limitsLock.Lock()
+	return c.odBookLimits, &c.limitsLock
 }
 
 func NewWsMsg(msgText string) (*WsMsg, *errs.Error) {

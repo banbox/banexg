@@ -7,12 +7,12 @@ import (
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"github.com/h2non/gock"
+	"github.com/sasha-s/go-deadlock"
 	"go.uber.org/zap"
 	"go.uber.org/zap/buffer"
 	"io"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -50,7 +50,7 @@ type MockWsConn struct {
 	file    *os.File
 	scanner *bufio.Scanner
 	msgChan chan []byte
-	lock    sync.Mutex
+	lock    deadlock.Mutex
 	id      int
 }
 
@@ -64,6 +64,10 @@ func (c *MockWsConn) Close() error {
 }
 
 func (c *MockWsConn) WriteClose() error {
+	return nil
+}
+
+func (c *MockWsConn) ReConnect() error {
 	return nil
 }
 

@@ -4,11 +4,11 @@ import (
 	"compress/gzip"
 	"encoding/gob"
 	"github.com/banbox/banexg/errs"
+	"github.com/sasha-s/go-deadlock"
 	"github.com/shopspring/decimal"
 	"net/http"
 	"net/url"
 	"os"
-	"sync"
 )
 
 type FuncSign = func(api *Entry, params map[string]interface{}) *HttpReq
@@ -44,10 +44,10 @@ type Exchange struct {
 	Accounts   map[string]*Account // name: account
 	DefAccName string              // default account name
 
-	EnableRateLimit     int        // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
-	RateLimit           int64      // 请求速率控制毫秒数，最小间隔单位
-	lastRequestMS       int64      // 上次请求的13位时间戳
-	rateM               sync.Mutex // 同步锁
+	EnableRateLimit     int            // 是否启用请求速率控制:BoolNull/BoolTrue/BoolFalse
+	RateLimit           int64          // 请求速率控制毫秒数，最小间隔单位
+	lastRequestMS       int64          // 上次请求的13位时间戳
+	rateM               deadlock.Mutex // 同步锁
 	CalcRateLimiterCost FuncCalcRateLimiterCost
 	WsTimeout           int64 // websocket msg timeout in milliseconds
 	WsChecking          bool
@@ -80,7 +80,7 @@ type Exchange struct {
 	WsDecoder   *gob.Decoder
 	WsBatchSize int
 	WsReplayFn  map[string]func(item *WsLog) *errs.Error
-	wsCacheLock sync.Mutex
+	wsCacheLock deadlock.Mutex
 
 	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 
@@ -123,7 +123,7 @@ type ExgInfo struct {
 	MarketsById      MarketArrMap                  // markets index by id
 	OrderBooks       map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
-	OdBookLock       sync.Mutex
+	OdBookLock       deadlock.Mutex
 
 	PrecPadZero  bool   // padding zero for precision
 	MarketType   string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption
@@ -139,10 +139,10 @@ type Account struct {
 	MarBalances  map[string]*Balances   // marketType: Balances
 	Leverages    map[string]int         // 币种当前的杠杆倍数
 	Data         map[string]interface{}
-	LockPos      *sync.Mutex
-	LockBalance  *sync.Mutex
-	LockLeverage *sync.Mutex
-	LockData     *sync.Mutex
+	LockPos      *deadlock.Mutex
+	LockBalance  *deadlock.Mutex
+	LockLeverage *deadlock.Mutex
+	LockData     *deadlock.Mutex
 }
 
 type ExgHosts struct {
@@ -512,7 +512,7 @@ type OdBookSide struct {
 	Price []float64 `json:"price"` // bid: desc   ask: asc
 	Size  []float64 `json:"size"`
 	Depth int       `json:"depth"`
-	Lock  sync.Mutex
+	Lock  deadlock.Mutex
 }
 
 type Income struct {

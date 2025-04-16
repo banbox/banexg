@@ -2,7 +2,7 @@ package banexg
 
 import (
 	"github.com/banbox/banexg/utils"
-	"sync"
+	"github.com/sasha-s/go-deadlock"
 	"time"
 )
 
@@ -59,9 +59,9 @@ var (
 		"FetchPositionsRisk": 1,
 	}
 	HostRetryWaits  = map[string]int64{}
-	hostWaitLock    sync.Mutex
+	hostWaitLock    deadlock.Mutex
 	hostFlowChans   = make(map[string]chan struct{})
-	hostFlowLock    sync.Mutex
+	hostFlowLock    deadlock.Mutex
 	HostHttpConcurr = 3 // Maximum concurrent number of HTTP requests per domain name 每个域名发起http请求最大并发数
 )
 
@@ -234,6 +234,6 @@ var (
 	exgCareMarkets      = map[string][]string{}    // what market types was cached for exchanges
 	exgMarketTS         = map[string]int64{}       // when was markets cached
 	exgMarketExpireMins = 360                      // ttl minutes for markets cache
-	marketsLock         sync.RWMutex               // 访问缓存的读写锁
+	marketsLock         deadlock.RWMutex           // 访问缓存的读写锁
 	LocUTC, _           = time.LoadLocation("UTC")
 )

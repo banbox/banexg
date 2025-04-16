@@ -178,7 +178,10 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 		acc.LockData.Unlock()
 		clientKey := acc.Name + "@" + e.GetHost(marketType) + "/" + listenKey
 		if client, ok := e.WSClients[clientKey]; ok {
-			for _, conn := range client.Conns {
+			conns, lock := client.LockConns()
+			connList := utils.ValsOfMap(conns)
+			lock.Unlock()
+			for _, conn := range connList {
 				_ = conn.WriteClose()
 			}
 			log.Warn("renew listenKey fail, close ws client", zap.String("key", clientKey))

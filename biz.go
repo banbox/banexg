@@ -10,6 +10,7 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"io"
@@ -23,7 +24,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -110,7 +110,7 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.DebugWS, e.Options, OptDebugWs, false)
 	utils.SetFieldBy(&e.DebugAPI, e.Options, OptDebugApi, false)
 	utils.SetFieldBy(&e.WsBatchSize, e.Options, OptDumpBatchSize, 1000)
-	utils.SetFieldBy(&e.WsTimeout, e.Options, OptWsTimeout, 10000)
+	utils.SetFieldBy(&e.WsTimeout, e.Options, OptWsTimeout, 15000)
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -1504,10 +1504,10 @@ func (e *Exchange) parseOptCreds() {
 				MarPositions: map[string][]*Position{},
 				Leverages:    map[string]int{},
 				Data:         map[string]interface{}{},
-				LockBalance:  &sync.Mutex{},
-				LockPos:      &sync.Mutex{},
-				LockLeverage: &sync.Mutex{},
-				LockData:     &sync.Mutex{},
+				LockBalance:  &deadlock.Mutex{},
+				LockPos:      &deadlock.Mutex{},
+				LockLeverage: &deadlock.Mutex{},
+				LockData:     &deadlock.Mutex{},
 			}
 		}
 	}
@@ -1526,10 +1526,10 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 		MarBalances:  map[string]*Balances{},
 		Leverages:    map[string]int{},
 		Data:         current,
-		LockBalance:  &sync.Mutex{},
-		LockPos:      &sync.Mutex{},
-		LockLeverage: &sync.Mutex{},
-		LockData:     &sync.Mutex{},
+		LockBalance:  &deadlock.Mutex{},
+		LockPos:      &deadlock.Mutex{},
+		LockLeverage: &deadlock.Mutex{},
+		LockData:     &deadlock.Mutex{},
 	}
 }
 

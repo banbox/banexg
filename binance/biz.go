@@ -1211,6 +1211,7 @@ func makeCheckWsTimeout(e *Binance) func() {
 			log.Warn("WsTimeout for binance must >= 3100")
 			e.WsTimeout = 3100
 		}
+		// 以超时时间的1/3作为轮询间隔
 		loopIntv := time.Duration(e.WsTimeout) * time.Millisecond / 3
 		for {
 			time.Sleep(loopIntv)
@@ -1220,17 +1221,34 @@ func makeCheckWsTimeout(e *Binance) func() {
 					// Skip the data push for subscription account data (as it is not regularly and stably pushed).
 					continue
 				}
-				connKeys := client.GetTimeoutSubKeys(e.WsTimeout)
-				if len(connKeys) == 0 {
-					continue
-				}
-				log.Info("Found websocket timeout keys", zap.String("url", client.URL),
-					zap.Any("keys", connKeys))
-				for connId, keys := range connKeys {
-					err := e.WriteWSMsg(client, connId, true, keys, nil, nil)
-					if err != nil {
-						log.Error("re-subscribe timeout keys fail", zap.Int("conn", connId), zap.Error(err))
+				stats := client.GetConnSubStats(e.WsTimeout)
+				connKeys := make([]string, 0, 4)
+				for _, stat := range stats {
+					allNum := len(stat.Stamps)
+					if allNum == 0 || len(stat.Timeouts) == 0 {
+						continue
 					}
+					failRate := float64(len(stat.Timeouts)) / float64(allNum)
+					if failRate >= 0.5 && allNum >= 5 {
+						// 失败过多，重新连接并订阅
+						err_ := stat.Conn.ReConnect()
+						if err_ != nil {
+							log.Error("reconnect ws fail", zap.String("url", client.URL), zap.Error(err_))
+						} else {
+							log.Info("reconnect ws success", zap.String("url", client.URL), zap.Int("num", allNum))
+						}
+					} else {
+						keys := utils.KeysOfMap(stat.Timeouts)
+						connKeys = append(connKeys, keys...)
+						err := e.WriteWSMsg(client, stat.ConnId, true, keys, nil, nil)
+						if err != nil {
+							log.Error("re-subscribe timeout keys fail", zap.Int("conn", stat.ConnId), zap.Error(err))
+						}
+					}
+				}
+				if len(connKeys) > 0 {
+					log.Info("Found websocket timeout keys", zap.String("url", client.URL),
+						zap.Any("keys", connKeys))
 				}
 			}
 		}

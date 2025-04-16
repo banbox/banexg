@@ -103,6 +103,7 @@ type BanExchange interface {
 type WsConn interface {
 	Close() error
 	WriteClose() error
+	ReConnect() error
 	NextWriter() (io.WriteCloser, error)
 	ReadMsg() ([]byte, error)
 	IsOK() bool

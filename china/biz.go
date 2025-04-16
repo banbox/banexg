@@ -7,12 +7,12 @@ import (
 	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 	"github.com/shopspring/decimal"
 	"gopkg.in/yaml.v3"
 	"math"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -30,7 +30,7 @@ var (
 	ctMarkets    = make(map[string]*ItemMarket) // 期货品种代码对应的品种描述
 	stockMarkets = make(map[string]*ItemMarket)
 	ctExgs       = make(map[string]*Exchange)
-	lockMars     = sync.Mutex{}
+	lockMars     = deadlock.Mutex{}
 )
 
 //go:embed markets.yml

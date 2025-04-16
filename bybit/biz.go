@@ -7,6 +7,7 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 	"net/http"
 	"strconv"
 	"strings"
@@ -242,7 +243,7 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 func makeFetchMarkets(e *Bybit) banexg.FuncFetchMarkets {
 	return func(marketTypes []string, params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 		var result = make(banexg.MarketMap)
-		var lock sync.Mutex
+		var lock deadlock.Mutex
 		var outErr *errs.Error
 		var wg sync.WaitGroup
 		wg.Add(len(marketTypes))

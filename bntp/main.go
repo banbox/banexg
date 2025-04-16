@@ -3,10 +3,10 @@ package bntp
 import (
 	"fmt"
 	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,7 +17,7 @@ import (
 
 // TimeSync 时间同步管理器
 type TimeSync struct {
-	mutex       sync.RWMutex
+	mutex       deadlock.RWMutex
 	offset      int64         // 本地时间与标准时间的偏差(毫秒)
 	syncPeriod  time.Duration // 同步周期
 	initialized atomic.Bool   // 是否已初始化，原子操作
@@ -83,7 +83,7 @@ var regionNTPServers = map[string][]string{
 // 全局单例实例和保护锁
 var (
 	timeSyncer     *TimeSync
-	timeSyncerLock sync.Mutex
+	timeSyncerLock deadlock.Mutex
 )
 
 // Option 定义TimeSync的配置选项

@@ -187,19 +187,20 @@ func (e *Binance) prepareBookArgs(isSub bool, limit int, symbols []string, param
 	var task = "depth"
 	// save the depth limit of subscription
 	// 记录订阅的深度信息
-	client.LimitsLock.Lock()
-	defer client.LimitsLock.Unlock()
+	bookLimits, lock := client.LockOdBookLimits()
 	if isSub {
 		for _, code := range symbols {
-			client.OdBookLimits[code] = limit
+			bookLimits[code] = limit
 		}
+		lock.Unlock()
 	} else {
 		for _, code := range symbols {
-			if val, ok := client.OdBookLimits[code]; ok {
+			if val, ok := bookLimits[code]; ok {
 				limit = val
 				break
 			}
 		}
+		lock.Unlock()
 		if limit <= 0 {
 			// no sub symbols, return
 			return "", nil, nil
@@ -219,9 +220,11 @@ func (e *Binance) prepareBookArgs(isSub bool, limit int, symbols []string, param
 		return "", nil, err
 	}
 	if !isSub {
+		lock.Lock()
 		for _, code := range symbols {
-			delete(client.OdBookLimits, code)
+			delete(bookLimits, code)
 		}
+		lock.Unlock()
 	}
 	chanKey := client.Prefix(msgHash)
 	return chanKey, args, err
@@ -330,13 +333,13 @@ func (e *Binance) handleOrderBook(client *banexg.WsClient, msg map[string]string
 	e.OdBookLock.Lock()
 	book, ok := e.OrderBooks[symbol]
 	if !ok {
-		client.LimitsLock.Lock()
-		limit, _ := client.OdBookLimits[symbol]
+		bookLimits, lock := client.LockOdBookLimits()
+		limit, _ := bookLimits[symbol]
 		if limit <= 0 {
 			limit = 500
-			client.OdBookLimits[symbol] = limit
+			bookLimits[symbol] = limit
 		}
-		client.LimitsLock.Unlock()
+		lock.Unlock()
 		book = &banexg.OrderBook{
 			Symbol: symbol,
 			Cache:  make([]map[string]string, 0),
