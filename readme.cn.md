@@ -266,6 +266,10 @@ ccxt中币安的defaultType命名和其他交易所不一致，banexg中进行�
 当前交易所合约类型，可选值`swap`永续合约，`future`有到期日的合约。  
 可在初始化时传入`OptContractType`设置，也可初始化后设置交易所的`ContractType`属性。  
 
+### 死锁检测
+此项目默认使用了[go-deadlock](https://github.com/sasha-s/go-deadlock)库，用于检测死锁。  
+这可能会在高频调用一些方法时，将运行速度减慢十多倍，您可通过`deadlock.Opts.Disable = true`来禁用。
+
 # 联系我
 邮箱：`anyongjin163@163.com`  
 微信：`jingyingsuixing`  

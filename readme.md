@@ -267,6 +267,10 @@ In ccxt, the naming of `defaultType` for Binance is inconsistent with other exch
 The contract type for the current exchange, with options of `swap` for perpetual contracts and `future` for contracts with an expiration date.   
 It can be set during initialization using `OptContractType` or by modifying the `ContractType` property of the exchange after initialization.
 
+### Deadlock Detection
+This project uses the [go-deadlock](https://github.com/sasha-s/go-deadlock) library by default to detect deadlocks.  
+This may slow down the execution speed by more than ten times when frequently calling certain methods. You can disable it by setting `deadlock.Opts.Disable = true`.
+
 # Contact Me
 Email: `anyongjin163@163.com`  
 WeChat: `jingyingsuixing`  
