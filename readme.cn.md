@@ -1,3 +1,5 @@
+[English](readme.md)
+
 # BanExg - 数字货币交易所SDK
 一个Go版本的数字货币交易SDK  
 目前支持交易所：`binance`, `china`。都实现了接口`BanExchange`  
@@ -272,4 +274,4 @@ ccxt中币安的defaultType命名和其他交易所不一致，banexg中进行�
 
 # 联系我
 邮箱：`anyongjin163@163.com`  
-微信：`jingyingsuixing`  
+微信：`phiilo_null`  

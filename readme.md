@@ -1,3 +1,5 @@
+[中文](readme.cn.md)
+
 # BanExg - CryptoCurrency Exchange Trading Library
 A Go library for cryptocurrency trading.    
 Currently supported exchanges: `binance`, `china`. Both implement the interface `BanExchange`  
@@ -273,4 +275,4 @@ This may slow down the execution speed by more than ten times when frequently ca
 
 # Contact Me
 Email: `anyongjin163@163.com`  
-WeChat: `jingyingsuixing`  
+WeChat: `phiilo_null`  
