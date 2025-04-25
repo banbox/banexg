@@ -58,7 +58,8 @@ type AsyncConn struct {
 }
 
 type WebSocket struct {
-	Conn        *websocket.Conn
+	conn        *websocket.Conn // nil表示禁用
+	lock        *deadlock.RWMutex
 	url         string
 	dialer      *websocket.Dialer
 	onReConnect func() *errs.Error
@@ -66,20 +67,33 @@ type WebSocket struct {
 }
 
 func (ws *WebSocket) Close() error {
-	if ws.Conn != nil {
-		err := ws.Conn.Close()
-		ws.Conn = nil
+	if ws.conn != nil {
+		ws.lock.Lock()
+		var err error
+		if ws.conn != nil {
+			err = ws.conn.Close()
+			ws.conn = nil
+		}
+		ws.lock.Unlock()
 		return err
 	}
 	return nil
 }
 
 func (ws *WebSocket) WriteClose() error {
-	if ws.Conn == nil {
-		return nil
+	conn, lock := ws.readConn()
+	var err error
+	if conn != nil {
+		exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+		err = conn.WriteMessage(websocket.CloseMessage, exitData)
 	}
-	exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-	return ws.Conn.WriteMessage(websocket.CloseMessage, exitData)
+	lock.RUnlock()
+	return err
+}
+
+func (ws *WebSocket) readConn() (*websocket.Conn, *deadlock.RWMutex) {
+	ws.lock.RLock()
+	return ws.conn, ws.lock
 }
 
 func (ws *WebSocket) reConnect() error {
@@ -106,12 +120,33 @@ func (ws *WebSocket) ReConnect() error {
 }
 
 func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
-	return ws.Conn.NextWriter(websocket.TextMessage)
+	conn, lock := ws.readConn()
+	var writer io.WriteCloser
+	var err error
+	if conn != nil {
+		writer, err = conn.NextWriter(websocket.TextMessage)
+	} else {
+		err = errors.New(fmt.Sprintf("ws conn [%d] %s closed, NextWriter fail", ws.id, ws.url))
+	}
+	lock.RUnlock()
+	return writer, err
 }
 
 func (ws *WebSocket) ReadMsg() ([]byte, error) {
+	var msgType int
+	var msgRaw []byte
+	var err error
 	for {
-		msgType, msgRaw, err := ws.Conn.ReadMessage()
+		conn, lock := ws.readConn()
+		if conn != nil {
+			msgType, msgRaw, err = conn.ReadMessage()
+		} else {
+			msgType = -1
+		}
+		lock.RUnlock()
+		if msgType < 0 {
+			return nil, errors.New(fmt.Sprintf("ws conn [%d] %s closed, read fail", ws.id, ws.url))
+		}
 		if err != nil {
 			var closeErr *websocket.CloseError
 			var wait time.Duration
@@ -121,7 +156,6 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			if errors.As(err, &closeErr) {
 				// Closed, no further use allowed
 				// 已关闭，禁止继续使用
-				ws.Conn = nil
 				code = closeErr.Code
 				tryReConn = true
 				if code == 1006 || code == 1011 || code == 1012 || code == 1013 {
@@ -138,9 +172,12 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				}
 			} else if strings.Contains(errText, "EOF") || strings.Contains(errText, "connection timed out") ||
 				strings.Contains(errText, "connection reset") {
-				ws.Conn = nil
 				tryReConn = true
 				wait = time.Millisecond * 500
+			}
+			if tryReConn {
+				// 连接不可用，提前锁定
+				ws.lock.Lock()
 			}
 			if wait > 0 {
 				time.Sleep(wait)
@@ -149,8 +186,12 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 				log.Info(fmt.Sprintf("[%v] ws %v closed, reconnecting: %s, err: %T %v", code, ws.id, ws.url, err, errText))
 				err_ := ws.reConnect()
 				if err_ != nil {
+					// 重连失败，禁用
+					ws.conn = nil
+					ws.lock.Unlock()
 					return nil, err_
 				}
+				ws.lock.Unlock()
 				return ws.ReadMsg()
 			}
 			return nil, err
@@ -161,7 +202,7 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 }
 
 func (ws *WebSocket) IsOK() bool {
-	return ws.Conn != nil
+	return ws.conn != nil
 }
 
 func (ws *WebSocket) initConn() error {
@@ -169,7 +210,7 @@ func (ws *WebSocket) initConn() error {
 	if err != nil {
 		return err
 	}
-	ws.Conn = conn
+	ws.conn = conn
 	return nil
 }
 
@@ -190,6 +231,7 @@ func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnec
 		dialer.Proxy = proxy
 	}
 	res := &WebSocket{id: id, dialer: dialer, url: reqUrl, onReConnect: onReConnect}
+	res.lock = &deadlock.RWMutex{}
 	err := res.initConn()
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
@@ -609,7 +651,6 @@ func (c *WsClient) read(conn *AsyncConn) {
 				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				return
 			} else {
-				// 这里可能遇到connection reset by peer错误，继续观察输出日志
 				if c.OnError != nil {
 					c.OnError(c, errs.New(errs.CodeWsReadFail, err))
 				}
