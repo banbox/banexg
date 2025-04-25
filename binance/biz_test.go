@@ -303,7 +303,7 @@ func TestFetchOHLCV(t *testing.T) {
 		panic(err)
 	}
 	for _, k := range res {
-		fmt.Printf("%v, %v %v %v %v %v\n", k.Time, k.Open, k.High, k.Low, k.Close, k.Volume)
+		fmt.Printf("%v, %v %v %v %v %v %v\n", k.Time, k.Open, k.High, k.Low, k.Close, k.Volume, k.Info)
 	}
 }
 

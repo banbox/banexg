@@ -471,6 +471,7 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 		low, _ := strconv.ParseFloat(bar.Low, 64)
 		closeP, _ := strconv.ParseFloat(bar.Close, 64)
 		volume, _ := strconv.ParseFloat(bar.Amount, 64)
+		takerVolume, _ := strconv.ParseFloat(bar.TakerAmount, 64)
 		res[i] = &banexg.Kline{
 			Time:   bar.OpenTime,
 			Open:   open,
@@ -478,12 +479,13 @@ func parseOptionOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
 			Low:    low,
 			Close:  closeP,
 			Volume: volume,
+			Info:   takerVolume,
 		}
 	}
 	return res, nil
 }
 
-func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Error) {
+func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex, buyVolIndex int) ([]*banexg.Kline, *errs.Error) {
 	var klines = make([][]interface{}, 0)
 	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumAuto)
 	if err != nil {
@@ -500,12 +502,14 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 		lowStr, _ := bar[3].(string)
 		closeStr, _ := bar[4].(string)
 		volStr, _ := bar[volIndex].(string)
+		buyVolStr, _ := bar[buyVolIndex].(string)
 		// barTime, _ := strconv.ParseInt(timeText, 10, 64)
 		open, _ := strconv.ParseFloat(openStr, 64)
 		high, _ := strconv.ParseFloat(highStr, 64)
 		low, _ := strconv.ParseFloat(lowStr, 64)
 		closeP, _ := strconv.ParseFloat(closeStr, 64)
 		volume, _ := strconv.ParseFloat(volStr, 64)
+		buyVolume, _ := strconv.ParseFloat(buyVolStr, 64)
 		res[i] = &banexg.Kline{
 			Time:   barTime,
 			Open:   open,
@@ -513,6 +517,7 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex int) ([]*banexg.Kline, *errs.Er
 			Low:    low,
 			Close:  closeP,
 			Volume: volume,
+			Info:   buyVolume,
 		}
 	}
 	return res, nil
@@ -603,11 +608,11 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	if market.Option {
 		return parseOptionOHLCV(rsp)
 	} else {
-		volIndex := 5
+		volIndex, buyVolIdx := 5, 9
 		if market.Inverse {
-			volIndex = 7
+			volIndex, buyVolIdx = 7, 10
 		}
-		return parseBnbOHLCV(rsp, volIndex)
+		return parseBnbOHLCV(rsp, volIndex, buyVolIdx)
 	}
 }
 
