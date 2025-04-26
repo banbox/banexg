@@ -145,7 +145,7 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 		}
 		lock.RUnlock()
 		if msgType < 0 {
-			return nil, errors.New(fmt.Sprintf("ws conn [%d] %s closed, read fail", ws.id, ws.url))
+			return nil, errors.New("ws conn closed, read fail")
 		}
 		if err != nil {
 			var closeErr *websocket.CloseError
@@ -202,7 +202,10 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 }
 
 func (ws *WebSocket) IsOK() bool {
-	return ws.conn != nil
+	conn, lock := ws.readConn()
+	ok := conn != nil
+	lock.RUnlock()
+	return ok
 }
 
 func (ws *WebSocket) initConn() error {
