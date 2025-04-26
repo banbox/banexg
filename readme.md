@@ -4,6 +4,12 @@
 A Go library for cryptocurrency trading.    
 Currently supported exchanges: `binance`, `china`. Both implement the interface `BanExchange`  
 
+# Features
+* Support for multiple accounts, with seamless switching and no conflicts between them.
+* Comprehensive Websocket support, including subscribing and unsubscribing.
+* Support for Websocket dump and playback, which can be used for backtesting.
+* Automatic reconnection and resumption of subscriptions in case of a Websocket disconnection.
+
 # How to Use
 ```go
 var options = map[string]interface{}{}
@@ -260,10 +266,9 @@ The raw data returned by the exchange can be accessed through `Info`, and its ty
 Included types: Currency, ChainNetwork, Market, Ticker, Balances, Position, Order, Trade, MyTrade, FundingRate, FundingRateCur, LastPrice
 
 ### Common parameter naming adjustments
-**`ccxt.defaultType` -> `MarketType`**  
+**`MarketType`**  
 The default market type of the current exchange. It can be set during initialization using `OptMarketType` or by modifying the `MarketType` property of the exchange at any time.  
 Valid Values: `MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption`  
-In ccxt, the naming of `defaultType` for Binance is inconsistent with other exchanges. In banexg, a unified naming convention has been applied.  
 
 **`ContractType`**  
 The contract type for the current exchange, with options of `swap` for perpetual contracts and `future` for contracts with an expiration date.   

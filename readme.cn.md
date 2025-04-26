@@ -4,6 +4,12 @@
 一个Go版本的数字货币交易SDK  
 目前支持交易所：`binance`, `china`。都实现了接口`BanExchange`  
 
+# 特性
+* 多账户支持，自由切换，互不冲突
+* 完善的Websocket支持，订阅和取消订阅
+* 支持Websocket转储和回放，可用于回测
+* ws断线自动重连并恢复订阅
+
 # 如何使用
 ```go
 var options = map[string]interface{}{}
@@ -259,10 +265,9 @@ Close() *errs.Error
 包含的类型：Currency, ChainNetwork, Market, Ticker, Balances, Position, Order, Trade, MyTrade, FundingRate, FundingRateCur, LastPrice
 
 ### 常见参数命名调整
-**`ccxt.defaultType` -> `MarketType`**  
+**`MarketType`**  
 当前交易所的默认市场类型。可在初始化时传入`OptMarketType`设置，也可随时设置交易所的`MarketType`属性。  
 有效值：`MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption`  
-ccxt中币安的defaultType命名和其他交易所不一致，banexg中进行了统一命名。  
 
 **`ContractType`**  
 当前交易所合约类型，可选值`swap`永续合约，`future`有到期日的合约。  
