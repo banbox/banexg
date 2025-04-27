@@ -144,7 +144,7 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			msgType = -1
 		}
 		lock.RUnlock()
-		if msgType < 0 {
+		if msgType < 0 && err == nil {
 			return nil, errors.New("ws conn closed, read fail")
 		}
 		if err != nil {
