@@ -107,6 +107,9 @@ func ReadCacheFile(key string) (string, *errs.Error) {
 	}
 	fileText := string(data)
 	sepIdx := strings.Index(fileText, "\n")
+	if sepIdx <= 0 {
+		return "", errs.NewMsg(errs.CodeInvalidData, "newLineIdx should > 0, current: %v", sepIdx)
+	}
 	expireMS, err := strconv.ParseInt(fileText[:sepIdx], 10, 64)
 	if err != nil {
 		return "", errs.New(errs.CodeInvalidData, err)

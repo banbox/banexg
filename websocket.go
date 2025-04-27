@@ -225,7 +225,7 @@ func (ws *WebSocket) SetID(v int) {
 	ws.id = v
 }
 
-func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*AsyncConn, error) {
+func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnect func() *errs.Error) (*AsyncConn, *errs.Error) {
 	var dialer = &websocket.Dialer{}
 	dialer.HandshakeTimeout = utils.GetMapVal(args, ParamHandshakeTimeout, time.Second*15)
 	var defProxy func(*http.Request) (*url.URL, error)
@@ -786,7 +786,7 @@ func (c *WsClient) newConn(add bool) (*AsyncConn, *errs.Error) {
 		return c.OnReConn(c, connID)
 	})
 	if err != nil {
-		return nil, errs.New(errs.CodeConnectFail, err)
+		return nil, err
 	}
 	log.Debug("new websocket conn", zap.String("url", c.URL), zap.Int("id", conn.GetID()))
 	c.NextConnId += 1
