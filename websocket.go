@@ -389,18 +389,22 @@ func WriteOutChan[T any](e *Exchange, chanKey string, msg T, popIfNeed bool) boo
 }
 
 func (e *Exchange) AddWsChanRefs(chanKey string, keys ...string) {
+	e.lockWsRef.Lock()
 	data, ok := e.WsChanRefs[chanKey]
 	if !ok {
 		data = make(map[string]struct{})
 		e.WsChanRefs[chanKey] = data
 	}
+	e.lockWsRef.Unlock()
 	for _, k := range keys {
 		data[k] = struct{}{}
 	}
 }
 
 func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
+	e.lockWsRef.Lock()
 	data, ok := e.WsChanRefs[chanKey]
+	e.lockWsRef.Unlock()
 	if !ok {
 		return -1
 	}
@@ -424,11 +428,16 @@ func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
 func (e *Exchange) handleWsClientClosed(client *WsClient) int {
 	prefix := client.Prefix("")
 	removeNum := 0
-	for key, _ := range e.WsChanRefs {
+	e.lockWsRef.Lock()
+	refKeys := utils.KeysOfMap(e.WsChanRefs)
+	e.lockWsRef.Unlock()
+	for _, key := range refKeys {
 		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
+		e.lockWsRef.Lock()
 		delete(e.WsChanRefs, key)
+		e.lockWsRef.Unlock()
 		if out, ok := e.WsOutChans[key]; ok {
 			val := reflect.ValueOf(out)
 			if val.Kind() == reflect.Chan {
@@ -648,16 +657,16 @@ func (c *WsClient) read(conn *AsyncConn) {
 		msgRaw, err := conn.ReadMsg()
 		if err != nil {
 			if !conn.IsOK() {
+				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				if c.OnClose != nil {
 					c.OnClose(c, errs.New(errs.CodeWsReadFail, err))
 				}
-				log.Error("read fail, ws closed", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				return
 			} else {
+				log.Error("read error", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				if c.OnError != nil {
 					c.OnError(c, errs.New(errs.CodeWsReadFail, err))
 				}
-				log.Error("read error", zap.String("url", c.URL), zap.Int("id", conn.GetID()), zap.Error(err))
 				continue
 			}
 		}
@@ -749,6 +758,9 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		// Randomly select one from existing connections
 		// 从已有连接随机挑一个
 		if conn == nil {
+			if connNum == 0 {
+				return method, nil
+			}
 			lock.Lock()
 			cids := utils.KeysOfMap(connMap)
 			conn = connMap[cids[rand.Intn(len(cids))]]

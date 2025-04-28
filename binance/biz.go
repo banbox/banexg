@@ -837,6 +837,9 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, connID int, isSub bool, sy
 			exgParams = symbols
 		}
 		method, conn := client.UpdateSubs(connID, isSub, exgParams)
+		if conn == nil {
+			return errs.NewMsg(errs.CodeRunTime, "get ws conn fail")
+		}
 		id := e.nextId(client)
 		var request = map[string]interface{}{
 			"method": method,
@@ -1247,7 +1250,8 @@ func makeCheckWsTimeout(e *Binance) func() {
 						connKeys = append(connKeys, keys...)
 						err := e.WriteWSMsg(client, stat.ConnId, true, keys, nil, nil)
 						if err != nil {
-							log.Error("re-subscribe timeout keys fail", zap.Int("conn", stat.ConnId), zap.Error(err))
+							log.Error("re-subscribe timeout keys fail", zap.Int("conn", stat.ConnId),
+								zap.String("url", client.URL), zap.Error(err))
 						}
 					}
 				}
