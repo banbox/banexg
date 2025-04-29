@@ -171,7 +171,7 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 					wait = time.Millisecond * 1000
 				}
 			} else if strings.Contains(errText, "EOF") || strings.Contains(errText, "connection timed out") ||
-				strings.Contains(errText, "connection reset") {
+				strings.Contains(errText, "connection reset") || strings.Contains(errText, "closed by") {
 				tryReConn = true
 				wait = time.Millisecond * 500
 			}
@@ -474,7 +474,6 @@ func CheckWsError(msg map[string]string) *errs.Error {
 }
 
 type SubStat struct {
-	Conn     *AsyncConn
 	ConnId   int
 	Timeouts map[string]int64 // 超时的key，及其毫秒数
 	Stamps   map[string]int64 // 所有key上次收到消息的时间戳
@@ -488,11 +487,7 @@ func (c *WsClient) GetConnSubStats(timeout int64) map[int]*SubStat {
 		stamp, _ := c.SubsKeyStamps[k]
 		stat, ok := result[cid]
 		if !ok {
-			c.connLock.Lock()
-			conn := c.conns[cid]
-			c.connLock.Unlock()
 			stat = &SubStat{
-				Conn:     conn,
 				ConnId:   cid,
 				Timeouts: make(map[string]int64),
 				Stamps:   make(map[string]int64),
@@ -719,12 +714,7 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		c.subsLock.Lock()
 		for _, key := range keys {
 			if cid, ok := c.SubscribeKeys[key]; ok {
-				num, _ := c.connSubs[cid]
-				if num <= 1 {
-					delete(c.connSubs, cid)
-				} else {
-					c.connSubs[cid] = num - 1
-				}
+				c.decrementConnSub(cid)
 				delete(c.SubscribeKeys, key)
 				delete(c.SubsKeyStamps, key)
 			}
@@ -738,7 +728,7 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		if conn == nil {
 			for cid, con := range connMap {
 				num, _ := c.connSubs[cid]
-				if num < connMinSubs {
+				if num < connMinSubs && con.IsOK() {
 					conn = con
 					break
 				}
@@ -752,7 +742,7 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 			var err *errs.Error
 			conn, err = c.newConn(true)
 			if err != nil {
-				log.Warn("make new websocket fail", zap.String("url", c.URL))
+				log.Warn("make new websocket fail", zap.String("url", c.URL), zap.String("err", err.Short()))
 			}
 		}
 		// Randomly select one from existing connections
@@ -770,14 +760,29 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		curMS := bntp.UTCStamp()
 		c.subsLock.Lock()
 		for _, key := range keys {
+			oldId, ok := c.SubscribeKeys[key]
+			if oldId != connID {
+				if ok {
+					c.decrementConnSub(oldId)
+				}
+				num, _ := c.connSubs[connID]
+				c.connSubs[connID] = num + 1
+			}
 			c.SubscribeKeys[key] = connID
 			c.SubsKeyStamps[key] = curMS
 		}
 		c.subsLock.Unlock()
-		num, _ := c.connSubs[connID]
-		c.connSubs[connID] = num + len(keys)
 	}
 	return method, conn
+}
+
+func (c *WsClient) decrementConnSub(cid int) {
+	num, _ := c.connSubs[cid]
+	if num <= 1 {
+		delete(c.connSubs, cid)
+	} else {
+		c.connSubs[cid] = num - 1
+	}
 }
 
 func (c *WsClient) GetSubKeys(connID int) []string {

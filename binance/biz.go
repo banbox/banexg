@@ -867,6 +867,25 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, connID int, isSub bool, sy
 	return nil
 }
 
+// ReSubsAll 对某个连接全部重新订阅
+func (e *Binance) ReSubsAll(client *banexg.WsClient, connID int) *errs.Error {
+	_, conn := client.UpdateSubs(connID, true, nil)
+	if conn == nil {
+		return errs.NewMsg(errs.CodeRunTime, "ReSubsAll fail, get ws conn nil")
+	}
+	if conn.GetID() == connID {
+		err := conn.ReConnect()
+		if err != nil {
+			return errs.New(errs.CodeRunTime, err)
+		}
+		return nil
+	} else {
+		// 连接失效，自动重新订阅
+		keys := client.GetSubKeys(connID)
+		return e.WriteWSMsg(client, 0, true, keys, nil, nil)
+	}
+}
+
 func (e *Binance) regReplayHandles() {
 	e.WsReplayFn = map[string]func(item *banexg.WsLog) *errs.Error{
 		"WatchOrderBooks": func(item *banexg.WsLog) *errs.Error {
@@ -1237,11 +1256,11 @@ func makeCheckWsTimeout(e *Binance) func() {
 						continue
 					}
 					failRate := float64(len(stat.Timeouts)) / float64(allNum)
-					if failRate >= 0.5 && allNum >= 5 {
+					if failRate >= 0.5 && allNum >= 5 || failRate >= 0.8 && allNum >= 2 {
 						// 失败过多，重新连接并订阅
-						err_ := stat.Conn.ReConnect()
-						if err_ != nil {
-							log.Error("reconnect ws fail", zap.String("url", client.URL), zap.Error(err_))
+						err := e.ReSubsAll(client, stat.ConnId)
+						if err != nil {
+							log.Error("reconnect ws fail", zap.String("url", client.URL), zap.Error(err))
 						} else {
 							log.Info("reconnect ws success", zap.String("url", client.URL), zap.Int("num", allNum))
 						}
