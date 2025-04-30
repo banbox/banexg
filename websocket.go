@@ -53,7 +53,7 @@ type WsClient struct {
 
 type AsyncConn struct {
 	WsConn
-	Send    chan []byte
+	send    chan []byte
 	control chan int // Used for internal synchronization control commands 用于内部同步控制命令
 }
 
@@ -241,8 +241,8 @@ func newWebSocket(id int, reqUrl string, args map[string]interface{}, onReConnec
 	}
 	return &AsyncConn{
 		WsConn:  res,
-		Send:    make(chan []byte),
-		control: make(chan int),
+		send:    make(chan []byte, 10),
+		control: make(chan int, 2),
 	}, nil
 }
 
@@ -570,7 +570,7 @@ func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *err
 		log.Debug("write ws msg", zap.String("url", c.URL), zap.Int("id", conn.GetID()),
 			zap.String("msg", string(data)))
 	}
-	conn.Send <- data
+	conn.send <- data
 	return nil
 }
 
@@ -579,7 +579,9 @@ func (c *WsClient) Close() {
 	conns := utils.ValsOfMap(c.conns)
 	c.connLock.Unlock()
 	for _, conn := range conns {
-		conn.control <- ctrlDoClose
+		if conn.control != nil {
+			conn.control <- ctrlDoClose
+		}
 	}
 }
 
@@ -592,6 +594,7 @@ func (c *WsClient) write(conn *AsyncConn) {
 			log.Error("close ws error", append(zapFields, zap.Error(err))...)
 		}
 		close(conn.control)
+		conn.control = nil
 		c.connLock.Lock()
 		delete(c.conns, conn.GetID())
 		c.connLock.Unlock()
@@ -616,7 +619,7 @@ func (c *WsClient) write(conn *AsyncConn) {
 			} else {
 				log.Error("invalid ws control type", append(zapFields, zap.Int("val", ctrlType))...)
 			}
-		case msg, ok := <-conn.Send:
+		case msg, ok := <-conn.send:
 			if !ok {
 				err := conn.WriteClose()
 				if err != nil {
@@ -646,7 +649,9 @@ func (c *WsClient) write(conn *AsyncConn) {
 
 func (c *WsClient) read(conn *AsyncConn) {
 	defer func() {
-		conn.control <- ctrlClosed
+		if conn.control != nil {
+			conn.control <- ctrlClosed
+		}
 	}()
 	for {
 		msgRaw, err := conn.ReadMsg()
