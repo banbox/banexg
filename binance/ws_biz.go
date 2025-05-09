@@ -710,14 +710,11 @@ func (e *Binance) handleAccountUpdate(client *banexg.WsClient, msg map[string]st
 			code := e.SafeCurrencyCode(item.Asset)
 			asset, ok := balances.Assets[code]
 			// 收到币安wb/cw值完全相同，bc始终是0，只能检测到总资产数量，无法获知可用余额变化
-			total, _ := strconv.ParseFloat(item.WalletBalance, 64)
-			change, _ := strconv.ParseFloat(item.BalanceChange, 64)
+			walletBalance, _ := strconv.ParseFloat(item.WalletBalance, 64)
 			if ok {
-				asset.Free += change
-				asset.Total = total
-				asset.Used = total - asset.Free
+				asset.Free = walletBalance
 			} else {
-				asset = &banexg.Asset{Code: code, Free: total, Used: 0, Total: total}
+				asset = &banexg.Asset{Code: code, Free: walletBalance}
 				balances.Assets[code] = asset
 			}
 		}
