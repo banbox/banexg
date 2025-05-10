@@ -268,6 +268,16 @@ func ValsOfMap[M ~map[K]V, K comparable, V any](m M) []V {
 	return r
 }
 
+func ValsOfMapBy[M ~map[K]V, K comparable, V any](m M, keys []K) []V {
+	r := make([]V, 0, len(keys))
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			r = append(r, v)
+		}
+	}
+	return r
+}
+
 /*
 IsNil 判断是否为nil
 
