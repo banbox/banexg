@@ -4,6 +4,8 @@
 A Go library for cryptocurrency trading.    
 Currently supported exchanges: `binance`, `china`. Both implement the interface `BanExchange`  
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/banbox/banexg)
+
 # Features
 * Support for multiple accounts, with seamless switching and no conflicts between them.
 * Comprehensive Websocket support, including subscribing and unsubscribing.

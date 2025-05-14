@@ -4,6 +4,8 @@
 一个Go版本的数字货币交易SDK  
 目前支持交易所：`binance`, `china`。都实现了接口`BanExchange`  
 
+[![DeepWiki问答](https://deepwiki.com/badge.svg)](https://deepwiki.com/banbox/banexg)
+
 # 特性
 * 多账户支持，自由切换，互不冲突
 * 完善的Websocket支持，订阅和取消订阅
