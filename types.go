@@ -125,6 +125,7 @@ type ExgInfo struct {
 	OrderBooks       map[string]*OrderBook         // symbol: OrderBook update by wss
 	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
 	OdBookLock       deadlock.Mutex
+	MarkPriceLock    deadlock.Mutex
 
 	PrecPadZero  bool   // padding zero for precision
 	MarketType   string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption

@@ -391,6 +391,7 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string, isArray bool) {
 	evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
 	e.KeyTimeStamps["markPrices"] = evtTime
+	e.MarkPriceLock.Lock()
 	data, ok := e.MarkPrices[client.MarketType]
 	if !ok {
 		data = map[string]float64{}
@@ -407,6 +408,8 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 		}
 		res[symbol] = markPrice
 	}
+	maps.Copy(data, res)
+	e.MarkPriceLock.Unlock()
 	marketId = strings.ToLower(marketId)
 	var subsKey string
 	if client.MarketType == banexg.MarketLinear {
@@ -427,7 +430,6 @@ func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string
 	}
 	client.SetSubsKeyStamp(subsKey, bntp.UTCStamp())
 	chanKey := client.Prefix(client.MarketType + "@markPrice")
-	maps.Copy(data, res)
 	banexg.WriteOutChan(e.Exchange, chanKey, res, true)
 }
 

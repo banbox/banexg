@@ -86,7 +86,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 			args["isIsolated"] = true
 		}
 	}
-	until := utils.PopMapVal(args, "until", int64(0))
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
 	if until > 0 {
 		args["endTime"] = until
 	}
