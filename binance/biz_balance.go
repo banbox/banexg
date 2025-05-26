@@ -721,10 +721,10 @@ func (a *FutureAsset) ToStdAsset(getCurrCode func(string) string) *banexg.Asset 
 	used, _ := strconv.ParseFloat(a.MaintMargin, 64)
 	total, _ := strconv.ParseFloat(a.MarginBalance, 64)
 	uPol, _ := strconv.ParseFloat(a.UnrealizedProfit, 64)
-	free, _ := strconv.ParseFloat(a.WalletBalance, 64)
+	balance, _ := strconv.ParseFloat(a.WalletBalance, 64)
 	return &banexg.Asset{
 		Code:  code,
-		Free:  free,
+		Free:  balance - used,
 		Used:  used,
 		Total: total,
 		UPol:  uPol,
