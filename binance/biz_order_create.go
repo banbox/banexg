@@ -2,10 +2,11 @@ package binance
 
 import (
 	"context"
+	"strings"
+
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
-	"strings"
 )
 
 func isBnbOrderType(market *banexg.Market, odType string) bool {
@@ -108,11 +109,8 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		args["isIsolated"] = true
 	}
 	if clientOrderId == "" {
-		broker := "x-R4BD3S82"
-		if market.Contract {
-			broker = "x-xcKtGhcu"
-		}
-		clientOrderId = broker + utils.UUID(22)
+		brokerId := utils.GetMapVal(params, banexg.ParamBrokerId, "")
+		clientOrderId = brokerId + utils.UUID(22)
 	}
 	args["newClientOrderId"] = clientOrderId
 	odRspType := "RESULT"
