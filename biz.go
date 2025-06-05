@@ -706,6 +706,10 @@ func (e *Exchange) CalcMaintMargin(symbol string, cost float64) (float64, *errs.
 	return 0, nil
 }
 
+func (e *Exchange) InitLeverageBrackets() *errs.Error {
+	return nil
+}
+
 func (e *Exchange) Call(method string, params map[string]interface{}) (*HttpRes, *errs.Error) {
 	params = utils.SafeParams(params)
 	tryNum := utils.PopMapVal(params, ParamRetry, -1)

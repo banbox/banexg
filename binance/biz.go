@@ -704,6 +704,45 @@ func (e *Binance) LoadLeverageBrackets(reload bool, params map[string]interface{
 	return nil
 }
 
+func (e *Binance) InitLeverageBrackets() *errs.Error {
+	if e.LeverageBrackets != nil {
+		_, ok := e.LeverageBrackets["*"]
+		if ok {
+			return nil
+		}
+	} else {
+		e.LeverageBrackets = make(map[string]*SymbolLvgBrackets)
+	}
+	lvgArr := []int{125, 100, 75, 50, 25, 10, 5, 3, 2, 1}
+	capRateArr := []float64{1, 10, 1.6, 5, 2, 5, 2, 5, 2, 1}
+	maintRatios := []float64{0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1, 0.125, 0.25, 0.5}
+	var brackets []*LvgBracket
+	var cum = float64(0)
+	var curCap = float64(10000)
+	var curFloor = float64(0)
+	for i, lvg := range lvgArr {
+		curCap *= capRateArr[i]
+		maintRate := maintRatios[i]
+		brackets = append(brackets, &LvgBracket{
+			BaseLvgBracket: BaseLvgBracket{
+				Bracket:          i + 1,
+				InitialLeverage:  lvg,
+				MaintMarginRatio: maintRate,
+				Cum:              cum,
+			},
+			Floor:    curFloor,
+			Capacity: curCap,
+		})
+		cum += (curCap - curFloor) * maintRate // 这里不确定币安是如何计算的，暂时这样算
+		curFloor = curCap
+	}
+	e.LeverageBrackets["*"] = &SymbolLvgBrackets{
+		Symbol:   "",
+		Brackets: brackets,
+	}
+	return nil
+}
+
 func (e *Binance) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
 	info, ok := e.LeverageBrackets[symbol]
 	maxVal := 0
@@ -751,6 +790,9 @@ func (e *Binance) CalcMaintMargin(symbol string, cost float64) (float64, *errs.E
 		return 0, errs.NewMsg(errs.CodeRunTime, "LeverageBrackets not load")
 	}
 	info, ok := e.LeverageBrackets[symbol]
+	if !ok {
+		info, ok = e.LeverageBrackets["*"]
+	}
 	maintMargin := float64(-1)
 	if ok && len(info.Brackets) > 0 {
 		for _, row := range info.Brackets {
