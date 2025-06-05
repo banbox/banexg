@@ -114,10 +114,11 @@ func ReadCacheFile(key string) (string, *errs.Error) {
 	if err != nil {
 		return "", errs.New(errs.CodeInvalidData, err)
 	}
+	content := fileText[sepIdx+1:]
 	if expireMS > 0 && expireMS < time.Now().UnixMilli() {
 		stamp := time.UnixMilli(expireMS)
 		expDate := stamp.Format("2006-01-02 15:04:05")
-		return "", errs.NewMsg(errs.CodeExpired, "expired at: %v", expDate)
+		return content, errs.NewMsg(errs.CodeExpired, "expired at: %v", expDate)
 	}
-	return fileText[sepIdx+1:], nil
+	return content, nil
 }
