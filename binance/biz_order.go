@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"strconv"
@@ -87,15 +88,70 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 		}
 	}
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	loopArgNum := 0
 	if until > 0 {
 		args["endTime"] = until
+		loopArgNum += 1
 	}
 	if since > 0 {
 		args["startTime"] = since
+		loopArgNum += 1
 	}
 	if limit > 0 {
 		args["limit"] = limit
+		loopArgNum += 1
 	}
+	loopIntv := utils.PopMapVal(args, banexg.ParamLoopIntv, int64(0))
+	if loopIntv <= 0 {
+		return e.doFetchOrders(args, method, market)
+	}
+	dirt := utils.PopMapVal(args, banexg.ParamDirection, "")
+	if loopArgNum == 0 {
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "one of since/limit/until is required")
+	}
+	if until == 0 && since == 0 {
+		until = bntp.UTCStamp()
+	}
+
+	var result []*banexg.Order
+	if dirt == "" && since == 0 || dirt == "endToStart" {
+		// 从后往前滚动
+		curEnd := until
+		for {
+			curStart := max(since, curEnd-loopIntv)
+			args["startTime"] = curStart
+			args["endTime"] = curEnd
+			odList, err := e.doFetchOrders(args, method, market)
+			result = append(result, odList...)
+			if err != nil {
+				return result, err
+			}
+			if curStart <= since || limit > 0 && len(result) >= limit {
+				return result, nil
+			}
+			curEnd = curStart
+		}
+	} else {
+		// 从前往后滚动
+		curStart := since
+		for {
+			curEnd := min(until, curStart+loopIntv)
+			args["startTime"] = curStart
+			args["endTime"] = curEnd
+			odList, err := e.doFetchOrders(args, method, market)
+			result = append(result, odList...)
+			if err != nil {
+				return result, err
+			}
+			if curEnd >= until || limit > 0 && len(result) >= limit {
+				return result, nil
+			}
+			curStart = curEnd
+		}
+	}
+}
+
+func (e *Binance) doFetchOrders(args map[string]interface{}, method string, market *banexg.Market) ([]*banexg.Order, *errs.Error) {
 	tryNum := e.GetRetryNum("FetchOrders", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {

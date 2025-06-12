@@ -38,6 +38,8 @@ const (
 	ParamLimit              = "limit"
 	ParamUntil              = "until"
 	ParamRetry              = "retry"
+	ParamLoopIntv           = "loopIntv"
+	ParamDirection          = "direction"
 )
 
 var (

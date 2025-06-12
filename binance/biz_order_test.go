@@ -30,15 +30,17 @@ func TestFetchOrder(t *testing.T) {
 
 func TestFetchOrders(t *testing.T) {
 	exg := getBinance(nil)
+	now := time.Now().UnixMilli()
+	loopIntv := int64(86400000 * 7)
 	cases := []map[string]interface{}{
 		//{"market": banexg.MarketSpot},
-		{"market": banexg.MarketLinear},
+		{"market": banexg.MarketLinear, banexg.ParamUntil: now, banexg.ParamLoopIntv: loopIntv},
 		//{"market": banexg.MarketInverse},
 		//{"market": banexg.MarketOption},
 	}
 
-	symbol := "ETC/USDT:USDT"
-	since := time.Date(2025, 4, 6, 0, 0, 0, 0, time.UTC).UnixMilli()
+	symbol := "XRP/USDT:USDT"
+	since := now - loopIntv*4 // 4周前作为开始时间
 	for _, item := range cases {
 		text, _ := utils.MarshalString(item)
 		res, err := exg.FetchOrders(symbol, since, 0, item)
