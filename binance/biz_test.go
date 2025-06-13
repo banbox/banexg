@@ -294,11 +294,13 @@ func TestGetOHLCV(t *testing.T) {
 
 func TestFetchOHLCV(t *testing.T) {
 	exg := getBinance(map[string]interface{}{
-		banexg.OptDebugApi: true,
+		//banexg.OptDebugApi: true,
 	})
 	log.Setup("debug", "")
 	startMs := int64(1719014400000)
-	res, err := exg.FetchOHLCV("BAKE/USDT:USDT", "1m", startMs, 10, nil)
+	res, err := exg.FetchOHLCV("BAKE/USDT:USDT", "1m", startMs, 10, map[string]interface{}{
+		banexg.ParamDebug: true,
+	})
 	if err != nil {
 		panic(err)
 	}

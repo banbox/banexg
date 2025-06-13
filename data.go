@@ -40,6 +40,7 @@ const (
 	ParamRetry              = "retry"
 	ParamLoopIntv           = "loopIntv"
 	ParamDirection          = "direction"
+	ParamDebug              = "debug"
 )
 
 var (
