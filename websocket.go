@@ -3,14 +3,8 @@ package banexg
 import (
 	"errors"
 	"fmt"
-	"github.com/banbox/banexg/bntp"
-	"github.com/banbox/banexg/errs"
-	"github.com/banbox/banexg/log"
-	"github.com/banbox/banexg/utils"
-	"github.com/gorilla/websocket"
-	"github.com/sasha-s/go-deadlock"
-	"go.uber.org/zap"
 	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -18,6 +12,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/banbox/banexg/bntp"
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
+	"github.com/gorilla/websocket"
+	"github.com/sasha-s/go-deadlock"
+	"go.uber.org/zap"
 )
 
 var (
@@ -126,7 +128,7 @@ func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
 	if conn != nil {
 		writer, err = conn.NextWriter(websocket.TextMessage)
 	} else {
-		err = errors.New(fmt.Sprintf("ws conn [%d] %s closed, NextWriter fail", ws.id, ws.url))
+		err = fmt.Errorf("ws conn [%d] %s closed, NextWriter fail", ws.id, ws.url)
 	}
 	lock.RUnlock()
 	return writer, err
@@ -728,10 +730,17 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 	} else {
 		connMap, lock := c.LockConns()
 		conn, _ = connMap[connID]
+		connNum := len(connMap)
 		// Check if there are any existing connections that have not reached the minimum number of subscriptions
 		// 检查已有连接，是否有未达到最低订阅数的
+		var connDups map[int]*AsyncConn
 		if conn == nil {
-			for cid, con := range connMap {
+			connDups = maps.Clone(connMap)
+		}
+		lock.Unlock()
+		if len(connDups) > 0 {
+			// IsOk would require new lock, we should release LockConns first
+			for cid, con := range connDups {
 				num, _ := c.connSubs[cid]
 				if num < connMinSubs && con.IsOK() {
 					conn = con
@@ -741,8 +750,6 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 		}
 		// Attempt to create a new connection
 		// 尝试创建新连接
-		connNum := len(connMap)
-		lock.Unlock()
 		if conn == nil && connNum < maxClientConn {
 			var err *errs.Error
 			conn, err = c.newConn(true)
