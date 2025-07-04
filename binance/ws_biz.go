@@ -389,8 +389,8 @@ func (e *Binance) prepareMarkPrices(isSub bool, symbols []string, params map[str
 }
 
 func (e *Binance) handleMarkPrices(client *banexg.WsClient, msgList []map[string]string, isArray bool) {
-	evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
-	e.KeyTimeStamps["markPrices"] = evtTime
+	//evtTime, _ := utils.SafeMapVal(msgList[0], "E", int64(0))
+	//e.KeyTimeStamps["markPrices"] = evtTime
 	e.MarkPriceLock.Lock()
 	data, ok := e.MarkPrices[client.MarketType]
 	if !ok {
