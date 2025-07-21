@@ -983,9 +983,10 @@ func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, pri
 	amountDc := decimal.NewFromFloat(amount)
 	cost := amountDc
 	priceDc := decimal.NewFromFloat(price)
+	costQuote := amountDc.Mul(priceDc)
 	currency := ""
 	if useQuote {
-		cost = cost.Mul(priceDc)
+		cost = costQuote
 		currency = market.Quote
 	} else {
 		currency = market.Base
@@ -1003,9 +1004,11 @@ func (e *Exchange) CalculateFee(symbol, odType, side string, amount float64, pri
 		feeRate = market.Taker
 	}
 	cost = cost.Mul(decimal.NewFromFloat(feeRate))
+	costQuote = costQuote.Mul(decimal.NewFromFloat(feeRate))
 	costVal, _ := cost.Float64()
+	costQuoteVal, _ := costQuote.Float64()
 	return &Fee{
-		isMaker, currency, costVal, feeRate,
+		isMaker, currency, costVal, costQuoteVal, feeRate,
 	}, nil
 }
 
