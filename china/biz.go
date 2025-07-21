@@ -426,11 +426,17 @@ func makeCalcFee(e *China) banexg.FuncCalcFee {
 		}
 		costVal = math.Round(costVal*100) / 100
 		odCost, _ := amount.Mul(price).Float64()
+		quoteCost := costVal
+		if curr != market.Quote {
+			priceFl, _ := price.Float64()
+			quoteCost *= priceFl
+		}
 		return &banexg.Fee{
-			Cost:     costVal,
-			Currency: curr,
-			IsMaker:  maker,
-			Rate:     costVal / odCost,
+			Cost:      costVal,
+			QuoteCost: quoteCost,
+			Currency:  curr,
+			IsMaker:   maker,
+			Rate:      costVal / odCost,
 		}, nil
 	}
 }

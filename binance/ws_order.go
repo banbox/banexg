@@ -555,13 +555,6 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.Cost, _ = utils.SafeMapVal(msg, "Y", zeroFlt)
 	res.Order, _ = utils.SafeMapVal(msg, "i", "")
 	res.Maker, _ = utils.SafeMapVal(msg, "m", false)
-	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
-	feeCurr, _ := utils.SafeMapVal(msg, "N", "")
-	res.Fee = &banexg.Fee{
-		IsMaker:  res.Maker,
-		Currency: feeCurr,
-		Cost:     feeCost,
-	}
 	odType, _ := utils.SafeMapVal(msg, "o", "")
 	res.Type = strings.ToLower(odType)
 	odState, _ := utils.SafeMapVal(msg, "X", "")
@@ -581,6 +574,17 @@ func parseMyTrade(msg map[string]string) banexg.MyTrade {
 	res.Symbol, _ = utils.SafeMapVal(msg, "s", "")
 	side, _ := utils.SafeMapVal(msg, "S", "")
 	res.Side = strings.ToLower(side)
+	feeCost, _ := utils.SafeMapVal(msg, "n", zeroFlt)
+	feeCurr, _ := utils.SafeMapVal(msg, "N", "")
+	res.Fee = &banexg.Fee{
+		IsMaker:   res.Maker,
+		Currency:  feeCurr,
+		Cost:      feeCost,
+		QuoteCost: feeCost,
+	}
+	if strings.HasPrefix(res.Symbol, feeCurr) {
+		res.Fee.QuoteCost *= res.Average
+	}
 	return res
 }
 

@@ -371,6 +371,7 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 	od.Trades = append(od.Trades, &first.Trade)
 	if first.Fee != nil {
 		od.Fee.Cost = first.Fee.Cost
+		od.Fee.QuoteCost = first.Fee.QuoteCost
 		od.Fee.Currency = first.Fee.Currency
 		od.Fee.IsMaker = first.Fee.IsMaker
 		od.Fee.Rate = first.Fee.Rate
@@ -396,6 +397,7 @@ func MergeMyTrades(trades []*MyTrade) (*Order, *errs.Error) {
 		od.Trades = append(od.Trades, &trade.Trade)
 		if trade.Fee != nil {
 			od.Fee.Cost += trade.Fee.Cost
+			od.Fee.QuoteCost += trade.Fee.QuoteCost
 			od.Fee.Currency = trade.Fee.Currency
 			od.Fee.IsMaker = trade.Fee.IsMaker
 			od.Fee.Rate = trade.Fee.Rate

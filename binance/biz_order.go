@@ -506,6 +506,11 @@ func (o *SpotOrder) ToStdOrder(mapSymbol func(string) string, info map[string]in
 			result.Fee.Cost = feeAmt
 			result.Fee.Currency = feeAsset
 		}
+		if strings.HasPrefix(result.Symbol, feeAsset) {
+			result.Fee.QuoteCost = feeAmt * average
+		} else {
+			result.Fee.QuoteCost = feeAmt
+		}
 	}
 	return result
 }
@@ -531,6 +536,7 @@ func (o *OptionOrder) ToStdOrder(mapSymbol func(string) string, info map[string]
 	result.Amount = o.Quantity
 	result.Fee.Currency = o.QuoteAsset
 	result.Fee.Cost = o.Fee
+	result.Fee.QuoteCost = o.Fee
 	result.PostOnly = o.PostOnly
 	return result
 }

@@ -488,10 +488,11 @@ type MyTrade struct {
 }
 
 type Fee struct {
-	IsMaker  bool    `json:"isMaker"` // for calculate fee
-	Currency string  `json:"currency"`
-	Cost     float64 `json:"cost"`
-	Rate     float64 `json:"rate,omitempty"`
+	IsMaker   bool    `json:"isMaker"` // for calculate fee
+	Currency  string  `json:"currency"`
+	Cost      float64 `json:"cost"`
+	QuoteCost float64 `json:"quote_cost"`
+	Rate      float64 `json:"rate,omitempty"`
 }
 
 type OrderBook struct {
