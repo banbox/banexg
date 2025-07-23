@@ -17,7 +17,11 @@ var (
 	tfSecsMap = map[string]int{}
 	secsTfMap = map[int]string{}
 	tfLock    deadlock.Mutex
-	tfOrigins = []*TFOrigin{{604800, 345600, "1970-01-05"}}
+	tfOrigins = []*TFOrigin{
+		// 从小到大的顺序
+		{259200, 86400, "1970-01-02"},
+		{604800, 345600, "1970-01-05"},
+	}
 )
 
 const (
