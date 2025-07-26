@@ -64,6 +64,7 @@ type Exchange struct {
 
 	TimeDelay  int64 // 系统时钟延迟的毫秒数
 	HttpClient *http.Client
+	NetDisable bool
 
 	WSClients  map[string]*WsClient           // accName@url: websocket clients
 	WsIntvs    map[string]int                 // milli secs interval for ws endpoints

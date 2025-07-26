@@ -30,6 +30,7 @@ const (
 	CodeIOReadFail
 	CodeInvalidData
 	CodeExpired
+	CodeNetDisable
 )
 
 var (

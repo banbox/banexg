@@ -99,6 +99,8 @@ type BanExchange interface {
 	SetMarketType(marketType, contractType string) *errs.Error
 	GetExg() *Exchange
 	Close() *errs.Error
+	GetNetDisable() bool
+	SetNetDisable(v bool)
 }
 
 type WsConn interface {

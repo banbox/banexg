@@ -1075,6 +1075,10 @@ Concurrent control: Same host, default concurrent 3 times at the same time
 并发控制：同一个host，默认同时并发3
 */
 func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, params map[string]interface{}, cache, debug bool) *HttpRes {
+	if e.NetDisable {
+		err := errs.NewMsg(errs.CodeNetDisable, fmt.Sprintf("net disabled for %v, fail: %v", e.Name, api.Url))
+		return &HttpRes{Error: err}
+	}
 	// Traffic control, block if concurrency is full
 	// 流量控制，如果并发已满则阻塞
 	sem := GetHostFlowChan(api.RawHost)
@@ -1237,6 +1241,10 @@ func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, para
 			return &HttpRes{Error: errs.New(errs.CodeRunTime, err_)}
 		}
 		api.RawHost = parsed.Host
+	}
+	if e.NetDisable {
+		err := errs.NewMsg(errs.CodeNetDisable, fmt.Sprintf("net disabled for %v, fail: %v", e.Name, api.Url))
+		return &HttpRes{Error: err}
 	}
 	tryNum := retryNum + 1
 	var rsp *HttpRes
@@ -1559,6 +1567,14 @@ func (e *Exchange) SetMarketType(marketType, contractType string) *errs.Error {
 
 func (e *Exchange) GetID() string {
 	return e.ID
+}
+
+func (e *Exchange) GetNetDisable() bool {
+	return e.NetDisable
+}
+
+func (e *Exchange) SetNetDisable(v bool) {
+	e.NetDisable = v
 }
 
 func (e *Exchange) GetExg() *Exchange {
