@@ -239,5 +239,4 @@ var (
 	exgMarketExpireMins = 360                      // ttl minutes for markets cache
 	marketsLock         deadlock.RWMutex           // 访问缓存的读写锁
 	LocUTC, _           = time.LoadLocation("UTC")
-	UseExpiredCache     bool
 )

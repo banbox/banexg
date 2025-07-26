@@ -1216,7 +1216,7 @@ func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, para
 	if readCache && api.CacheSecs > 0 {
 		cacheKey = e.GetCacheKey(endpoint, params)
 		cacheText, err := utils.ReadCacheFile(cacheKey)
-		if err != nil && (!(err.Code == errs.CodeExpired && UseExpiredCache)) {
+		if err != nil && (!(err.Code == errs.CodeExpired && !e.NetDisable)) {
 			if debug || e.DebugAPI {
 				log.Debug("read api cache fail", zap.String("url", api.Path), zap.String("err", err.Short()))
 			}
