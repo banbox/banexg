@@ -172,6 +172,11 @@ func SetTimeSync(options ...Option) *TimeSync {
 	}
 
 	// 创建新实例或重用现有实例
+	cacheDir, err := utils.GetCacheDir()
+	if err != nil {
+		log.Warn("get cache dir fail, use default", zap.Error(err))
+		cacheDir = os.TempDir()
+	}
 	if timeSyncer == nil {
 		curLang := LangCode
 		if curLang == LangNone {
@@ -179,7 +184,7 @@ func SetTimeSync(options ...Option) *TimeSync {
 		}
 		timeSyncer = &TimeSync{
 			syncPeriod:  24 * time.Hour,
-			filePath:    filepath.Join(os.TempDir(), "ban_ntp.json"),
+			filePath:    filepath.Join(cacheDir, "ban_ntp.json"),
 			randomRate:  0.1,
 			langCode:    curLang,
 			loopRefresh: false, // 默认不启用定期刷新
@@ -199,7 +204,7 @@ func SetTimeSync(options ...Option) *TimeSync {
 
 	// 确保目录存在
 	dir := filepath.Dir(timeSyncer.filePath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err = os.Stat(dir); os.IsNotExist(err) {
 		_ = os.MkdirAll(dir, 0755)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"github.com/banbox/banexg/errs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -75,7 +76,11 @@ func ReadJsonFile(path string, obj interface{}, numType int) error {
 }
 
 func WriteCacheFile(key, content string, expSecs int) *errs.Error {
-	path := filepath.Join(os.TempDir(), "banexg_"+key)
+	cacheDir, err := GetCacheDir()
+	if err != nil {
+		return errs.New(errs.CodeIOReadFail, err)
+	}
+	path := filepath.Join(cacheDir, "banexg_"+key)
 	file, err := os.Create(path)
 	if err != nil {
 		return errs.New(errs.CodeIOWriteFail, err)
@@ -100,7 +105,11 @@ func WriteCacheFile(key, content string, expSecs int) *errs.Error {
 }
 
 func ReadCacheFile(key string) (string, *errs.Error) {
-	path := filepath.Join(os.TempDir(), "banexg_"+key)
+	cacheDir, err := GetCacheDir()
+	if err != nil {
+		return "", errs.New(errs.CodeIOReadFail, err)
+	}
+	path := filepath.Join(cacheDir, "banexg_"+key)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", errs.New(errs.CodeIOReadFail, err)
@@ -121,4 +130,33 @@ func ReadCacheFile(key string) (string, *errs.Error) {
 		return content, errs.NewMsg(errs.CodeExpired, "expired at: %v", expDate)
 	}
 	return content, nil
+}
+
+func GetCacheDir() (string, error) {
+	unixCacheDir := "/var/cache"
+	switch runtime.GOOS {
+	case "linux":
+		return unixCacheDir, nil
+	case "windows":
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(homeDir, "AppData", "Local"), nil
+	case "darwin": // macOS
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(homeDir, "Library", "Caches"), nil
+	default:
+		// 检查 /var/cache 是否存在
+		if _, err := os.Stat(unixCacheDir); err == nil {
+			return unixCacheDir, nil
+		} else if os.IsNotExist(err) {
+			return "", fmt.Errorf("unsupported operating system and %s does not exist", unixCacheDir)
+		} else {
+			return "", err
+		}
+	}
 }
