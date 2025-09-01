@@ -3,8 +3,8 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"github.com/sasha-s/go-deadlock"
 	"strconv"
+	"sync"
 )
 
 type TFOrigin struct {
@@ -16,7 +16,7 @@ type TFOrigin struct {
 var (
 	tfSecsMap = map[string]int{}
 	secsTfMap = map[int]string{}
-	tfLock    deadlock.Mutex
+	tfLock    sync.Mutex // 使用期间不涉及其他锁
 	tfOrigins = []*TFOrigin{
 		// 从小到大的顺序
 		{259200, 86400, "1970-01-02"},
