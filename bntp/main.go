@@ -165,6 +165,9 @@ func ClearTimeSync() {
 		timeSyncer.Close()
 		timeSyncer = nil
 	}
+	LangCode = LangNone
+	cachedOffset.Store(0)
+	lastUpdateTimeMs.Store(time.Now().UnixMilli())
 	timeSyncerLock.Unlock()
 }
 
