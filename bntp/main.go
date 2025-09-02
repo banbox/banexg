@@ -20,7 +20,6 @@ type TimeSync struct {
 	mutex       deadlock.RWMutex
 	offset      int64         // 本地时间与标准时间的偏差(毫秒)
 	syncPeriod  time.Duration // 同步周期
-	initialized atomic.Bool   // 是否已初始化，原子操作
 	loopRefresh bool          // 是否开启定期刷新
 	filePath    string        // 保存时间偏移的文件路径
 	randomRate  float64       // 随机波动率
@@ -160,15 +159,22 @@ func getNTPServersByCode(langCode string) []string {
 	return servers
 }
 
-// SetTimeSync 设置并返回时间同步器
-// 如果已存在同步器，则更新其配置
-func SetTimeSync(options ...Option) *TimeSync {
+func ClearTimeSync() {
+	timeSyncerLock.Lock()
+	if timeSyncer != nil {
+		timeSyncer.Close()
+		timeSyncer = nil
+	}
+	timeSyncerLock.Unlock()
+}
+
+// SetTimeSync init timeSyncer, call `ClearTimeSync` if reset is need
+func SetTimeSync(options ...Option) (*TimeSync, error) {
 	timeSyncerLock.Lock()
 	defer timeSyncerLock.Unlock()
 
-	// 如果已存在实例，停止之前的循环
-	if timeSyncer != nil && timeSyncer.stopChan != nil {
-		close(timeSyncer.stopChan)
+	if timeSyncer != nil {
+		return timeSyncer, nil
 	}
 
 	// 创建新实例或重用现有实例
@@ -177,50 +183,80 @@ func SetTimeSync(options ...Option) *TimeSync {
 		log.Warn("get cache dir fail, use default", zap.Error(err))
 		cacheDir = os.TempDir()
 	}
-	if timeSyncer == nil {
-		curLang := LangCode
-		if curLang == LangNone {
-			curLang = LangGlobal
-		}
-		timeSyncer = &TimeSync{
-			syncPeriod:  24 * time.Hour,
-			filePath:    filepath.Join(cacheDir, "ban_ntp.json"),
-			randomRate:  0.1,
-			langCode:    curLang,
-			loopRefresh: false, // 默认不启用定期刷新
-			stopChan:    make(chan struct{}),
-		}
-	} else {
-		// 重置停止通道
-		timeSyncer.stopChan = make(chan struct{})
-		// 重置初始化状态，使其在下次获取时重新初始化
-		timeSyncer.initialized.Store(false)
+	curLang := LangCode
+	if curLang == LangNone {
+		curLang = LangGlobal
+	}
+	timeSyncer = &TimeSync{
+		syncPeriod:  24 * time.Hour,
+		filePath:    filepath.Join(cacheDir, "ban_ntp.json"),
+		randomRate:  0.1,
+		langCode:    curLang,
+		loopRefresh: false, // 默认不启用定期刷新
 	}
 
-	// 应用选项
-	for _, option := range options {
-		option(timeSyncer)
-	}
+	err = timeSyncer.setOptions(options...)
 
-	// 确保目录存在
-	dir := filepath.Dir(timeSyncer.filePath)
-	if _, err = os.Stat(dir); os.IsNotExist(err) {
-		_ = os.MkdirAll(dir, 0755)
-	}
-
-	return timeSyncer
+	return timeSyncer, err
 }
 
 // GetTimeSync 获取时间同步器实例
 // 如果实例不存在，则创建一个默认配置的实例
 func GetTimeSync() *TimeSync {
-	timeSyncerLock.Lock()
 	if timeSyncer == nil {
-		timeSyncerLock.Unlock()
-		return SetTimeSync()
+		ts, err := SetTimeSync()
+		if err != nil {
+			log.Warn("ntp initialization failed, using local time", zap.Error(err))
+		}
+		return ts
 	}
-	timeSyncerLock.Unlock()
 	return timeSyncer
+}
+
+func (ts *TimeSync) SetOptions(options ...Option) error {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	return ts.setOptions(options...)
+}
+
+func (ts *TimeSync) setOptions(options ...Option) error {
+	if ts.stopChan != nil {
+		close(ts.stopChan)
+	}
+
+	// restart stopChan
+	ts.stopChan = make(chan struct{})
+
+	// apply options
+	for _, option := range options {
+		option(ts)
+	}
+
+	// ensure cache dir
+	dir := filepath.Dir(ts.filePath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		_ = os.MkdirAll(dir, 0755)
+	}
+
+	// 先尝试从文件加载
+	loaded, err := ts.loadOffsetFromFile()
+	if err != nil {
+		log.Warn("failed to load time offset", zap.Error(err))
+	}
+
+	// 如果没有加载到有效数据，执行同步
+	if !loaded {
+		if err = ts.refresh(); err != nil {
+			return fmt.Errorf("failed to sync time: %w", err)
+		}
+	}
+
+	// 并启动循环同步（如果需要）
+	if ts.loopRefresh {
+		go ts.loopSync()
+	}
+
+	return nil
 }
 
 // saveOffsetToFile 将时间偏移保存到本地文件
@@ -284,41 +320,6 @@ func (ts *TimeSync) getRandomizedSyncPeriod() time.Duration {
 	// 计算随机化后的周期（基础周期 +/- 随机波动）
 	randomizedSeconds := float64(ts.syncPeriod.Seconds()) * (1 + randomFactor)
 	return time.Duration(randomizedSeconds) * time.Second
-}
-
-// Initialize 初始化时间同步器并进行首次同步
-func (ts *TimeSync) Initialize() error {
-	if ts.initialized.Load() {
-		return nil
-	}
-
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-
-	if ts.initialized.Load() {
-		return nil
-	}
-
-	// 先尝试从文件加载
-	loaded, err := ts.loadOffsetFromFile()
-	if err != nil {
-		log.Warn("failed to load time offset", zap.Error(err))
-	}
-
-	// 如果没有加载到有效数据，执行同步
-	if !loaded {
-		if err := ts.refresh(); err != nil {
-			return fmt.Errorf("failed to sync time: %w", err)
-		}
-	}
-
-	// 标记为已初始化，并启动循环同步（如果需要）
-	wasInitialized := ts.initialized.Swap(true)
-	if !wasInitialized && ts.loopRefresh {
-		go ts.loopSync()
-	}
-
-	return nil
 }
 
 func (ts *TimeSync) Close() {
@@ -428,15 +429,6 @@ func UTCStamp() int64 {
 	// 缓存无效，尝试使用同步器的值
 	ts := GetTimeSync()
 
-	// 检查是否已初始化
-	if !ts.initialized.Load() {
-		// 第一次使用，需要初始化
-		if err := ts.Initialize(); err != nil {
-			log.Warn("ntp initialization failed, using local time", zap.Error(err))
-			return nowMs
-		}
-	}
-
 	// 使用原子操作获取偏移量
 	offset := ts.atomicOffset.Load()
 
@@ -458,13 +450,6 @@ func GetTimeOffset() int64 {
 		return 0
 	}
 	ts := GetTimeSync()
-
-	// 如果未初始化，尝试初始化
-	if !ts.initialized.Load() {
-		if err := ts.Initialize(); err != nil {
-			return 0
-		}
-	}
 
 	return ts.atomicOffset.Load()
 }
