@@ -1586,6 +1586,7 @@ func (e *Exchange) Close() *errs.Error {
 		close(e.MarketsWait)
 		e.MarketsWait = nil
 	}
+	e.lockOutChan.Lock()
 	for key, chanQ := range e.WsOutChans {
 		chVal := reflect.ValueOf(chanQ)
 		if chVal.Kind() == reflect.Chan {
@@ -1593,6 +1594,7 @@ func (e *Exchange) Close() *errs.Error {
 		}
 		delete(e.WsOutChans, key)
 	}
+	e.lockOutChan.Unlock()
 	for _, client := range e.WSClients {
 		client.Close()
 	}

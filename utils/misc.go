@@ -162,7 +162,8 @@ func PopMapVal[T any](items map[string]interface{}, key string, defVal T) T {
 		} else {
 			var zero T
 			typ := reflect.TypeOf(zero)
-			panic(fmt.Sprintf("option %s should be %s", key, typ.String()))
+			cur := reflect.TypeOf(val)
+			panic(fmt.Sprintf("option %s should be %s, got %v", key, typ.String(), cur.String()))
 		}
 	}
 	return defVal

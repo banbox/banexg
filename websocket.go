@@ -352,14 +352,18 @@ GetWsOutChan
 如果不存在则创建新的并存储
 */
 func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args map[string]interface{}) T {
+	e.lockOutChan.Lock()
 	outRaw, oldChan := e.WsOutChans[chanKey]
+	e.lockOutChan.Unlock()
 	if oldChan {
 		res := outRaw.(T)
 		return res
 	} else {
 		chanCap := utils.PopMapVal(args, ParamChanCap, 100)
 		res := create(chanCap)
+		e.lockOutChan.Lock()
 		e.WsOutChans[chanKey] = res
+		e.lockOutChan.Unlock()
 		if e.OnWsChan != nil {
 			e.OnWsChan(chanKey, res)
 		}
@@ -368,7 +372,9 @@ func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args m
 }
 
 func WriteOutChan[T any](e *Exchange, chanKey string, msg T, popIfNeed bool) bool {
+	e.lockOutChan.Lock()
 	outRaw, outOk := e.WsOutChans[chanKey]
+	e.lockOutChan.Unlock()
 	if outOk {
 		out, ok := outRaw.(chan T)
 		if !ok {
@@ -415,6 +421,7 @@ func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
 	}
 	hasNum := len(data)
 	if hasNum == 0 {
+		e.lockOutChan.Lock()
 		if out, ok := e.WsOutChans[chanKey]; ok {
 			val := reflect.ValueOf(out)
 			if val.Kind() == reflect.Chan {
@@ -423,6 +430,7 @@ func (e *Exchange) DelWsChanRefs(chanKey string, keys ...string) int {
 			delete(e.WsOutChans, chanKey)
 			log.Info("remove chan", zap.String("key", chanKey))
 		}
+		e.lockOutChan.Unlock()
 	}
 	return hasNum
 }
@@ -440,6 +448,7 @@ func (e *Exchange) handleWsClientClosed(client *WsClient) int {
 		e.lockWsRef.Lock()
 		delete(e.WsChanRefs, key)
 		e.lockWsRef.Unlock()
+		e.lockOutChan.Lock()
 		if out, ok := e.WsOutChans[key]; ok {
 			val := reflect.ValueOf(out)
 			if val.Kind() == reflect.Chan {
@@ -448,6 +457,7 @@ func (e *Exchange) handleWsClientClosed(client *WsClient) int {
 			delete(e.WsOutChans, key)
 			removeNum += 1
 		}
+		e.lockOutChan.Unlock()
 	}
 	return removeNum
 }

@@ -83,6 +83,7 @@ type Exchange struct {
 	WsReplayFn  map[string]func(item *WsLog) *errs.Error
 	wsCacheLock deadlock.Mutex
 	lockWsRef   deadlock.Mutex
+	lockOutChan deadlock.Mutex
 
 	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 
