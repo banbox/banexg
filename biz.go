@@ -410,6 +410,7 @@ func (e *Exchange) LoadMarkets(reload bool, params map[string]interface{}) (Mark
 	if reload || e.Markets == nil {
 		if e.MarketsWait == nil {
 			e.MarketsWait = make(chan interface{})
+			log.Debug("try load markets", zap.Int64("stamp", e.MilliSeconds()))
 			go doLoadMarkets(e, params)
 		}
 		result := <-e.MarketsWait
