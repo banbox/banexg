@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -34,9 +35,19 @@ func (e *Error) Short() string {
 		return ""
 	}
 	if e.BizCode != 0 {
-		return fmt.Sprintf("[%d(%d)] %s", e.Code, e.BizCode, e.Message())
+		return fmt.Sprintf("[%s(%d)] %s", e.CodeName(), e.BizCode, e.Message())
 	}
-	return fmt.Sprintf("[%d] %s", e.Code, e.Message())
+	return fmt.Sprintf("[%s] %s", e.CodeName(), e.Message())
+}
+
+func (e *Error) CodeName() string {
+	codeNameLock.Lock()
+	name, ok := errCodeNames[e.Code]
+	codeNameLock.Unlock()
+	if ok {
+		return name
+	}
+	return strconv.Itoa(e.Code)
 }
 
 func (e *Error) Error() string {
@@ -44,9 +55,9 @@ func (e *Error) Error() string {
 		return ""
 	}
 	if e.BizCode != 0 {
-		return fmt.Sprintf("[%d(%d)] %s\n%s", e.Code, e.BizCode, e.Message(), e.Stack)
+		return fmt.Sprintf("[%s(%d)] %s\n%s", e.CodeName(), e.BizCode, e.Message(), e.Stack)
 	}
-	return fmt.Sprintf("[%d] %s\n%s", e.Code, e.Message(), e.Stack)
+	return fmt.Sprintf("[%s] %s\n%s", e.CodeName(), e.Message(), e.Stack)
 }
 
 func (e *Error) Message() string {
@@ -82,4 +93,12 @@ func CallStack(skip, maxNum int) string {
 		}
 	}
 	return strings.Join(texts, "\n")
+}
+
+func UpdateErrNames(data map[int]string) {
+	codeNameLock.Lock()
+	for k, v := range data {
+		errCodeNames[k] = v
+	}
+	codeNameLock.Unlock()
 }
