@@ -55,6 +55,15 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		}
 		postOnly = true
 	}
+	if market.Spot || market.Type == banexg.MarketMargin {
+		if postOnly {
+			odType = banexg.OdTypeLimitMaker
+		}
+	} else if odType == banexg.OdTypeLimitMaker {
+		// 币安仅现货支持limit_maker
+		odType = banexg.OdTypeLimit
+		timeInForce = banexg.TimeInForceGTX
+	}
 	isMarket := odType == banexg.OdTypeMarket
 	isLimit := odType == banexg.OdTypeLimit
 	triggerPrice := utils.PopMapVal(args, banexg.ParamTriggerPrice, float64(0))
@@ -68,9 +77,6 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	isTakeProfit := takeProfitPrice != float64(0)
 	args["symbol"] = market.ID
 	args["side"] = strings.ToUpper(side)
-	if postOnly && (market.Spot || market.Type == banexg.MarketMargin) {
-		odType = banexg.OdTypeLimitMaker
-	}
 	if market.Type == banexg.MarketMargin || marginMode != "" {
 		reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false)
 		if reduceOnly {
@@ -224,9 +230,6 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 			timeInForce = e.TimeInForce
 		}
 		args["timeInForce"] = timeInForce
-	}
-	if market.Contract && postOnly {
-		args["timeInForce"] = banexg.TimeInForceGTX
 	}
 	if stopPriceRequired {
 		if market.Contract {
