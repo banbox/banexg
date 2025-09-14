@@ -133,10 +133,7 @@ func ReadCacheFile(key string) (string, *errs.Error) {
 }
 
 func GetCacheDir() (string, error) {
-	unixCacheDir := "/var/cache"
 	switch runtime.GOOS {
-	case "linux":
-		return unixCacheDir, nil
 	case "windows":
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -150,13 +147,16 @@ func GetCacheDir() (string, error) {
 		}
 		return filepath.Join(homeDir, "Library", "Caches"), nil
 	default:
-		// 检查 /var/cache 是否存在
-		if _, err := os.Stat(unixCacheDir); err == nil {
-			return unixCacheDir, nil
-		} else if os.IsNotExist(err) {
-			return "", fmt.Errorf("unsupported operating system and %s does not exist", unixCacheDir)
-		} else {
+		// 默认linux
+		// 优先使用 XDG_CACHE_HOME 环境变量
+		if xdgCache := os.Getenv("XDG_CACHE_HOME"); xdgCache != "" {
+			return xdgCache, nil
+		}
+		// 回退到 $HOME/.cache
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
 			return "", err
 		}
+		return filepath.Join(homeDir, ".cache"), nil
 	}
 }
