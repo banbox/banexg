@@ -1262,6 +1262,11 @@ func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, para
 				sleep = 3
 				log.Warn(fmt.Sprintf("net fail, retry after: %v", sleep))
 				continue
+			} else if rsp.Error.Code == 503 {
+				// 交易所服务器过载
+				sleep = 3
+				log.Warn(fmt.Sprintf("exchange overload, retry after: %v", sleep))
+				continue
 			} else if rsp.Error.Code == 429 || rsp.Error.Code == 418 {
 				// 请求过于频繁，随机休息
 				retryAfter, _ := rsp.Error.Data.(int64)

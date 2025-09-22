@@ -136,7 +136,7 @@ symbol为空表示获取所有，不为空获取单个
 */
 func (e *Binance) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
 	args := utils.SafeParams(params)
-	marketType, _, err := e.LoadArgsMarketType(args)
+	marketType, _, err := e.LoadArgsMarketType(args, symbol)
 	if err != nil {
 		return nil, err
 	}

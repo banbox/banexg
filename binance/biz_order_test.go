@@ -3,6 +3,7 @@ package binance
 import (
 	"fmt"
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
@@ -93,6 +94,27 @@ func TestBinance_CreateOrder(t *testing.T) {
 	}
 	symbol := "ETH/USDT:USDT"
 	printCreateOrder(symbol, banexg.OdTypeLimit, banexg.OdSideBuy, 0.02, 1000, args)
+}
+
+func TestTriggerLongStop(t *testing.T) {
+	bntp.LangCode = bntp.LangZhCN
+	exg := getBinance(nil)
+	symbol := "DOGE/USDT:USDT"
+	priceMap, err := exg.FetchTickerPrice(symbol, nil)
+	if err != nil {
+		panic(err)
+	}
+	price := priceMap[symbol]
+	if price == 0 {
+		fmt.Printf("get ticker price fail: %v", priceMap)
+		return
+	}
+	args := map[string]interface{}{
+		banexg.ParamPositionSide:    "LONG",
+		banexg.ParamTakeProfitPrice: price * 1.05,
+	}
+	amt := 10 / price
+	printCreateOrder(symbol, banexg.OdTypeMarket, banexg.OdSideBuy, amt, 0, args)
 }
 
 func TestSellOrder(t *testing.T) {
