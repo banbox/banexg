@@ -270,7 +270,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	}
 	tryNum := utils.PopMapVal(params, banexg.ParamRetry, -1)
 	if tryNum < 0 {
-		tryNum = e.GetRetryNum("CreateOrder", 1)
+		tryNum = e.GetRetryNum("CreateOrder", 3)
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
