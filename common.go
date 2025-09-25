@@ -324,6 +324,10 @@ func (k *Kline) Clone() *Kline {
 	}
 }
 
+func (k *Kline) TimeMS() int64 {
+	return k.Time
+}
+
 func EnsureArrStr(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
