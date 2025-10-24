@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
 	"github.com/gorilla/websocket"
 	"github.com/sasha-s/go-deadlock"
 	"go.uber.org/zap"

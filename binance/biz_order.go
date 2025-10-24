@@ -3,9 +3,9 @@ package binance
 import (
 	"context"
 	"github.com/banbox/banexg"
-	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
 	"strconv"
 	"strings"
 )

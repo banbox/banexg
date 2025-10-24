@@ -3,9 +3,9 @@ package binance
 import (
 	"fmt"
 	"github.com/banbox/banexg"
-	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
 	"go.uber.org/zap"
 	"testing"
 	"time"

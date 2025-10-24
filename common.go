@@ -2,10 +2,10 @@ package banexg
 
 import (
 	"fmt"
-	"github.com/banbox/banexg/bntp"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
 	"go.uber.org/zap"
 	"math"
 	"math/rand"
