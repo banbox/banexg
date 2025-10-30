@@ -35,6 +35,7 @@ const (
 	CodeInvalidData
 	CodeExpired
 	CodeNetDisable
+	CodeCancel
 )
 
 var (
@@ -73,4 +74,5 @@ var errCodeNames = map[int]string{
 	CodeInvalidData:          "InvalidData",
 	CodeExpired:              "Expired",
 	CodeNetDisable:           "NetDisable",
+	CodeCancel:               "Cancel",
 }
