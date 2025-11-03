@@ -36,6 +36,13 @@ const (
 	CodeExpired
 	CodeNetDisable
 	CodeCancel
+	CodeShutdown
+	CodeTimeout
+	CodeOOM
+	CodeSystemBusy
+	CodeUnauthorized
+	CodeForbidden
+	CodeDataNotFound
 )
 
 var (
@@ -75,4 +82,11 @@ var errCodeNames = map[int]string{
 	CodeExpired:              "Expired",
 	CodeNetDisable:           "NetDisable",
 	CodeCancel:               "Cancel",
+	CodeShutdown:             "Shutdown",
+	CodeTimeout:              "Timeout",
+	CodeOOM:                  "OOM",
+	CodeSystemBusy:           "SystemBusy",
+	CodeUnauthorized:         "Unauthorized",
+	CodeForbidden:            "Forbidden",
+	CodeDataNotFound:         "DataNotFound",
 }
