@@ -115,7 +115,8 @@ func makeSign(e *Bybit) banexg.FuncSign {
 }
 
 func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tryNum int) *banexg.ApiRes[T] {
-	res_ := e.RequestApiRetryAdv(context.Background(), api, params, tryNum, true, false)
+	noCache := utils.PopMapVal(params, banexg.ParamNoCache, false)
+	res_ := e.RequestApiRetryAdv(context.Background(), api, params, tryNum, !noCache, false)
 	res := &banexg.ApiRes[T]{HttpRes: res_}
 	if res.Error != nil {
 		return res

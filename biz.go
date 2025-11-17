@@ -1070,7 +1070,7 @@ func (e *Exchange) setReqHeaders(head *http.Header) {
 /*
 RequestApi
 Request exchange API without checking cache
-Concurrent control: Same host, default concurrent 3 times at the same time
+Concurrency control: Same host, default concurrent 3 times at the same time
 
 请求交易所API，不检查缓存
 并发控制：同一个host，默认同时并发3
@@ -1176,7 +1176,8 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 }
 
 func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {
-	return e.RequestApiRetryAdv(ctx, endpoint, params, retryNum, true, true)
+	noCache := utils.PopMapVal(params, ParamNoCache, false)
+	return e.RequestApiRetryAdv(ctx, endpoint, params, retryNum, !noCache, true)
 }
 
 func (e *Exchange) GetCacheKey(endpoint string, params map[string]interface{}) string {

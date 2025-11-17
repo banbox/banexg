@@ -89,6 +89,14 @@ Supporting units: s, m, h, d, M, Q, Y
 支持单位：s, m, h, d, M, Q, Y
 */
 func TFToSecs(timeFrame string) int {
+	secs, err := TFToSecSafe(timeFrame)
+	if err != nil {
+		panic(err)
+	}
+	return secs
+}
+
+func TFToSecSafe(timeFrame string) (int, error) {
 	tfLock.Lock()
 	secs, ok := tfSecsMap[timeFrame]
 	var err error
@@ -100,10 +108,7 @@ func TFToSecs(timeFrame string) int {
 		}
 	}
 	tfLock.Unlock()
-	if err != nil {
-		panic(err)
-	}
-	return secs
+	return secs, err
 }
 
 func GetTfAlignOrigin(secs int) (string, int) {

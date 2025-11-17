@@ -41,6 +41,7 @@ const (
 	ParamLoopIntv           = "loopIntv"
 	ParamDirection          = "direction"
 	ParamDebug              = "debug"
+	ParamNoCache            = "noCache"
 )
 
 var (
