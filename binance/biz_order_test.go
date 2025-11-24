@@ -117,6 +117,18 @@ func TestTriggerLongStop(t *testing.T) {
 	printCreateOrder(symbol, banexg.OdTypeMarket, banexg.OdSideBuy, amt, 0, args)
 }
 
+func TestCallbackStop(t *testing.T) {
+	bntp.LangCode = bntp.LangZhCN
+	args := map[string]interface{}{
+		banexg.ParamPositionSide:    "SHORT",
+		banexg.ParamActivationPrice: 2830.0,
+		banexg.ParamCallbackRate:    2.0,
+	}
+	symbol := "ETH/USDT:USDT"
+	// 为空单添加追踪止损
+	printCreateOrder(symbol, banexg.OdTypeTrailingStopMarket, banexg.OdSideBuy, 0.008, 0, args)
+}
+
 func TestSellOrder(t *testing.T) {
 	symbol := "USDT/BRL"
 	printCreateOrder(symbol, banexg.OdTypeMarket, banexg.OdSideSell, 10, 0, nil)

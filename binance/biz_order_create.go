@@ -207,6 +207,11 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		if callBackRate == 0 {
 			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require callbackRate for %s order", odType)
 		}
+		args["callbackRate"] = callBackRate
+		activationPrice := utils.GetMapVal(args, banexg.ParamActivationPrice, 0.0)
+		if activationPrice > 0 {
+			args["activationPrice"] = activationPrice
+		}
 	}
 	if quantityRequired {
 		amtStr, err := e.PrecAmount(market, amount)
