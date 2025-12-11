@@ -6,13 +6,6 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"github.com/banbox/banexg/errs"
-	"github.com/banbox/banexg/log"
-	"github.com/banbox/banexg/utils"
-	"github.com/banbox/bntp"
-	"github.com/sasha-s/go-deadlock"
-	"github.com/shopspring/decimal"
-	"go.uber.org/zap"
 	"io"
 	"maps"
 	"math"
@@ -25,6 +18,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
+	"github.com/sasha-s/go-deadlock"
+	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
 
 func (e *Exchange) Init() *errs.Error {
@@ -111,6 +112,8 @@ func (e *Exchange) Init() *errs.Error {
 	utils.SetFieldBy(&e.DebugAPI, e.Options, OptDebugApi, false)
 	utils.SetFieldBy(&e.WsBatchSize, e.Options, OptDumpBatchSize, 1000)
 	utils.SetFieldBy(&e.WsTimeout, e.Options, OptWsTimeout, 15000)
+	e.CurrByCodeLock.Lock()
+	e.CurrByIdLock.Lock()
 	e.CurrCodeMap = DefCurrCodeMap
 	e.CurrenciesById = map[string]*Currency{}
 	e.CurrenciesByCode = map[string]*Currency{}
@@ -121,6 +124,8 @@ func (e *Exchange) Init() *errs.Error {
 	e.MarkPrices = map[string]map[string]float64{}
 	e.KeyTimeStamps = map[string]int64{}
 	e.ExgInfo.Min1mHole = 1
+	e.CurrByIdLock.Unlock()
+	e.CurrByCodeLock.Unlock()
 	return nil
 }
 
@@ -131,7 +136,9 @@ func (e *Exchange) SafeCurrency(currId string) *Currency {
 		return &Currency{}
 	}
 	if e.CurrenciesById != nil {
+		e.CurrByIdLock.Lock()
 		curr, ok := e.CurrenciesById[currId]
+		e.CurrByIdLock.Unlock()
 		if ok {
 			return curr
 		}
@@ -258,26 +265,34 @@ func (e *Exchange) setMarkets(markets MarketMap) {
 		}
 		return iv > ij
 	})
-	e.MarketsById = make(MarketArrMap)
+	marketsById := make(MarketArrMap)
 	var symbols = make([]string, len(markets))
 	var IDs = make([]string, 0, len(markets)/2)
 	for i, item := range items {
 		symbols[i] = item.Symbol
-		if list, ok := e.MarketsById[item.ID]; ok {
-			e.MarketsById[item.ID] = append(list, item)
+		if list, ok := marketsById[item.ID]; ok {
+			marketsById[item.ID] = append(list, item)
 		} else {
-			e.MarketsById[item.ID] = []*Market{item}
+			marketsById[item.ID] = []*Market{item}
 			IDs = append(IDs, item.ID)
 		}
 	}
-	e.Markets = markets
 	sort.Strings(symbols)
 	sort.Strings(IDs)
+	// 按固定顺序获取锁，防止死锁
+	e.MarketsLock.Lock()
+	e.MarketsByIdLock.Lock()
+	e.Markets = markets
+	e.MarketsById = marketsById
 	e.Symbols = symbols
 	e.IDs = IDs
+	e.MarketsByIdLock.Unlock()
+	e.MarketsLock.Unlock()
 }
 
 func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
+	var currByCode CurrencyMap
+	var currById CurrencyMap
 	if currencies == nil {
 		var currs = make([]*Currency, 0)
 		var defCurrPrec, defCurrPrecMode = float64(8), PrecModeDecimalPlace
@@ -339,21 +354,36 @@ func (e *Exchange) setCurrencies(currencies CurrencyMap, markets MarketMap) {
 				highPrecs[curr.Code] = curr
 			}
 		}
+		// 先复制现有的 CurrenciesByCode
+		e.CurrByCodeLock.Lock()
+		currByCode = make(CurrencyMap, len(e.CurrenciesByCode)+len(highPrecs))
+		for k, v := range e.CurrenciesByCode {
+			currByCode[k] = v
+		}
+		e.CurrByCodeLock.Unlock()
 		for _, v := range highPrecs {
-			if old, ok := e.CurrenciesByCode[v.Code]; ok {
+			if old, ok := currByCode[v.Code]; ok {
 				old.ID = v.ID
 				old.Precision = v.Precision
 				old.PrecMode = v.PrecMode
 			} else {
-				e.CurrenciesByCode[v.Code] = v
+				currByCode[v.Code] = v
 			}
 		}
 	} else {
-		e.CurrenciesByCode = currencies
+		currByCode = currencies
 	}
-	for _, v := range e.CurrenciesByCode {
-		e.CurrenciesById[v.ID] = v
+	currById = make(CurrencyMap, len(currByCode))
+	for _, v := range currByCode {
+		currById[v.ID] = v
 	}
+	// 按固定顺序获取锁，防止死锁
+	e.CurrByCodeLock.Lock()
+	e.CurrByIdLock.Lock()
+	e.CurrenciesByCode = currByCode
+	e.CurrenciesById = currById
+	e.CurrByIdLock.Unlock()
+	e.CurrByCodeLock.Unlock()
 }
 
 func (e *Exchange) getMarketsCache(lock bool) (MarketMap, CurrencyMap) {
@@ -446,6 +476,7 @@ func (e *Exchange) GetCurMarkets() MarketMap {
 	result := make(MarketMap)
 	fltFut := e.IsContract(e.MarketType)
 	isSwap := e.ContractType == MarketSwap
+	e.MarketsLock.Lock()
 	for key, mar := range e.Markets {
 		if !mar.Active || mar.Type != e.MarketType {
 			continue
@@ -455,7 +486,19 @@ func (e *Exchange) GetCurMarkets() MarketMap {
 		}
 		result[key] = mar
 	}
+	e.MarketsLock.Unlock()
 	return result
+}
+
+func (e *Exchange) GetMarketBy(symbol string) (*Market, bool) {
+	var mar *Market
+	var ok bool
+	e.MarketsLock.Lock()
+	if len(e.Markets) > 0 {
+		mar, ok = e.Markets[symbol]
+	}
+	e.MarketsLock.Unlock()
+	return mar, ok
 }
 
 /*
@@ -465,10 +508,10 @@ GetMarket 获取市场信息
 	根据当前的MarketType和MarketInverse过滤匹配
 */
 func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
-	if e.Markets == nil || len(e.Markets) == 0 {
+	if e.Markets == nil {
 		return nil, errs.NewMsg(errs.CodeMarketNotLoad, "markets not loaded")
 	}
-	if mar, ok := e.Markets[symbol]; ok {
+	if mar, ok := e.GetMarketBy(symbol); ok {
 		if mar.Spot && e.IsContract("") {
 			// 当前是合约模式，返回合约的Market
 			settle := mar.Quote
@@ -476,7 +519,7 @@ func (e *Exchange) GetMarket(symbol string) (*Market, *errs.Error) {
 				settle = mar.Base
 			}
 			futureSymbol := symbol + ":" + settle
-			if mar, ok = e.Markets[futureSymbol]; ok {
+			if mar, ok = e.GetMarketBy(futureSymbol); ok {
 				return mar, nil
 			}
 			return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market found: %v - %v - %v",
@@ -533,7 +576,10 @@ func (e *Exchange) GetMarketById(marketId, marketType string) *Market {
 	if e.MarketsById == nil {
 		return nil
 	}
-	if mars, ok := e.MarketsById[marketId]; ok {
+	e.MarketsByIdLock.Lock()
+	mars, ok := e.MarketsById[marketId]
+	e.MarketsByIdLock.Unlock()
+	if ok {
 		// 这里不能判断有一个时直接返回，有可能市场不一致：bybit现货市场信息不含SEC，但现货tickers含SEC
 		if marketType == "" {
 			marketType = e.MarketType
@@ -557,11 +603,10 @@ SafeMarket
 	从交易所品种ID转为规范化市场信息
 */
 func (e *Exchange) SafeMarket(marketId, delimiter, marketType string) *Market {
-	if e.MarketsById != nil {
-		market := e.GetMarketById(marketId, marketType)
-		if market != nil {
-			return market
-		}
+	// GetMarketById 内部已有锁保护
+	market := e.GetMarketById(marketId, marketType)
+	if market != nil {
+		return market
 	}
 	result := &Market{
 		ID: marketId,
@@ -599,6 +644,7 @@ func (e *Exchange) CheckSymbols(symbols ...string) ([]string, []string) {
 	for _, symbol := range symbols {
 		items[symbol] = struct{}{}
 	}
+	e.MarketsLock.Lock()
 	var valids = make([]string, 0, len(symbols))
 	var fails = make([]string, 0, len(symbols)/5)
 	for symbol := range items {
@@ -608,6 +654,7 @@ func (e *Exchange) CheckSymbols(symbols ...string) ([]string, []string) {
 			fails = append(fails, symbol)
 		}
 	}
+	e.MarketsLock.Unlock()
 	return valids, fails
 }
 

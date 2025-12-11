@@ -466,7 +466,10 @@ func (p *LinearPositionRisk) ToStdPos(e *Binance, info map[string]interface{}) (
 	res.Info = info
 	market := e.GetMarketById(p.Symbol, banexg.MarketLinear)
 	if market == nil {
-		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
+		e.MarketsLock.Lock()
+		marketsLen := len(e.Markets)
+		e.MarketsLock.Unlock()
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, marketsLen)
 	}
 	return calcPositionRisk(res, e, market, p.IsolatedMargin)
 }
@@ -483,7 +486,10 @@ func (p *InversePositionRisk) ToStdPos(e *Binance, info map[string]interface{}) 
 	res.Info = info
 	market := e.GetMarketById(p.Symbol, banexg.MarketInverse)
 	if market == nil {
-		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, len(e.Markets))
+		e.MarketsLock.Lock()
+		marketsLen := len(e.Markets)
+		e.MarketsLock.Unlock()
+		return nil, errs.NewMsg(errs.CodeNoMarketForPair, "no market for %s, total %d", p.Symbol, marketsLen)
 	}
 	return calcPositionRisk(res, e, market, p.IsolatedMargin)
 }

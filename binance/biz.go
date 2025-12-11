@@ -1118,7 +1118,7 @@ func (e *Binance) FetchFundingRateHistory(symbol string, since int64, limit int,
 	var marketType string
 	var err *errs.Error
 	if symbol != "" {
-		mar, ok := e.Markets[symbol]
+		mar, ok := e.GetMarketBy(symbol)
 		if !ok {
 			return nil, errs.NewMsg(errs.CodeParamInvalid, "symbol invalid: %v", symbol)
 		}

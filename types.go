@@ -3,12 +3,13 @@ package banexg
 import (
 	"compress/gzip"
 	"encoding/gob"
-	"github.com/banbox/banexg/errs"
-	"github.com/sasha-s/go-deadlock"
-	"github.com/shopspring/decimal"
 	"net/http"
 	"net/url"
 	"os"
+
+	"github.com/banbox/banexg/errs"
+	"github.com/sasha-s/go-deadlock"
+	"github.com/shopspring/decimal"
 )
 
 type FuncSign = func(api *Entry, params map[string]interface{}) *HttpReq
@@ -128,6 +129,10 @@ type ExgInfo struct {
 	MarkPrices       map[string]map[string]float64 // marketType: symbol: mark price
 	OdBookLock       deadlock.Mutex
 	MarkPriceLock    deadlock.Mutex
+	MarketsByIdLock  deadlock.Mutex
+	MarketsLock      deadlock.Mutex
+	CurrByCodeLock   deadlock.Mutex
+	CurrByIdLock     deadlock.Mutex
 
 	PrecPadZero  bool   // padding zero for precision
 	MarketType   string // MarketSpot/MarketMargin/MarketLinear/MarketInverse/MarketOption

@@ -3,6 +3,11 @@ package china
 import (
 	_ "embed"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
@@ -10,10 +15,6 @@ import (
 	"github.com/sasha-s/go-deadlock"
 	"github.com/shopspring/decimal"
 	"gopkg.in/yaml.v3"
-	"math"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func (e *China) Init() *errs.Error {
@@ -82,19 +83,15 @@ func loadRawMarkets() *errs.Error {
 }
 
 func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
-	if len(e.Markets) > 0 && !reload {
+	if e.Markets != nil && !reload {
 		return e.Markets, nil
 	}
 	err := loadRawMarkets()
 	if err != nil {
 		return nil, err
 	}
-	if e.Markets == nil {
-		e.Markets = make(banexg.MarketMap)
-	}
-	if e.MarketsById == nil {
-		e.MarketsById = make(banexg.MarketArrMap)
-	}
+	newMarkets := make(banexg.MarketMap)
+	newMarketsById := make(banexg.MarketArrMap)
 	// 加载股票列表
 	for _, it := range stockMarkets {
 		if it.Market == banexg.MarketSpot {
@@ -102,8 +99,8 @@ func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.
 			if err != nil {
 				return nil, err
 			}
-			e.Markets[it.Code] = market
-			e.MarketsById[market.ID] = []*banexg.Market{market}
+			newMarkets[it.Code] = market
+			newMarketsById[market.ID] = []*banexg.Market{market}
 		}
 	}
 	// 期货期权代码需要传入
@@ -123,11 +120,18 @@ func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.
 			if err != nil {
 				return nil, err
 			}
-			e.Markets[symbol] = market
-			e.MarketsById[market.ID] = []*banexg.Market{market}
+			newMarkets[symbol] = market
+			newMarketsById[market.ID] = []*banexg.Market{market}
 		}
 	}
-	return e.Markets, nil
+	// 按固定顺序获取锁，防止死锁
+	e.MarketsLock.Lock()
+	e.MarketsByIdLock.Lock()
+	e.Markets = newMarkets
+	e.MarketsById = newMarketsById
+	e.MarketsByIdLock.Unlock()
+	e.MarketsLock.Unlock()
+	return newMarkets, nil
 }
 
 func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error) {
@@ -153,8 +157,13 @@ func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error)
 	if err != nil {
 		return nil, err
 	}
+	// 按固定顺序获取锁，防止死锁
+	e.MarketsLock.Lock()
+	e.MarketsByIdLock.Lock()
 	e.Markets[mar.Symbol] = mar
 	e.MarketsById[mar.ID] = []*banexg.Market{mar}
+	e.MarketsByIdLock.Unlock()
+	e.MarketsLock.Unlock()
 	return mar, nil
 }
 
@@ -327,7 +336,7 @@ func (e *China) LoadLeverageBrackets(reload bool, params map[string]interface{})
 }
 
 func (e *China) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
-	mar, exist := e.Markets[symbol]
+	mar, exist := e.GetMarketBy(symbol)
 	if !exist {
 		return 0, 0
 	}
