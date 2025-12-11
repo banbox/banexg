@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
@@ -56,6 +57,9 @@ func (e *Binance) fetchAlgoOrder(id, clientOrderId string, args map[string]inter
 	if clientOrderId != "" {
 		args["clientAlgoId"] = clientOrderId
 	} else {
+		if strings.HasPrefix(id, "algo:") {
+			id = id[5:]
+		}
 		args["algoId"] = id
 	}
 	tryNum := e.GetRetryNum("FetchOrder", 1)
@@ -116,6 +120,9 @@ func (e *Binance) cancelAlgoOrder(id string, clientOrderId string, market *banex
 	if clientOrderId != "" {
 		args["clientAlgoId"] = clientOrderId
 	} else {
+		if strings.HasPrefix(id, "algo:") {
+			id = id[5:]
+		}
 		args["algoId"] = id
 	}
 	method := MethodFapiPrivateDeleteAlgoOrder

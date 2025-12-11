@@ -17,7 +17,8 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 	if err != nil {
 		return nil, err
 	}
-	if market.Linear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+	isAlgo := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+	if market.Linear && (isAlgo || strings.HasPrefix(orderId, "algo:")) {
 		clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
 		return e.fetchAlgoOrder(orderId, clientOrderId, args)
 	}
@@ -357,7 +358,7 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 		method = MethodEapiPrivateDeleteOrder
 	} else if market.Linear {
 		isAlgoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
-		if isAlgoOrder {
+		if isAlgoOrder || strings.HasPrefix(id, "algo:") {
 			return e.cancelAlgoOrder(id, clientOrderId, market)
 		}
 		method = MethodFapiPrivateDeleteOrder
@@ -597,7 +598,7 @@ func (o *AlgoOrder) ToStdOrder(mapSymbol func(string) string, info map[string]in
 	amount, _ := strconv.ParseFloat(o.Quantity, 64)
 	orderType := strings.ToLower(o.OrderType)
 	return &banexg.Order{
-		ID:                  fmt.Sprintf("%d", o.AlgoId),
+		ID:                  fmt.Sprintf("algo:%d", o.AlgoId),
 		ClientOrderID:       o.ClientAlgoId,
 		LastTradeTimestamp:  0,
 		LastUpdateTimestamp: o.UpdateTime,
