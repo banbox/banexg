@@ -2,18 +2,24 @@ package binance
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/banbox/bntp"
-	"strconv"
-	"strings"
 )
 
 func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
+	}
+	if market.Linear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+		clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
+		return e.fetchAlgoOrder(orderId, clientOrderId, args)
 	}
 	args["symbol"] = market.ID
 	args["orderId"] = orderId
@@ -100,6 +106,9 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 	if limit > 0 {
 		args["limit"] = limit
 		loopArgNum += 1
+	}
+	if market.Linear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+		return e.fetchAlgoOrders(args, market)
 	}
 	loopIntv := utils.PopMapVal(args, banexg.ParamLoopIntv, int64(0))
 	if loopIntv <= 0 {
@@ -199,8 +208,11 @@ fetch all unfilled currently open orders
 func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	var args map[string]interface{}
 	var marketType string
+	var market *banexg.Market
 	if symbol != "" {
-		argsIn, market, err := e.LoadArgsMarket(symbol, params)
+		var argsIn map[string]interface{}
+		var err *errs.Error
+		argsIn, market, err = e.LoadArgsMarket(symbol, params)
 		if err != nil {
 			return nil, err
 		}
@@ -210,6 +222,9 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	} else {
 		args = utils.SafeParams(params)
 		marketType, _ = e.GetArgsMarketType(args, "")
+	}
+	if marketType == banexg.MarketLinear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+		return e.fetchAlgoOpenOrders(args, market)
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := MethodPrivateGetOpenOrders
@@ -341,6 +356,10 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	if market.Option {
 		method = MethodEapiPrivateDeleteOrder
 	} else if market.Linear {
+		isAlgoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+		if isAlgoOrder {
+			return e.cancelAlgoOrder(id, clientOrderId, market)
+		}
 		method = MethodFapiPrivateDeleteOrder
 	} else if market.Inverse {
 		method = MethodDapiPrivateDeleteOrder
@@ -566,6 +585,38 @@ func (o *FutureOrder) ToStdOrder(mapSymbol func(string) string, info map[string]
 	result.Info = info
 	result.Cost = cost
 	return result
+}
+
+func (o *AlgoOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {
+	timeStamp := o.CreateTime
+	if timeStamp == 0 {
+		timeStamp = o.UpdateTime
+	}
+	stopPrice, _ := strconv.ParseFloat(o.TriggerPrice, 64)
+	price, _ := strconv.ParseFloat(o.Price, 64)
+	amount, _ := strconv.ParseFloat(o.Quantity, 64)
+	orderType := strings.ToLower(o.OrderType)
+	return &banexg.Order{
+		ID:                  fmt.Sprintf("%d", o.AlgoId),
+		ClientOrderID:       o.ClientAlgoId,
+		LastTradeTimestamp:  0,
+		LastUpdateTimestamp: o.UpdateTime,
+		Type:                orderType,
+		TimeInForce:         o.TimeInForce,
+		Side:                strings.ToLower(o.Side),
+		Price:               price,
+		Amount:              amount,
+		Status:              mapOrderStatus(o.AlgoStatus),
+		Symbol:              mapSymbol(o.Symbol),
+		ReduceOnly:          o.ReduceOnly,
+		TriggerPrice:        stopPrice,
+		PositionSide:        strings.ToLower(o.PositionSide),
+		Fee:                 &banexg.Fee{},
+		Trades:              make([]*banexg.Trade, 0),
+		Info:                info,
+		Timestamp:           timeStamp,
+		Datetime:            utils.ISO8601(timeStamp),
+	}
 }
 
 func (o *InverseOrder) ToStdOrder(mapSymbol func(string) string, info map[string]interface{}) *banexg.Order {

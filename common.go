@@ -466,3 +466,40 @@ func GetHostFlowChan(host string) chan struct{} {
 	hostFlowLock.Unlock()
 	return out
 }
+
+type BoolFmt int
+
+const (
+	BoolLower BoolFmt = iota
+	BoolUpper
+	BoolTitle
+)
+
+func SetBoolArg(args map[string]interface{}, key string, fmtType BoolFmt) {
+	if v, ok := args[key]; ok {
+		if b, ok := v.(bool); ok {
+			var s string
+			switch fmtType {
+			case BoolLower:
+				if b {
+					s = "true"
+				} else {
+					s = "false"
+				}
+			case BoolUpper:
+				if b {
+					s = "TRUE"
+				} else {
+					s = "FALSE"
+				}
+			case BoolTitle:
+				if b {
+					s = "True"
+				} else {
+					s = "False"
+				}
+			}
+			args[key] = s
+		}
+	}
+}

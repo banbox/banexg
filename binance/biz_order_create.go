@@ -277,6 +277,15 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if tryNum < 0 {
 		tryNum = e.GetRetryNum("CreateOrder", 3)
 	}
+
+	if market.Linear {
+		if odType == banexg.OdTypeStop || odType == banexg.OdTypeStopMarket ||
+			odType == banexg.OdTypeTakeProfit || odType == banexg.OdTypeTakeProfitMarket ||
+			odType == banexg.OdTypeTrailingStopMarket {
+			return e.createAlgoOrder(market, args, tryNum)
+		}
+	}
+
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error

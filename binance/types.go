@@ -516,6 +516,44 @@ type FutureOrder struct {
 }
 
 /*
+AlgoOrder U本位条件订单
+*/
+type AlgoOrder struct {
+	AlgoId                  int64  `json:"algoId"`
+	ClientAlgoId            string `json:"clientAlgoId"`
+	AlgoType                string `json:"algoType"`
+	OrderType               string `json:"orderType"`
+	Symbol                  string `json:"symbol"`
+	Side                    string `json:"side"`
+	PositionSide            string `json:"positionSide"`
+	TimeInForce             string `json:"timeInForce"`
+	Quantity                string `json:"quantity"`
+	AlgoStatus              string `json:"algoStatus"`
+	TriggerPrice            string `json:"triggerPrice"`
+	Price                   string `json:"price"`
+	SelfTradePreventionMode string `json:"selfTradePreventionMode"`
+	WorkingType             string `json:"workingType"`
+	PriceMatch              string `json:"priceMatch"`
+	ClosePosition           bool   `json:"closePosition"`
+	PriceProtect            bool   `json:"priceProtect"`
+	ReduceOnly              bool   `json:"reduceOnly"`
+	ActivatePrice           string `json:"activatePrice"`
+	CallbackRate            string `json:"callbackRate"`
+	CreateTime              int64  `json:"createTime"`
+	UpdateTime              int64  `json:"updateTime"`
+	TriggerTime             int64  `json:"triggerTime"`
+	GoodTillDate            int64  `json:"goodTillDate"`
+	ActualOrderId           string `json:"actualOrderId"`
+	ActualPrice             string `json:"actualPrice"`
+	TpTriggerPrice          string `json:"tpTriggerPrice"`
+	TpPrice                 string `json:"tpPrice"`
+	SlTriggerPrice          string `json:"slTriggerPrice"`
+	SlPrice                 string `json:"slPrice"`
+	TpOrderType             string `json:"tpOrderType"`
+	IcebergQuantity         string `json:"icebergQuantity"`
+}
+
+/*
 InverseOrder 币本位合约订单
 */
 type InverseOrder struct {
@@ -539,6 +577,13 @@ type OptionOrder struct {
 	CreateTime    int64   `json:"createTime"`    // 订单创建时间
 	Source        string  `json:"source"`        // 订单来源
 	Mmp           bool    `json:"mmp"`           // 是否为MMP订单
+}
+
+type DeleteAlgoOrderRsp struct {
+	AlgoId       int64  `json:"algoId"`
+	ClientAlgoId string `json:"clientAlgoId"`
+	Code         string `json:"code"`
+	Msg          string `json:"msg"`
 }
 
 type SpotFill struct {
