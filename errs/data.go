@@ -44,6 +44,7 @@ const (
 	CodeForbidden
 	CodeDataNotFound
 	CodeServerError
+	CodeNoTrade
 )
 
 var (
@@ -91,4 +92,5 @@ var errCodeNames = map[int]string{
 	CodeForbidden:            "Forbidden",
 	CodeDataNotFound:         "DataNotFound",
 	CodeServerError:          "ServerError",
+	CodeNoTrade:              "NoTrade",
 }

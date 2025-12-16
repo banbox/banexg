@@ -3,17 +3,18 @@ package binance
 import (
 	"context"
 	"fmt"
-	"github.com/banbox/banexg"
-	"github.com/banbox/banexg/errs"
-	"github.com/banbox/banexg/log"
-	"github.com/banbox/banexg/utils"
-	"go.uber.org/zap"
 	"maps"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
+	"go.uber.org/zap"
 )
 
 var secretApis = map[string]bool{
@@ -52,13 +53,40 @@ func (e *Binance) Init() *errs.Error {
 	e.ExgInfo.FullDay = true
 	e.regReplayHandles()
 	e.CalcRateLimiterCost = makeCalcRateLimiterCost(e)
+	markRiskyApis(e)
 	return nil
+}
+
+// markRiskyApis 标记危险API端点
+func markRiskyApis(e *Binance) {
+	riskyPaths := []string{
+		"order", "batchOrders", "allOpenOrders", "orderList", "openOrders",
+		"leverage", "marginType", "positionMargin", "positionSide",
+		"transfer", "withdraw", "loan", "repay",
+		"margin/order", "margin/loan", "margin/repay",
+	}
+	for _, api := range e.Apis {
+		if api.Method == "GET" {
+			continue
+		}
+		// POST/PUT/DELETE 请求检查路径
+		for _, rp := range riskyPaths {
+			if strings.Contains(api.Path, rp) {
+				api.Risky = true
+				break
+			}
+		}
+	}
 }
 
 func makeSign(e *Binance) banexg.FuncSign {
 	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
 		accID := e.PopAccName(params)
+		// 检查NoTrade限制
+		if err := e.CheckRiskyAllowed(api, accID); err != nil {
+			return &banexg.HttpReq{Error: err, Private: true}
+		}
 		path := api.Path
 		hostKey := api.Host
 		url := api.Url

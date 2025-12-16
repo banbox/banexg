@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/banbox/banexg"
-	"github.com/banbox/banexg/errs"
-	"github.com/banbox/banexg/utils"
-	"github.com/sasha-s/go-deadlock"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 )
 
 func (e *Bybit) Init() *errs.Error {
@@ -20,20 +21,45 @@ func (e *Bybit) Init() *errs.Error {
 		return err
 	}
 	utils.SetFieldBy(&e.RecvWindow, e.Options, OptRecvWindow, 30000)
-	if e.CareMarkets == nil || len(e.CareMarkets) == 0 {
+	if len(e.CareMarkets) == 0 {
 		e.CareMarkets = DefCareMarkets
 	}
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true
+	markRiskyApis(e)
 	return nil
+}
+
+// markRiskyApis 标记危险API端点
+func markRiskyApis(e *Bybit) {
+	riskyPaths := []string{
+		"order", "cancel", "batch", "leverage", "margin",
+		"position/set", "position/switch", "position/trading",
+		"transfer", "withdraw", "loan", "repay",
+	}
+	for _, api := range e.Apis {
+		if api.Method == "GET" {
+			continue
+		}
+		for _, rp := range riskyPaths {
+			if strings.Contains(api.Path, rp) {
+				api.Risky = true
+				break
+			}
+		}
+	}
 }
 
 func makeSign(e *Bybit) banexg.FuncSign {
 	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
+		accID := e.PopAccName(params)
+		// 检查NoTrade限制
+		if err := e.CheckRiskyAllowed(api, accID); err != nil {
+			return &banexg.HttpReq{Error: err, Private: true}
+		}
 		url := api.Url
 		headers := http.Header{}
-		accID := e.PopAccName(params)
 		body := ""
 		isPrivate := false
 		if api.Host == HostPublic && len(params) > 0 {

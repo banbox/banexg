@@ -200,6 +200,7 @@ type Entry struct {
 	Cost      float64
 	More      map[string]interface{}
 	CacheSecs int
+	Risky     bool // 危险操作：下单、撤单、修改订单、修改杠杆等
 }
 
 type Credential struct {

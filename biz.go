@@ -1553,6 +1553,22 @@ func (e *Exchange) GetAccountCreds(id string) (string, *Credential, *errs.Error)
 	return acc.Name, nil, errs.NewMsg(errs.CodeCredsRequired, "Creds not exits")
 }
 
+// CheckRiskyAllowed 检查当前账户是否允许执行危险操作
+// 如果api.Risky为true且账户NoTrade为true，返回错误
+func (e *Exchange) CheckRiskyAllowed(api *Entry, accID string) *errs.Error {
+	if !api.Risky {
+		return nil
+	}
+	acc, err := e.GetAccount(accID)
+	if err != nil {
+		return err
+	}
+	if acc.NoTrade {
+		return errs.NewMsg(errs.CodeNoTrade, "risky operation forbidden: %s", api.Path)
+	}
+	return nil
+}
+
 func (e *Exchange) parseOptCreds() {
 	var defCreds map[string]map[string]interface{}
 	creds := utils.GetMapVal(e.Options, OptAccCreds, defCreds)
