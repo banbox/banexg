@@ -3,16 +3,17 @@ package binance
 import (
 	"context"
 	"fmt"
+	"maps"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"github.com/banbox/bntp"
 	"go.uber.org/zap"
-	"maps"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
@@ -206,9 +207,10 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
-		msgShort := rsp.Error.Short()
-		if strings.Contains(msgShort, ":-1125") {
+		bizErr := rsp.Error.BizCode
+		if bizErr == -1125 || bizErr == -1000 {
 			// {\"code\":-1125,\"msg\":\"This listenKey does not exist.\"}
+			// {\"code\":-1000,\"msg\":\"An unknown error occurred while processing the request.\"}
 			err := e.postListenKey(acc, params)
 			if err != nil {
 				log.Error("post new listenKey fail", zap.Error(err))
