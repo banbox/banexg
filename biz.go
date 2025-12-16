@@ -1569,6 +1569,7 @@ func (e *Exchange) parseOptCreds() {
 			e.DefAccName = "default"
 			e.Accounts[e.DefAccName] = &Account{
 				Name:         e.DefAccName,
+				NoTrade:      utils.PopMapVal(e.Options, OptNoTrade, false),
 				Creds:        &Credential{ApiKey: apiKey, Secret: apiSecret},
 				MarBalances:  map[string]*Balances{},
 				MarPositions: map[string][]*Position{},
@@ -1587,7 +1588,8 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 	var current = map[string]interface{}{}
 	maps.Copy(current, cred)
 	return &Account{
-		Name: name,
+		Name:    name,
+		NoTrade: utils.PopMapVal(current, OptNoTrade, false),
 		Creds: &Credential{
 			ApiKey: utils.PopMapVal(current, OptApiKey, ""),
 			Secret: utils.PopMapVal(current, OptApiSecret, ""),

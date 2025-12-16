@@ -143,6 +143,7 @@ type ExgInfo struct {
 
 type Account struct {
 	Name         string
+	NoTrade      bool
 	Creds        *Credential
 	MarPositions map[string][]*Position // marketType: Position List
 	MarBalances  map[string]*Balances   // marketType: Balances
