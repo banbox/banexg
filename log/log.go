@@ -3,13 +3,14 @@ package log
 import (
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
 	"reflect"
 	"sync"
 	"sync/atomic"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var _globalL, _globalP, _globalS atomic.Value
@@ -17,6 +18,7 @@ var _globalL, _globalP, _globalS atomic.Value
 var (
 	_globalLevelLogger sync.Map
 	_namedRateLimiters sync.Map
+	_logFilePath       atomic.Value // stores current log file path
 )
 
 func init() {
@@ -207,9 +209,20 @@ func SetupLogger(cfg *Config) {
 	logger, p, err := InitLogger(cfg)
 	if err == nil {
 		ReplaceGlobals(logger, p)
+		if cfg.File != nil && cfg.File.LogPath != "" {
+			_logFilePath.Store(cfg.File.LogPath)
+		}
 	} else {
 		Fatal("initialize logger error", zap.Error(err))
 	}
+}
+
+// LogFilePath returns the current log file path, empty string if not set
+func LogFilePath() string {
+	if v := _logFilePath.Load(); v != nil {
+		return v.(string)
+	}
+	return ""
 }
 
 func Setup(level, logFile string, handlers ...zapcore.Core) {
