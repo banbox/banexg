@@ -50,6 +50,7 @@ const (
 	FldTriggerPx       = "triggerPx"
 	FldOrderPx         = "orderPx"
 	FldOrdPx           = "ordPx"
+	FldTradeQuoteCcy   = "tradeQuoteCcy"
 )
 
 // OKX WebSocket channel names

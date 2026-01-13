@@ -287,6 +287,16 @@ func parseInstrument(e *OKX, inst *Instrument) *banexg.Market {
 		}
 	}
 
+	var info map[string]interface{}
+	if len(inst.TradeQuoteCcyList) > 0 {
+		ccyMap := make(map[string]bool, len(inst.TradeQuoteCcyList))
+		for _, ccy := range inst.TradeQuoteCcyList {
+			ccyMap[ccy] = true
+		}
+		info = map[string]interface{}{
+			"tradeQuoteCcyList": ccyMap,
+		}
+	}
 	return &banexg.Market{
 		ID:           inst.InstId,
 		Symbol:       symbol,
@@ -318,5 +328,6 @@ func parseInstrument(e *OKX, inst *Instrument) *banexg.Market {
 		},
 		Active:  inst.State == "live",
 		Created: created,
+		Info:    info,
 	}
 }

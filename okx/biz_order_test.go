@@ -142,7 +142,7 @@ func TestAPI_FetchOrder(t *testing.T) {
 	// Replace with a valid order ID from your account
 	orderId := "3211916470425083904"
 	symbol := "ETH/USDT"
-	order, err := exg.FetchOrder(orderId, symbol, nil)
+	order, err := exg.FetchOrder(symbol, orderId, nil)
 	if err != nil {
 		panic(err)
 	}

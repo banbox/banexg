@@ -191,6 +191,18 @@ func decodeResult[T any](items []map[string]interface{}) ([]T, *errs.Error) {
 	return arr, nil
 }
 
+// getTradeQuoteCcy returns market.Quote if it exists in tradeQuoteCcyList.
+func getTradeQuoteCcy(market *banexg.Market) string {
+	if market == nil || market.Info == nil || market.Quote == "" {
+		return ""
+	}
+	ccyMap, ok := market.Info["tradeQuoteCcyList"].(map[string]bool)
+	if !ok || !ccyMap[market.Quote] {
+		return ""
+	}
+	return market.Quote
+}
+
 func pickArchiveMethod(args map[string]interface{}, since, until int64, recentMethod, archiveMethod string) string {
 	useArchive := utils.PopMapVal(args, banexg.ParamArchive, false)
 	if useArchive {

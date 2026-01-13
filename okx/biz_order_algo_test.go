@@ -105,7 +105,7 @@ func TestAPI_CreateAlgoOrderTPSL(t *testing.T) {
 		if order.ID == "" {
 			t.Fatalf("empty order id")
 		}
-		fetched, err := exg.FetchOrder(order.ID, symbol, map[string]interface{}{
+		fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
 			banexg.ParamAlgoOrder: true,
 		})
 		if err != nil {
@@ -127,7 +127,7 @@ func TestAPI_CreateAlgoOrderTPSL(t *testing.T) {
 			t.Fatalf("Create take profit order failed: %v", err)
 		}
 		defer cancelAlgoOrder(t, exg, symbol, order.ID)
-		fetched, err := exg.FetchOrder(order.ID, symbol, map[string]interface{}{
+		fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
 			banexg.ParamAlgoOrder: true,
 		})
 		if err != nil {
@@ -150,7 +150,7 @@ func TestAPI_CreateAlgoOrderTPSL(t *testing.T) {
 			t.Fatalf("Create OCO order failed: %v", err)
 		}
 		defer cancelAlgoOrder(t, exg, symbol, order.ID)
-		fetched, err := exg.FetchOrder(order.ID, symbol, map[string]interface{}{
+		fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
 			banexg.ParamAlgoOrder: true,
 		})
 		if err != nil {
@@ -182,7 +182,7 @@ func TestAPI_CreateAlgoOrderLimitTPSL(t *testing.T) {
 			t.Fatalf("Create stop loss limit order failed: %v", err)
 		}
 		defer cancelAlgoOrder(t, exg, symbol, order.ID)
-		fetched, err := exg.FetchOrder(order.ID, symbol, map[string]interface{}{
+		fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
 			banexg.ParamAlgoOrder: true,
 		})
 		if err != nil {
@@ -205,7 +205,7 @@ func TestAPI_CreateAlgoOrderLimitTPSL(t *testing.T) {
 			t.Fatalf("Create take profit limit order failed: %v", err)
 		}
 		defer cancelAlgoOrder(t, exg, symbol, order.ID)
-		fetched, err := exg.FetchOrder(order.ID, symbol, map[string]interface{}{
+		fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
 			banexg.ParamAlgoOrder: true,
 		})
 		if err != nil {

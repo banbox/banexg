@@ -20,23 +20,24 @@ type OKX struct {
 
 // Instrument describes /public/instruments response item.
 type Instrument struct {
-	InstType   string `json:"instType"`
-	InstId     string `json:"instId"`
-	InstFamily string `json:"instFamily"`
-	Uly        string `json:"uly"`
-	BaseCcy    string `json:"baseCcy"`
-	QuoteCcy   string `json:"quoteCcy"`
-	SettleCcy  string `json:"settleCcy"`
-	CtVal      string `json:"ctVal"`
-	CtMult     string `json:"ctMult"`
-	CtType     string `json:"ctType"`
-	Lever      string `json:"lever"`
-	TickSz     string `json:"tickSz"`
-	LotSz      string `json:"lotSz"`
-	MinSz      string `json:"minSz"`
-	State      string `json:"state"`
-	ListTime   string `json:"listTime"`
-	ExpTime    string `json:"expTime"`
+	InstType          string   `json:"instType"`
+	InstId            string   `json:"instId"`
+	InstFamily        string   `json:"instFamily"`
+	Uly               string   `json:"uly"`
+	BaseCcy           string   `json:"baseCcy"`
+	QuoteCcy          string   `json:"quoteCcy"`
+	SettleCcy         string   `json:"settleCcy"`
+	CtVal             string   `json:"ctVal"`
+	CtMult            string   `json:"ctMult"`
+	CtType            string   `json:"ctType"`
+	Lever             string   `json:"lever"`
+	TickSz            string   `json:"tickSz"`
+	LotSz             string   `json:"lotSz"`
+	MinSz             string   `json:"minSz"`
+	State             string   `json:"state"`
+	ListTime          string   `json:"listTime"`
+	ExpTime           string   `json:"expTime"`
+	TradeQuoteCcyList []string `json:"tradeQuoteCcyList"`
 }
 
 // Ticker describes /market/ticker(s) response item.

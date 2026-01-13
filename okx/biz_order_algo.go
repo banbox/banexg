@@ -223,6 +223,11 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 	} else if clOrdId := utils.PopMapVal(args, banexg.ParamClientOrderId, ""); clOrdId != "" {
 		args[FldAlgoClOrdId] = clOrdId
 	}
+	if market.Spot {
+		if tradeQuoteCcy := getTradeQuoteCcy(market); tradeQuoteCcy != "" {
+			args[FldTradeQuoteCcy] = tradeQuoteCcy
+		}
+	}
 	if market.Spot && odType == banexg.OdTypeMarket {
 		cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
 		if cost > 0 {

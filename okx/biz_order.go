@@ -88,6 +88,11 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	if reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false); reduceOnly {
 		args[FldReduceOnly] = true
 	}
+	if market.Spot {
+		if tradeQuoteCcy := getTradeQuoteCcy(market); tradeQuoteCcy != "" {
+			args[FldTradeQuoteCcy] = tradeQuoteCcy
+		}
+	}
 	if market.Contract {
 		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "")
 		if posSide == "" {
@@ -209,7 +214,7 @@ func (e *OKX) CancelOrder(id string, symbol string, params map[string]interface{
 	}, nil
 }
 
-func (e *OKX) FetchOrder(id string, symbol string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
+func (e *OKX) FetchOrder(symbol, id string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -263,6 +268,9 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 		}
 	}
 	if limit > 0 {
+		if limit > 100 {
+			limit = 100
+		}
 		args[FldLimit] = strconv.Itoa(limit)
 	}
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
@@ -310,6 +318,9 @@ func (e *OKX) FetchOrders(symbol string, since int64, limit int, params map[stri
 		args[FldInstType] = instType
 	}
 	if limit > 0 {
+		if limit > 100 {
+			limit = 100
+		}
 		args[FldLimit] = strconv.Itoa(limit)
 	}
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
