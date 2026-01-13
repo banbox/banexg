@@ -58,12 +58,18 @@ func New(options map[string]interface{}) (*OKX, *errs.Error) {
 				MethodAccountGetPositionTiers:      {Path: "account/position-tiers", Host: HostPrivate, Method: "GET", Cost: 5},
 				MethodAccountSetLeverage:           {Path: "account/set-leverage", Host: HostPrivate, Method: "POST", Cost: 5},
 				MethodTradePostOrder:               {Path: "trade/order", Host: HostPrivate, Method: "POST", Cost: 1},
+				MethodTradePostOrderAlgo:           {Path: "trade/order-algo", Host: HostPrivate, Method: "POST", Cost: 1},
 				MethodTradePostCancelOrder:         {Path: "trade/cancel-order", Host: HostPrivate, Method: "POST", Cost: 1},
+				MethodTradePostCancelAlgos:         {Path: "trade/cancel-algos", Host: HostPrivate, Method: "POST", Cost: 1},
 				MethodTradePostAmendOrder:          {Path: "trade/amend-order", Host: HostPrivate, Method: "POST", Cost: 1},
+				MethodTradePostAmendAlgos:          {Path: "trade/amend-algos", Host: HostPrivate, Method: "POST", Cost: 1},
 				MethodTradeGetOrder:                {Path: "trade/order", Host: HostPrivate, Method: "GET", Cost: 1},
+				MethodTradeGetOrderAlgo:            {Path: "trade/order-algo", Host: HostPrivate, Method: "GET", Cost: 1},
 				MethodTradeGetOrdersPending:        {Path: "trade/orders-pending", Host: HostPrivate, Method: "GET", Cost: 1},
+				MethodTradeGetOrdersAlgoPending:    {Path: "trade/orders-algo-pending", Host: HostPrivate, Method: "GET", Cost: 1},
 				MethodTradeGetOrdersHistory:        {Path: "trade/orders-history", Host: HostPrivate, Method: "GET", Cost: 1},
 				MethodTradeGetOrdersHistoryArchive: {Path: "trade/orders-history-archive", Host: HostPrivate, Method: "GET", Cost: 1},
+				MethodTradeGetOrdersAlgoHistory:    {Path: "trade/orders-algo-history", Host: HostPrivate, Method: "GET", Cost: 1},
 			},
 			Has: map[string]map[string]int{
 				"": {

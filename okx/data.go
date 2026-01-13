@@ -12,33 +12,44 @@ const (
 
 // OKX API field keys
 const (
-	FldInstType   = "instType"
-	FldInstId     = "instId"
-	FldInstFamily = "instFamily"
-	FldUly        = "uly"
-	FldMgnMode    = "mgnMode"
-	FldTdMode     = "tdMode"
-	FldPosSide    = "posSide"
-	FldOrdType    = "ordType"
-	FldSide       = "side"
-	FldSz         = "sz"
-	FldPx         = "px"
-	FldOrdId      = "ordId"
-	FldClOrdId    = "clOrdId"
-	FldCcy        = "ccy"
-	FldLever      = "lever"
-	FldBar        = "bar"
-	FldLimit      = "limit"
-	FldAfter      = "after"
-	FldBefore     = "before"
-	FldBegin      = "begin"
-	FldEnd        = "end"
-	FldType       = "type"
-	FldChannel    = "channel"
-	FldTgtCcy     = "tgtCcy"
-	FldNewSz      = "newSz"
-	FldNewPx      = "newPx"
-	FldReduceOnly = "reduceOnly"
+	FldInstType        = "instType"
+	FldInstId          = "instId"
+	FldInstFamily      = "instFamily"
+	FldUly             = "uly"
+	FldMgnMode         = "mgnMode"
+	FldTdMode          = "tdMode"
+	FldPosSide         = "posSide"
+	FldOrdType         = "ordType"
+	FldSide            = "side"
+	FldSz              = "sz"
+	FldPx              = "px"
+	FldOrdId           = "ordId"
+	FldClOrdId         = "clOrdId"
+	FldCcy             = "ccy"
+	FldLever           = "lever"
+	FldBar             = "bar"
+	FldLimit           = "limit"
+	FldAfter           = "after"
+	FldBefore          = "before"
+	FldBegin           = "begin"
+	FldEnd             = "end"
+	FldType            = "type"
+	FldChannel         = "channel"
+	FldTgtCcy          = "tgtCcy"
+	FldNewSz           = "newSz"
+	FldNewPx           = "newPx"
+	FldReduceOnly      = "reduceOnly"
+	FldAlgoId          = "algoId"
+	FldAlgoClOrdId     = "algoClOrdId"
+	FldTpTriggerPx     = "tpTriggerPx"
+	FldTpOrdPx         = "tpOrdPx"
+	FldSlTriggerPx     = "slTriggerPx"
+	FldSlOrdPx         = "slOrdPx"
+	FldTpTriggerPxType = "tpTriggerPxType"
+	FldSlTriggerPxType = "slTriggerPxType"
+	FldTriggerPx       = "triggerPx"
+	FldOrderPx         = "orderPx"
+	FldOrdPx           = "ordPx"
 )
 
 // OKX WebSocket channel names
@@ -89,6 +100,7 @@ var (
 		"live":             banexg.OdStatusOpen,
 		"partially_filled": banexg.OdStatusPartFilled,
 		"filled":           banexg.OdStatusFilled,
+		"cancelling":       banexg.OdStatusCanceling,
 		"canceled":         banexg.OdStatusCanceled,
 		"mmp_canceled":     banexg.OdStatusCanceled,
 	}
@@ -103,6 +115,15 @@ var (
 		"limit":     banexg.OdTypeLimit,
 		"market":    banexg.OdTypeMarket,
 		"post_only": banexg.OdTypeLimitMaker,
+	}
+
+	algoOrderStatusMap = map[string]string{
+		"live":                banexg.OdStatusOpen,
+		"pause":               banexg.OdStatusOpen,
+		"partially_effective": banexg.OdStatusPartFilled,
+		"effective":           banexg.OdStatusFilled,
+		"canceled":            banexg.OdStatusCanceled,
+		"order_failed":        banexg.OdStatusRejected,
 	}
 )
 
@@ -129,4 +150,10 @@ const (
 	MethodTradeGetOrdersPending        = "tradeGetOrdersPending"
 	MethodTradeGetOrdersHistory        = "tradeGetOrdersHistory"
 	MethodTradeGetOrdersHistoryArchive = "tradeGetOrdersHistoryArchive"
+	MethodTradePostOrderAlgo           = "tradePostOrderAlgo"
+	MethodTradePostCancelAlgos         = "tradePostCancelAlgos"
+	MethodTradePostAmendAlgos          = "tradePostAmendAlgos"
+	MethodTradeGetOrderAlgo            = "tradeGetOrderAlgo"
+	MethodTradeGetOrdersAlgoPending    = "tradeGetOrdersAlgoPending"
+	MethodTradeGetOrdersAlgoHistory    = "tradeGetOrdersAlgoHistory"
 )

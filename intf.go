@@ -1,8 +1,9 @@
 package banexg
 
 import (
-	"github.com/banbox/banexg/errs"
 	"io"
+
+	"github.com/banbox/banexg/errs"
 )
 
 /*
@@ -36,7 +37,7 @@ type BanExchange interface {
 	FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*FundingRate, *errs.Error)
 
 	// FetchOrder query given order
-	FetchOrder(symbol, orderId string, params map[string]interface{}) (*Order, *errs.Error)
+	FetchOrder(id, symbol string, params map[string]interface{}) (*Order, *errs.Error)
 	// FetchOrders Get all account orders; active, canceled, or filled. (symbol required)
 	FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error)
 	FetchBalance(params map[string]interface{}) (*Balances, *errs.Error)

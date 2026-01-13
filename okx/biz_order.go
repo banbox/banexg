@@ -50,6 +50,13 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	if err != nil {
 		return nil, err
 	}
+	triggerPrice := utils.PopMapVal(args, banexg.ParamTriggerPrice, float64(0))
+	stopLossPrice := utils.PopMapVal(args, banexg.ParamStopLossPrice, float64(0))
+	if stopLossPrice == 0 {
+		stopLossPrice = triggerPrice
+	}
+	takeProfitPrice := utils.PopMapVal(args, banexg.ParamTakeProfitPrice, float64(0))
+	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	ordType, ok := orderTypeMap[odType]
 	if !ok {
 		ordType = odType
@@ -82,7 +89,10 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		args[FldReduceOnly] = true
 	}
 	if market.Contract {
-		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "net")
+		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "")
+		if posSide == "" {
+			return nil, errs.NewMsg(errs.CodeParamRequired, "positionSide required for contract order")
+		}
 		args[FldPosSide] = posSide
 	}
 	if ordType == "market" && market.Spot {
@@ -98,6 +108,10 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	}
 	if price > 0 && ordType != "market" {
 		args[FldPx] = strconv.FormatFloat(price, 'f', -1, 64)
+	}
+
+	if algoOrder || isAlgoOrderType(odType) || stopLossPrice != 0 || takeProfitPrice != 0 {
+		return e.createAlgoOrder(market, odType, side, amount, price, args, stopLossPrice, takeProfitPrice)
 	}
 
 	tryNum := e.GetRetryNum("CreateOrder", 1)
@@ -167,6 +181,10 @@ func (e *OKX) CancelOrder(id string, symbol string, params map[string]interface{
 	if err != nil {
 		return nil, err
 	}
+	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+	if algoOrder || strings.HasPrefix(id, "algo:") {
+		return e.cancelAlgoOrder(id, market, args)
+	}
 	args[FldInstId] = market.ID
 	if err := setOrderID(args, id); err != nil {
 		return nil, err
@@ -196,6 +214,10 @@ func (e *OKX) FetchOrder(id string, symbol string, params map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
+	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+	if algoOrder || strings.HasPrefix(id, "algo:") {
+		return e.fetchAlgoOrder(id, market, args)
+	}
 	args[FldInstId] = market.ID
 	if err := setOrderID(args, id); err != nil {
 		return nil, err
@@ -217,6 +239,7 @@ func (e *OKX) FetchOrder(id string, symbol string, params map[string]interface{}
 
 func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args := utils.SafeParams(params)
+	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	marketType := ""
 	contractType := ""
 	var err *errs.Error
@@ -243,15 +266,23 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 		args[FldLimit] = strconv.Itoa(limit)
 	}
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
-	res := requestRetry[[]map[string]interface{}](e, MethodTradeGetOrdersPending, args, tryNum)
+	method := MethodTradeGetOrdersPending
+	if algoOrder {
+		method = MethodTradeGetOrdersAlgoPending
+	}
+	res := requestRetry[[]map[string]interface{}](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
+	}
+	if algoOrder {
+		return parseAlgoOrders(e, res.Result, marketType, symbol)
 	}
 	return parseOrders(e, res.Result, marketType, symbol)
 }
 
 func (e *OKX) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args := utils.SafeParams(params)
+	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	marketType := ""
 	contractType := ""
 	var err *errs.Error
@@ -289,10 +320,16 @@ func (e *OKX) FetchOrders(symbol string, since int64, limit int, params map[stri
 		args[FldEnd] = strconv.FormatInt(until, 10)
 	}
 	method := pickOrdersHistoryMethod(args, since, until)
+	if algoOrder {
+		method = MethodTradeGetOrdersAlgoHistory
+	}
 	tryNum := e.GetRetryNum("FetchOrders", 1)
 	res := requestRetry[[]map[string]interface{}](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
+	}
+	if algoOrder {
+		return parseAlgoOrders(e, res.Result, marketType, symbol)
 	}
 	return parseOrders(e, res.Result, marketType, symbol)
 }

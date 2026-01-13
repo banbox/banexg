@@ -73,7 +73,11 @@ func makeSign(e *OKX) banexg.FuncSign {
 				url += "?" + queryStr
 				requestPath += "?" + queryStr
 			} else if api.Method == "POST" && len(params) > 0 {
-				body, _ = utils.MarshalString(params)
+				if api.Path == "trade/cancel-algos" {
+					body, _ = utils.MarshalString([]map[string]interface{}{params})
+				} else {
+					body, _ = utils.MarshalString(params)
+				}
 			}
 			payload := timestamp + api.Method + "/api/v5/" + requestPath + body
 			sign, _ := utils.Signature(payload, creds.Secret, "hmac", "sha256", "base64")
