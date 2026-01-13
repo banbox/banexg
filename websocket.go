@@ -525,7 +525,7 @@ func (c *WsClient) SetSubsKeyStamp(key string, stamp int64) {
 	} else {
 		match := false
 		for k := range c.SubscribeKeys {
-			if strings.HasPrefix(k, key) {
+			if strings.HasPrefix(key, k) {
 				c.SubsKeyStamps[k] = stamp
 				c.subsKeyMap[key] = k
 				match = true
@@ -580,6 +580,19 @@ func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *err
 	}
 	if c.Debug {
 		log.Debug("write ws msg", zap.String("url", c.URL), zap.Int("id", conn.GetID()),
+			zap.String("msg", string(data)))
+	}
+	conn.send <- data
+	return nil
+}
+
+// WriteRaw sends raw bytes without JSON marshaling (e.g., for OKX ping/pong)
+func (c *WsClient) WriteRaw(conn *AsyncConn, data []byte) *errs.Error {
+	if conn == nil || c.Exg.WsDecoder != nil {
+		return nil
+	}
+	if c.Debug {
+		log.Debug("write ws raw", zap.String("url", c.URL), zap.Int("id", conn.GetID()),
 			zap.String("msg", string(data)))
 	}
 	conn.send <- data
@@ -696,6 +709,9 @@ func (c *WsClient) HandleRawMsg(msgRaw []byte) {
 	msgText := string(msgRaw)
 	if c.Debug {
 		log.Debug("receive ws msg", zap.String("url", c.URL), zap.String("msg", msgText))
+	}
+	if msgText == "pong" {
+		return
 	}
 	// fmt.Printf("receive %s\n", msgText)
 	msg, err := NewWsMsg(msgText)

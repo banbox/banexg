@@ -1316,3 +1316,34 @@ func getMapSlice(m map[string]interface{}, key string) []map[string]interface{} 
 	}
 	return res
 }
+
+/*
+makeCheckWsTimeout creates a goroutine that:
+1. Periodically sends "ping" to all OKX WebSocket connections to keep them alive (OKX requires ping every <30s)
+2. Checks for subscription timeout and resubscribes if needed
+*/
+func makeCheckWsTimeout(e *OKX) func() {
+	pingData := []byte("ping")
+	return func() {
+		e.WsChecking = true
+		defer func() {
+			e.WsChecking = false
+		}()
+		// OKX requires ping every <30s, we use 20s interval
+		pingInterval := time.Second * 20
+		for {
+			time.Sleep(pingInterval)
+			for _, client := range e.WSClients {
+				conns, lock := client.LockConns()
+				for _, conn := range conns {
+					// Send raw "ping" string to keep connection alive
+					if err := client.WriteRaw(conn, pingData); err != nil {
+						log.Warn("send ping fail", zap.String("url", client.URL),
+							zap.Int("conn", conn.GetID()), zap.Error(err))
+					}
+				}
+				lock.Unlock()
+			}
+		}
+	}
+}

@@ -116,6 +116,7 @@ func New(options map[string]interface{}) (*OKX, *errs.Error) {
 	exg.FetchMarkets = makeFetchMarkets(exg)
 	exg.OnWsMsg = makeHandleWsMsg(exg)
 	exg.OnWsReCon = makeHandleWsReCon(exg)
+	exg.CheckWsTimeout = makeCheckWsTimeout(exg)
 	err := exg.Init()
 	return exg, err
 }
