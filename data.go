@@ -50,6 +50,10 @@ const (
 	ParamDirection               = "direction"
 	ParamDebug                   = "debug"
 	ParamNoCache                 = "noCache"
+	ParamAfter                   = "after"    // Pagination cursor - records after this ID
+	ParamBefore                  = "before"   // Pagination cursor - records before this ID
+	ParamCurrency                = "currency" // Currency code
+	ParamArchive                 = "archive"  // Whether to use archive endpoint
 )
 
 var (
@@ -97,6 +101,7 @@ const (
 	OptProxy           = "Proxy"
 	OptApiKey          = "ApiKey"
 	OptApiSecret       = "ApiSecret"
+	OptPassword        = "Password"
 	OptAccCreds        = "Creds"
 	OptAccName         = "AccName"
 	OptNoTrade         = "NoTrade"

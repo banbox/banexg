@@ -1201,14 +1201,27 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 		var resData = make(map[string]interface{})
 		err = utils.UnmarshalString(result.Content, &resData, utils.JsonNumAuto)
 		if err == nil {
-			result.Error.BizCode = int(utils.GetMapVal(resData, "code", int64(0)))
+			// Handle both string (OKX) and int64 (Binance) code values
+			if codeVal, ok := resData["code"]; ok && codeVal != nil {
+				switch v := codeVal.(type) {
+				case int64:
+					result.Error.BizCode = int(v)
+				case string:
+					if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+						result.Error.BizCode = int(parsed)
+					}
+				}
+			}
 		}
 		if result.Status == 429 || result.Status == 418 {
 			waitStr := rsp.Header.Get("Retry-After")
-			waitSecs, err := strconv.ParseInt(waitStr, 10, 64)
-			if err != nil {
-				log.Error("parse Retry-After fail", zap.String("val", waitStr), zap.Error(err))
-				waitSecs = 30
+			var waitSecs int64 = 30
+			if waitStr != "" {
+				if parsed, err := strconv.ParseInt(waitStr, 10, 64); err != nil {
+					log.Error("parse Retry-After fail", zap.String("val", waitStr), zap.Error(err))
+				} else {
+					waitSecs = parsed
+				}
 			}
 			result.Error.Data = waitSecs
 			SetHostRetryWait(api.RawHost, waitSecs*1000)
@@ -1581,12 +1594,13 @@ func (e *Exchange) parseOptCreds() {
 	} else {
 		apiKey := utils.GetMapVal(e.Options, OptApiKey, "")
 		apiSecret := utils.GetMapVal(e.Options, OptApiSecret, "")
-		if apiKey != "" || apiSecret != "" {
+		apiPass := utils.GetMapVal(e.Options, OptPassword, "")
+		if apiKey != "" || apiSecret != "" || apiPass != "" {
 			e.DefAccName = "default"
 			e.Accounts[e.DefAccName] = &Account{
 				Name:         e.DefAccName,
 				NoTrade:      utils.PopMapVal(e.Options, OptNoTrade, false),
-				Creds:        &Credential{ApiKey: apiKey, Secret: apiSecret},
+				Creds:        &Credential{ApiKey: apiKey, Secret: apiSecret, Password: apiPass},
 				MarBalances:  map[string]*Balances{},
 				MarPositions: map[string][]*Position{},
 				Leverages:    map[string]int{},
@@ -1607,8 +1621,9 @@ func newAccount(name string, cred map[string]interface{}) *Account {
 		Name:    name,
 		NoTrade: utils.PopMapVal(current, OptNoTrade, false),
 		Creds: &Credential{
-			ApiKey: utils.PopMapVal(current, OptApiKey, ""),
-			Secret: utils.PopMapVal(current, OptApiSecret, ""),
+			ApiKey:   utils.PopMapVal(current, OptApiKey, ""),
+			Secret:   utils.PopMapVal(current, OptApiSecret, ""),
+			Password: utils.PopMapVal(current, OptPassword, ""),
 		},
 		MarPositions: map[string][]*Position{},
 		MarBalances:  map[string]*Balances{},

@@ -6,6 +6,7 @@ import (
 	"github.com/banbox/banexg/bybit"
 	"github.com/banbox/banexg/china"
 	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/okx"
 	"github.com/banbox/banexg/utils"
 )
 
@@ -14,6 +15,7 @@ func init() {
 		"binance": binance.NewExchange,
 		"bybit":   bybit.NewExchange,
 		"china":   china.NewExchange,
+		"okx":     okx.NewExchange,
 	}
 }
 

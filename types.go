@@ -377,6 +377,34 @@ type Ticker struct {
 **************************   Business Types   **************************
  */
 
+// BaseLvgBracket holds leverage tier information shared across exchanges.
+type BaseLvgBracket struct {
+	Bracket          int     `json:"bracket"`          // tier level
+	InitialLeverage  int     `json:"initialLeverage"`  // max initial leverage for this tier
+	MaintMarginRatio float64 `json:"maintMarginRatio"` // maintenance margin ratio
+	Cum              float64 `json:"cum"`              // cumulative maintenance margin
+}
+
+// LvgBracket is a normalized leverage bracket with floor/capacity.
+type LvgBracket struct {
+	BaseLvgBracket
+	Capacity float64
+	Floor    float64
+}
+
+// SymbolLvgBrackets holds all leverage brackets for a symbol or family.
+type SymbolLvgBrackets struct {
+	Symbol       string  `json:"symbol"`
+	NotionalCoef float64 `json:"notionalCoef"`
+	Brackets     []*LvgBracket
+}
+
+// ISymbolLvgBracket converts exchange-specific brackets to normalized brackets.
+type ISymbolLvgBracket interface {
+	ToStdBracket() *SymbolLvgBrackets
+	GetSymbol() string
+}
+
 type OHLCVArr = [6]float64
 
 type Kline struct {

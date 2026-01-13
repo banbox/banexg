@@ -748,22 +748,13 @@ type IBnbOrderBook interface {
 *****************************   Others   ***********************************
  */
 
-type BaseLvgBracket struct {
-	Bracket          int     `json:"bracket"`          // 层级
-	InitialLeverage  int     `json:"initialLeverage"`  // 该层允许的最高初始杠杆倍数
-	MaintMarginRatio float64 `json:"maintMarginRatio"` // 该层对应的维持保证金率
-	Cum              float64 `json:"cum"`              // 速算数
-}
+type BaseLvgBracket = banexg.BaseLvgBracket
 
 /*
 LvgBracket
 标准杠杆费率信息
 */
-type LvgBracket struct {
-	BaseLvgBracket
-	Capacity float64
-	Floor    float64
-}
+type LvgBracket = banexg.LvgBracket
 
 /*
 合约的杠杆分层标准
@@ -796,16 +787,9 @@ type InversePairLvgBrackets struct {
 SymbolLvgBrackets
 币种所有杠杆费率信息
 */
-type SymbolLvgBrackets struct {
-	Symbol       string  `json:"symbol"`
-	NotionalCoef float64 `json:"notionalCoef"` //用户bracket相对默认bracket的倍数，仅在和交易对默认不一样时显示
-	Brackets     []*LvgBracket
-}
+type SymbolLvgBrackets = banexg.SymbolLvgBrackets
 
-type ISymbolLvgBracket interface {
-	ToStdBracket() *SymbolLvgBrackets
-	GetSymbol() string
-}
+type ISymbolLvgBracket = banexg.ISymbolLvgBracket
 
 type FundingRate struct {
 	Symbol      string `json:"symbol"`
