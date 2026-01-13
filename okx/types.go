@@ -6,6 +6,13 @@ import (
 	"github.com/sasha-s/go-deadlock"
 )
 
+// WsPendingRecon stores info needed to restore subscriptions after reconnection login.
+type WsPendingRecon struct {
+	Client *banexg.WsClient
+	ConnID int
+	Keys   []string
+}
+
 type OKX struct {
 	*banexg.Exchange
 	RecvWindow int
@@ -16,8 +23,10 @@ type OKX struct {
 	// Each channel receives nil on success or an error on failure.
 	WsAuthDone map[string]chan *errs.Error
 	// WsAuthed tracks whether each client has successfully logged in.
-	WsAuthed   map[string]bool
-	WsAuthLock deadlock.Mutex
+	WsAuthed map[string]bool
+	// WsPendingRecons stores pending reconnection info to restore subs after login.
+	WsPendingRecons map[string]*WsPendingRecon
+	WsAuthLock      deadlock.Mutex
 }
 
 // Instrument describes /public/instruments response item.

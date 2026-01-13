@@ -55,10 +55,11 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 	args[FldBar] = e.GetTimeFrame(timeframe)
 	args[FldLimit] = strconv.Itoa(limit)
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
-	// OKX API: after=请求此时间戳之前的数据, before=请求此时间戳之后的数据
+	// OKX API: after=请求此时间戳之前的数据(ts < after), before=请求此时间戳之后的数据(ts > before)
 	// since表示起始时间，应使用before；until表示结束时间，应使用after
+	// 减1ms以包含since时间点的K线（before是严格大于）
 	if since > 0 {
-		args[FldBefore] = strconv.FormatInt(since, 10)
+		args[FldBefore] = strconv.FormatInt(since-1, 10)
 	}
 	if until > 0 {
 		args[FldAfter] = strconv.FormatInt(until, 10)
@@ -177,6 +178,9 @@ func (e *OKX) FetchOrderBook(symbol string, limit int, params map[string]interfa
 	}
 	args[FldInstId] = market.ID
 	if limit > 0 {
+		if limit > 400 {
+			limit = 400
+		}
 		args[FldSz] = strconv.Itoa(limit)
 	}
 	tryNum := e.GetRetryNum("FetchOrderBook", 1)
@@ -266,10 +270,9 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 		if len(row) < 6 {
 			continue
 		}
-		// row[8] is confirm: 0=未完结, 1=已完结，过滤未完结的K线
-		if len(row) > 8 && row[8] == "0" {
-			continue
-		}
+		// row[8] is confirm: 0=未完结, 1=已完结
+		// 不再根据confirm过滤，因为OKX可能在K线周期结束后延迟更新confirm状态
+		// 由调用方（如spider）根据时间戳判断K线是否完成
 		stamp := parseInt(row[0])
 		open := parseFloat(row[1])
 		high := parseFloat(row[2])

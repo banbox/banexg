@@ -7,6 +7,7 @@ import (
 
 func New(options map[string]interface{}) (*OKX, *errs.Error) {
 	exg := &OKX{
+		WsPendingRecons: make(map[string]*WsPendingRecon),
 		Exchange: &banexg.Exchange{
 			ExgInfo: &banexg.ExgInfo{
 				ID:        "okx",

@@ -188,6 +188,9 @@ func setAlgoOrderID(args map[string]interface{}, algoId string) *errs.Error {
 		return nil
 	}
 	if clientOrderId != "" {
+		if !validateClOrdId(clientOrderId) {
+			return errs.NewMsg(errs.CodeParamInvalid, "clOrdId must be 1-32 alphanumeric characters")
+		}
 		args[FldAlgoClOrdId] = clientOrderId
 		return nil
 	}
@@ -209,7 +212,7 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 	if market.Contract {
 		if _, ok := args[FldPosSide]; !ok {
 			posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "net")
-			args[FldPosSide] = posSide
+			args[FldPosSide] = strings.ToLower(posSide)
 		}
 	}
 	if _, ok := args[FldReduceOnly]; !ok {
@@ -218,9 +221,19 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 		}
 	}
 	if clOrdId, ok := args[FldClOrdId]; ok {
-		args[FldAlgoClOrdId] = clOrdId
+		if s, isStr := clOrdId.(string); isStr {
+			if !validateClOrdId(s) {
+				return nil, errs.NewMsg(errs.CodeParamInvalid, "clOrdId must be 1-32 alphanumeric characters")
+			}
+			args[FldAlgoClOrdId] = s
+		} else {
+			args[FldAlgoClOrdId] = clOrdId
+		}
 		delete(args, FldClOrdId)
 	} else if clOrdId := utils.PopMapVal(args, banexg.ParamClientOrderId, ""); clOrdId != "" {
+		if !validateClOrdId(clOrdId) {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "clOrdId must be 1-32 alphanumeric characters")
+		}
 		args[FldAlgoClOrdId] = clOrdId
 	}
 	if market.Spot {

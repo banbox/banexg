@@ -53,10 +53,10 @@ func TestSetOrderID(t *testing.T) {
 	if err := setOrderID(args, "o1"); err != nil {
 		t.Fatalf("set order id: %v", err)
 	}
-	if args["ordId"] != "o1" {
-		t.Fatalf("unexpected ordId: %v", args["ordId"])
+	if args[FldOrdId] != "o1" {
+		t.Fatalf("unexpected ordId: %v", args[FldOrdId])
 	}
-	if _, ok := args["clOrdId"]; ok {
+	if _, ok := args[FldClOrdId]; ok {
 		t.Fatalf("unexpected clOrdId set")
 	}
 	if _, ok := args[banexg.ParamClientOrderId]; ok {
@@ -69,8 +69,8 @@ func TestSetOrderID(t *testing.T) {
 	if err := setOrderID(args2, ""); err != nil {
 		t.Fatalf("set client order id: %v", err)
 	}
-	if args2["clOrdId"] != "c2" {
-		t.Fatalf("unexpected clOrdId: %v", args2["clOrdId"])
+	if args2[FldClOrdId] != "c2" {
+		t.Fatalf("unexpected clOrdId: %v", args2[FldClOrdId])
 	}
 
 	if err := setOrderID(map[string]interface{}{}, ""); err == nil {
@@ -83,7 +83,7 @@ func TestParseOrderHistory(t *testing.T) {
 		{
 			"instType":   "SPOT",
 			"instId":     "BTC-USDT",
-			"ordId":      "680800019749904384",
+			FldOrdId:     "680800019749904384",
 			"ordType":    "market",
 			"side":       "buy",
 			"state":      "filled",

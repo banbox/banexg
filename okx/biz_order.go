@@ -83,6 +83,9 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		args[FldTdMode] = mgnMode
 	}
 	if clOrdId := utils.PopMapVal(args, banexg.ParamClientOrderId, ""); clOrdId != "" {
+		if !validateClOrdId(clOrdId) {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "clOrdId must be 1-32 alphanumeric characters")
+		}
 		args[FldClOrdId] = clOrdId
 	}
 	if reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false); reduceOnly {
@@ -98,7 +101,7 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		if posSide == "" {
 			return nil, errs.NewMsg(errs.CodeParamRequired, "positionSide required for contract order")
 		}
-		args[FldPosSide] = posSide
+		args[FldPosSide] = strings.ToLower(posSide)
 	}
 	if ordType == "market" && market.Spot {
 		cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)

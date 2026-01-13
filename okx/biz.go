@@ -112,12 +112,33 @@ func requestRetry[T any](e *OKX, api string, params map[string]interface{}, tryN
 		return res
 	}
 	if rsp.Code != "0" {
-		res.Error = errs.NewMsg(errs.CodeRunTime, "[%s] %s", rsp.Code, rsp.Msg)
+		// Extract detailed error from data[0].sCode/sMsg if available
+		errMsg := rsp.Msg
+		if detail := extractDetailError(res.Content); detail != "" {
+			errMsg = detail
+		}
+		res.Error = errs.NewMsg(errs.CodeRunTime, "[%s] %s", rsp.Code, errMsg)
 	} else {
 		res.Result = rsp.Data
 		e.CacheApiRes(api, res_)
 	}
 	return res
+}
+
+// extractDetailError extracts detailed error from OKX response's data[0].sCode/sMsg
+func extractDetailError(content string) string {
+	var resp struct {
+		Data []struct {
+			SCode string `json:"sCode"`
+			SMsg  string `json:"sMsg"`
+		} `json:"data"`
+	}
+	if utils.UnmarshalString(content, &resp, utils.JsonNumDefault) == nil {
+		if len(resp.Data) > 0 && resp.Data[0].SMsg != "" {
+			return "[" + resp.Data[0].SCode + "] " + resp.Data[0].SMsg
+		}
+	}
+	return ""
 }
 
 func makeFetchMarkets(e *OKX) banexg.FuncFetchMarkets {

@@ -218,3 +218,18 @@ func pickArchiveMethod(args map[string]interface{}, since, until int64, recentMe
 	}
 	return recentMethod
 }
+
+// validateClOrdId checks if clOrdId is valid for OKX.
+// OKX clOrdId only allows letters and numbers, length 1-32.
+// Returns true if valid, false if invalid.
+func validateClOrdId(clOrdId string) bool {
+	if clOrdId == "" || len(clOrdId) > 32 {
+		return false
+	}
+	for _, r := range clOrdId {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+			return false
+		}
+	}
+	return true
+}
