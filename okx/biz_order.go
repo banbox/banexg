@@ -107,15 +107,37 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
 		if cost > 0 {
 			args[FldTgtCcy] = TgtCcyQuote
-			args[FldSz] = strconv.FormatFloat(cost, 'f', -1, 64)
+			precCost, err := e.PrecCost(market, cost)
+			if err != nil {
+				return nil, err
+			}
+			args[FldSz] = strconv.FormatFloat(precCost, 'f', -1, 64)
 		} else {
-			args[FldSz] = strconv.FormatFloat(amount, 'f', -1, 64)
+			precAmt, err := e.PrecAmount(market, amount)
+			if err != nil {
+				return nil, err
+			}
+			args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 		}
 	} else {
-		args[FldSz] = strconv.FormatFloat(amount, 'f', -1, 64)
+		// For contract markets, convert coin amount to contracts
+		// OKX derivatives API expects sz in contract units
+		szAmount := amount
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			szAmount = amount / market.ContractSize
+		}
+		precAmt, err := e.PrecAmount(market, szAmount)
+		if err != nil {
+			return nil, err
+		}
+		args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 	}
 	if price > 0 && ordType != "market" {
-		args[FldPx] = strconv.FormatFloat(price, 'f', -1, 64)
+		precPrice, err := e.PrecPrice(market, price)
+		if err != nil {
+			return nil, err
+		}
+		args[FldPx] = strconv.FormatFloat(precPrice, 'f', -1, 64)
 	}
 
 	if algoOrder || isAlgoOrderType(odType) || stopLossPrice != 0 || takeProfitPrice != 0 {
@@ -156,10 +178,23 @@ func (e *OKX) EditOrder(symbol, orderId, side string, amount, price float64, par
 		return nil, err
 	}
 	if amount > 0 {
-		args[FldNewSz] = strconv.FormatFloat(amount, 'f', -1, 64)
+		// For contract markets, convert coin amount to contracts
+		szAmount := amount
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			szAmount = amount / market.ContractSize
+		}
+		precAmt, err := e.PrecAmount(market, szAmount)
+		if err != nil {
+			return nil, err
+		}
+		args[FldNewSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 	}
 	if price > 0 {
-		args[FldNewPx] = strconv.FormatFloat(price, 'f', -1, 64)
+		precPrice, err := e.PrecPrice(market, price)
+		if err != nil {
+			return nil, err
+		}
+		args[FldNewPx] = strconv.FormatFloat(precPrice, 'f', -1, 64)
 	}
 	tryNum := e.GetRetryNum("EditOrder", 1)
 	res := requestRetry[[]OrderResult](e, MethodTradePostAmendOrder, args, tryNum)
@@ -376,8 +411,15 @@ func parseOrder(e *OKX, item *Order, info map[string]interface{}, marketType str
 		}
 	}
 	symbol := item.InstId
-	if market := getMarketByIDAny(e, item.InstId, marketType); market != nil {
+	market := getMarketByIDAny(e, item.InstId, marketType)
+	if market != nil {
 		symbol = market.Symbol
+		// For contract markets, convert contracts to coins
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			amount = amount * market.ContractSize
+			filled = filled * market.ContractSize
+			remaining = remaining * market.ContractSize
+		}
 	}
 	feeCost := parseFloat(item.Fee)
 	var fee *banexg.Fee

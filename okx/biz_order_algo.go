@@ -144,8 +144,13 @@ func parseAlgoOrder(e *OKX, info map[string]interface{}, marketType string) *ban
 	status := mapAlgoOrderStatus(state)
 	orderType := mapAlgoOrderType(ordType, tpTriggerPx, tpOrdPx, slTriggerPx, slOrdPx, triggerPx, ordPx)
 	symbol := instId
-	if market := getMarketByIDAny(e, instId, marketType); market != nil {
+	market := getMarketByIDAny(e, instId, marketType)
+	if market != nil {
 		symbol = market.Symbol
+		// For contract markets, convert contracts to coins
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			amount = amount * market.ContractSize
+		}
 	}
 	trigger := triggerPx
 	if trigger == 0 {
@@ -245,12 +250,29 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 		cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
 		if cost > 0 {
 			args[FldTgtCcy] = TgtCcyQuote
-			args[FldSz] = strconv.FormatFloat(cost, 'f', -1, 64)
+			precCost, err := e.PrecCost(market, cost)
+			if err != nil {
+				return nil, err
+			}
+			args[FldSz] = strconv.FormatFloat(precCost, 'f', -1, 64)
 		} else {
-			args[FldSz] = strconv.FormatFloat(amount, 'f', -1, 64)
+			precAmt, err := e.PrecAmount(market, amount)
+			if err != nil {
+				return nil, err
+			}
+			args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 		}
 	} else {
-		args[FldSz] = strconv.FormatFloat(amount, 'f', -1, 64)
+		// For contract markets, convert coin amount to contracts
+		szAmount := amount
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			szAmount = amount / market.ContractSize
+		}
+		precAmt, err := e.PrecAmount(market, szAmount)
+		if err != nil {
+			return nil, err
+		}
+		args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 	}
 
 	if stopLossPrice == 0 && takeProfitPrice == 0 {

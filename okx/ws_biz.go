@@ -1099,7 +1099,14 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 	}
 	marketType := parseMarketType(ord.InstType, "")
 	symbol := ord.InstId
-	if marketType != "" {
+	market := getMarketByIDAny(e, ord.InstId, marketType)
+	if market != nil {
+		symbol = market.Symbol
+		// For contract markets, convert contracts to coins
+		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+			fillSz = fillSz * market.ContractSize
+		}
+	} else if marketType != "" {
 		symbol = e.SafeSymbol(ord.InstId, "", marketType)
 		if symbol == "" {
 			symbol = ord.InstId
@@ -1120,6 +1127,11 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 	if ts == 0 {
 		ts = parseInt(ord.UTime)
 	}
+	accFillSz := parseFloat(ord.AccFillSz)
+	// For contract markets, convert contracts to coins
+	if market != nil && market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+		accFillSz = accFillSz * market.ContractSize
+	}
 	trade := &banexg.MyTrade{
 		Trade: banexg.Trade{
 			ID:        ord.TradeId,
@@ -1134,7 +1146,7 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 			Fee:       fee,
 			Info:      item,
 		},
-		Filled:     parseFloat(ord.AccFillSz),
+		Filled:     accFillSz,
 		ClientID:   ord.ClOrdId,
 		Average:    parseFloat(ord.AvgPx),
 		State:      mapOrderStatus(ord.State),
