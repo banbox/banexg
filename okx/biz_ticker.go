@@ -55,11 +55,13 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 	args[FldBar] = e.GetTimeFrame(timeframe)
 	args[FldLimit] = strconv.Itoa(limit)
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	// OKX API: after=请求此时间戳之前的数据, before=请求此时间戳之后的数据
+	// since表示起始时间，应使用before；until表示结束时间，应使用after
 	if since > 0 {
-		args[FldAfter] = strconv.FormatInt(since, 10)
+		args[FldBefore] = strconv.FormatInt(since, 10)
 	}
 	if until > 0 {
-		args[FldBefore] = strconv.FormatInt(until, 10)
+		args[FldAfter] = strconv.FormatInt(until, 10)
 	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
 	res := requestRetry[[][]string](e, MethodMarketGetCandles, args, tryNum)
@@ -264,6 +266,10 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 		if len(row) < 6 {
 			continue
 		}
+		// row[8] is confirm: 0=未完结, 1=已完结，过滤未完结的K线
+		if len(row) > 8 && row[8] == "0" {
+			continue
+		}
 		stamp := parseInt(row[0])
 		open := parseFloat(row[1])
 		high := parseFloat(row[2])
@@ -285,6 +291,10 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 			Volume: vol,
 			Info:   info,
 		})
+	}
+	// OKX返回数据是降序的（最新在前），需要反转为升序（最旧在前）以与其他交易所保持一致
+	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
+		res[i], res[j] = res[j], res[i]
 	}
 	return res
 }

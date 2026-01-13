@@ -15,6 +15,8 @@ type OKX struct {
 	// WsAuthDone tracks login completion channels per client key.
 	// Each channel receives nil on success or an error on failure.
 	WsAuthDone map[string]chan *errs.Error
+	// WsAuthed tracks whether each client has successfully logged in.
+	WsAuthed   map[string]bool
 	WsAuthLock deadlock.Mutex
 }
 

@@ -109,6 +109,7 @@ func New(options map[string]interface{}) (*OKX, *errs.Error) {
 			CredKeys: map[string]bool{"ApiKey": true, "Secret": true, "Password": true},
 		},
 		WsAuthDone: make(map[string]chan *errs.Error),
+		WsAuthed:   make(map[string]bool),
 	}
 	exg.Sign = makeSign(exg)
 	exg.FetchMarkets = makeFetchMarkets(exg)

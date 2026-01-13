@@ -96,11 +96,16 @@ func makeHandleWsReCon(e *OKX) banexg.FuncOnWsReCon {
 			return nil
 		}
 		if client.MarketType == wsPrivate {
+			// Clear auth state on reconnect to force re-login
+			e.WsAuthLock.Lock()
+			delete(e.WsAuthed, client.Key)
+			e.WsAuthLock.Unlock()
+
 			acc, err := e.GetAccount(client.AccName)
 			if err != nil {
 				return err
 			}
-			if err := e.wsLogin(client, acc); err != nil {
+			if err := e.wsLogin(client, acc, connID); err != nil {
 				return err
 			}
 		}
@@ -549,46 +554,59 @@ func (e *OKX) getAuthClient(params map[string]interface{}) (*banexg.WsClient, *e
 	if err != nil {
 		return nil, err
 	}
-	if err := e.wsLogin(client, acc); err != nil {
+	if err := e.wsLogin(client, acc, 0); err != nil {
 		return nil, err
 	}
 	return client, nil
 }
 
-func (e *OKX) wsLogin(client *banexg.WsClient, acc *banexg.Account) *errs.Error {
+func (e *OKX) wsLogin(client *banexg.WsClient, acc *banexg.Account, connID int) *errs.Error {
 	if client == nil || acc == nil {
 		return errs.NewMsg(errs.CodeParamInvalid, "invalid ws login args")
 	}
 
-	// Check if already waiting for login on this client
 	e.WsAuthLock.Lock()
-	if _, waiting := e.WsAuthDone[client.Key]; waiting {
+	// Check if already authenticated
+	if e.WsAuthed[client.Key] {
 		e.WsAuthLock.Unlock()
-		// Another goroutine is waiting for login, wait briefly and return
-		time.Sleep(100 * time.Millisecond)
 		return nil
 	}
+	// Check if another goroutine is already logging in
+	if doneCh, waiting := e.WsAuthDone[client.Key]; waiting {
+		e.WsAuthLock.Unlock()
+		// Wait for the existing login to complete
+		select {
+		case authErr := <-doneCh:
+			// Put the result back for other waiters
+			select {
+			case doneCh <- authErr:
+			default:
+			}
+			return authErr
+		case <-time.After(10 * time.Second):
+			return errs.NewMsg(errs.CodeTimeout, "ws login timeout (waiting)")
+		}
+	}
 
-	// Create completion channel for this client
-	doneCh := make(chan *errs.Error, 1)
+	// Create completion channel for this client (buffered to allow multiple reads)
+	doneCh := make(chan *errs.Error, 10)
 	e.WsAuthDone[client.Key] = doneCh
 	e.WsAuthLock.Unlock()
 
-	// Clean up on exit
-	defer func() {
+	_, creds, err := e.GetAccountCreds(acc.Name)
+	if err != nil {
 		e.WsAuthLock.Lock()
 		delete(e.WsAuthDone, client.Key)
 		e.WsAuthLock.Unlock()
-	}()
-
-	_, creds, err := e.GetAccountCreds(acc.Name)
-	if err != nil {
 		return err
 	}
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
 	payload := timestamp + "GET" + "/users/self/verify"
 	sign, err2 := utils.Signature(payload, creds.Secret, "hmac", "sha256", "base64")
 	if err2 != nil {
+		e.WsAuthLock.Lock()
+		delete(e.WsAuthDone, client.Key)
+		e.WsAuthLock.Unlock()
 		return errs.New(errs.CodeSignFail, err2)
 	}
 	args := []map[string]interface{}{
@@ -603,19 +621,40 @@ func (e *OKX) wsLogin(client *banexg.WsClient, acc *banexg.Account) *errs.Error 
 		"op":   "login",
 		"args": args,
 	}
-	_, conn := client.UpdateSubs(0, true, []string{})
+	_, conn := client.UpdateSubs(connID, true, []string{})
 	if conn == nil {
+		e.WsAuthLock.Lock()
+		delete(e.WsAuthDone, client.Key)
+		e.WsAuthLock.Unlock()
 		return errs.NewMsg(errs.CodeRunTime, "get ws conn fail")
 	}
 	if writeErr := client.Write(conn, req, nil); writeErr != nil {
+		e.WsAuthLock.Lock()
+		delete(e.WsAuthDone, client.Key)
+		e.WsAuthLock.Unlock()
 		return writeErr
 	}
 
 	// Wait for login response with timeout
 	select {
 	case authErr := <-doneCh:
+		e.WsAuthLock.Lock()
+		if authErr == nil {
+			e.WsAuthed[client.Key] = true
+		}
+		// Keep channel for other waiters, clean up after brief delay
+		e.WsAuthLock.Unlock()
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			e.WsAuthLock.Lock()
+			delete(e.WsAuthDone, client.Key)
+			e.WsAuthLock.Unlock()
+		}()
 		return authErr
 	case <-time.After(10 * time.Second):
+		e.WsAuthLock.Lock()
+		delete(e.WsAuthDone, client.Key)
+		e.WsAuthLock.Unlock()
 		return errs.NewMsg(errs.CodeTimeout, "ws login timeout")
 	}
 }
