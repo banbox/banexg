@@ -180,14 +180,16 @@ type Order struct {
 // WsOrder describes websocket "orders" channel item.
 type WsOrder struct {
 	Order
-	FillPx     string `json:"fillPx"`
-	FillSz     string `json:"fillSz"`
-	FillTime   string `json:"fillTime"`
-	TradeId    string `json:"tradeId"`
-	ReduceOnly string `json:"reduceOnly"`
-	FillFee    string `json:"fillFee"`
-	FillFeeCcy string `json:"fillFeeCcy"`
-	ExecType   string `json:"execType"`
+	FillPx      string `json:"fillPx"`
+	FillSz      string `json:"fillSz"`
+	FillTime    string `json:"fillTime"`
+	TradeId     string `json:"tradeId"`
+	ReduceOnly  string `json:"reduceOnly"`
+	FillFee     string `json:"fillFee"`
+	FillFeeCcy  string `json:"fillFeeCcy"`
+	ExecType    string `json:"execType"`
+	AlgoClOrdId string `json:"algoClOrdId"` // Client-defined algo order ID when algo order triggers
+	AlgoId      string `json:"algoId"`      // Algo order ID when algo order triggers
 }
 
 // OrderResult describes /trade/order or /trade/cancel-order result item.

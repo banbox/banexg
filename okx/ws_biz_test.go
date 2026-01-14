@@ -2,6 +2,7 @@ package okx
 
 import (
 	"testing"
+	"time"
 
 	"github.com/banbox/banexg"
 	"github.com/sasha-s/go-deadlock"
@@ -78,6 +79,58 @@ func TestParseWsPositions(t *testing.T) {
 	}
 	if positions[0].Side != "short" {
 		t.Fatalf("unexpected side: %s", positions[0].Side)
+	}
+}
+
+func TestParseWsFullPositions(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatalf("new okx: %v", err)
+	}
+	seedMarket(exg, "ETH-USDT-SWAP", "ETH/USDT:USDT", banexg.MarketLinear)
+	items := []map[string]interface{}{
+		{
+			"instType": "SWAP",
+			"instId":   "ETH-USDT-SWAP",
+			"mgnMode":  "cross",
+			"posId":    "12345",
+			"posSide":  "long",
+			"pos":      "0.01",
+			"avgPx":    "3344.01",
+			"lever":    "2",
+			"liqPx":    "1500",
+			"markPx":   "3341.53",
+			"margin":   "16.72",
+			"mgnRatio": "1061.46",
+			"upl":      "-0.00248",
+			"uTime":    "1700000000000",
+		},
+	}
+	positions := parseWsFullPositions(exg, items)
+	if len(positions) != 1 {
+		t.Fatalf("unexpected positions len: %d", len(positions))
+	}
+	pos := positions[0]
+	if pos.Side != "long" {
+		t.Fatalf("unexpected side: %s", pos.Side)
+	}
+	if pos.Leverage != 2 {
+		t.Fatalf("unexpected leverage: %d", pos.Leverage)
+	}
+	if pos.MarkPrice != 3341.53 {
+		t.Fatalf("unexpected markPrice: %v", pos.MarkPrice)
+	}
+	if pos.LiquidationPrice != 1500 {
+		t.Fatalf("unexpected liqPrice: %v", pos.LiquidationPrice)
+	}
+	if pos.Collateral != 16.72 {
+		t.Fatalf("unexpected margin: %v", pos.Collateral)
+	}
+	if pos.MarginRatio != 1061.46 {
+		t.Fatalf("unexpected mgnRatio: %v", pos.MarginRatio)
+	}
+	if pos.UnrealizedPnl != -0.00248 {
+		t.Fatalf("unexpected upl: %v", pos.UnrealizedPnl)
 	}
 }
 
@@ -264,58 +317,49 @@ func TestAPI_WatchOHLCVs(t *testing.T) {
 	}
 }
 
-func TestAPI_WatchMyTrades(t *testing.T) {
-	exg := getExchange(nil)
-	out, err := exg.WatchMyTrades(nil)
+func TestAPI_WatchAccount(t *testing.T) {
+	exg := getExchange(map[string]interface{}{
+		banexg.OptMarketType: banexg.MarketLinear,
+	})
+	tradeOut, err := exg.WatchMyTrades(nil)
 	if err != nil {
 		panic(err)
 	}
-	t.Logf("watching my trades, waiting for updates...")
-	// This will wait for incoming trade updates from your account
-	select {
-	case trade := <-out:
-		t.Logf("my trade: symbol=%s, orderId=%s, amount=%v, price=%v", trade.Symbol, trade.Order, trade.Amount, trade.Price)
-	case <-make(chan struct{}):
-		t.Logf("no trades received")
-	}
-}
-
-func TestAPI_WatchBalance(t *testing.T) {
-	exg := getExchange(nil)
-	out, err := exg.WatchBalance(nil)
+	balanceOut, err := exg.WatchBalance(nil)
 	if err != nil {
 		panic(err)
 	}
-	t.Logf("watching balance, waiting for updates...")
-	// This will wait for balance updates
-	select {
-	case balance := <-out:
-		t.Logf("balance update: assets=%d", len(balance.Assets))
-		for ccy, asset := range balance.Assets {
-			if asset.Total > 0 {
-				t.Logf("asset: %s, total=%v", ccy, asset.Total)
+	posOut, err := exg.WatchPositions(nil)
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("watching trades/balance/positions, waiting for updates...")
+	fmtTime := func(ts int64) string {
+		return time.UnixMilli(ts).Format("15:04:05.000")
+	}
+	for {
+		select {
+		case trade := <-tradeOut:
+			feeCost, feeCcy := 0.0, ""
+			if trade.Fee != nil {
+				feeCost, feeCcy = trade.Fee.Cost, trade.Fee.Currency
+			}
+			t.Logf("[%s] TRADE: symbol=%s orderId=%s side=%s type=%s price=%v amount=%v cost=%v fee=%v/%s",
+				fmtTime(trade.Timestamp), trade.Symbol, trade.Order, trade.Side, trade.Type,
+				trade.Price, trade.Amount, trade.Cost, feeCost, feeCcy)
+		case balance := <-balanceOut:
+			for ccy, asset := range balance.Assets {
+				if asset.Total > 0 {
+					t.Logf("[%s] BALANCE: %s total=%v free=%v used=%v",
+						fmtTime(balance.TimeStamp), ccy, asset.Total, asset.Free, asset.Used)
+				}
+			}
+		case positions := <-posOut:
+			for _, pos := range positions {
+				t.Logf("[%s] POSITION: symbol=%s side=%s contracts=%v entryPrice=%v markPrice=%v liqPrice=%v leverage=%v margin=%v unrealizedPnl=%v marginRatio=%v",
+					fmtTime(pos.TimeStamp), pos.Symbol, pos.Side, pos.Contracts, pos.EntryPrice, pos.MarkPrice,
+					pos.LiquidationPrice, pos.Leverage, pos.Collateral, pos.UnrealizedPnl, pos.MarginRatio)
 			}
 		}
-	case <-make(chan struct{}):
-		t.Logf("no balance updates received")
-	}
-}
-
-func TestAPI_WatchPositions(t *testing.T) {
-	exg := getExchange(nil)
-	out, err := exg.WatchPositions(nil)
-	if err != nil {
-		panic(err)
-	}
-	t.Logf("watching positions, waiting for updates...")
-	// This will wait for position updates
-	select {
-	case positions := <-out:
-		t.Logf("position update: count=%d", len(positions))
-		for _, pos := range positions {
-			t.Logf("position: symbol=%s, side=%s, contracts=%v", pos.Symbol, pos.Side, pos.Contracts)
-		}
-	case <-make(chan struct{}):
-		t.Logf("no position updates received")
 	}
 }

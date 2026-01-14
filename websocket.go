@@ -835,6 +835,18 @@ func (c *WsClient) GetSubKeys(connID int) []string {
 	return keys
 }
 
+// HasSubKeyPrefix checks if any subscription key starts with the given prefix.
+func (c *WsClient) HasSubKeyPrefix(prefix string) bool {
+	c.subsLock.Lock()
+	defer c.subsLock.Unlock()
+	for key := range c.SubscribeKeys {
+		if key == prefix || strings.HasPrefix(key, prefix+":") {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *WsClient) newConn(add bool) (*AsyncConn, *errs.Error) {
 	connID := c.NextConnId
 	conn, err := newWebSocket(connID, c.URL, c.connArgs, func() *errs.Error {

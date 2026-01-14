@@ -3,6 +3,7 @@ package okx
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,8 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 			e.handleWsOrderBooks(client, msg, arg, channel)
 		case channel == WsChanBalancePosition:
 			e.handleWsBalanceAndPosition(client, msg)
+		case channel == WsChanPositions:
+			e.handleWsPositions(client, msg, arg)
 		case channel == WsChanOrders:
 			e.handleWsOrders(client, msg, arg)
 		case channel == WsChanMarkPrice:
@@ -456,13 +459,15 @@ func (e *OKX) WatchBalance(params map[string]interface{}) (chan *banexg.Balances
 }
 
 func (e *OKX) WatchPositions(params map[string]interface{}) (chan []*banexg.Position, *errs.Error) {
-	client, err := e.subscribePrivateChannel(params, WsChanBalancePosition, "", "")
+	args := utils.SafeParams(params)
+	// positions channel requires instType, default to ANY for all position types
+	instType := utils.PopMapVal(args, FldInstType, "ANY")
+	client, err := e.subscribePrivateChannel(args, WsChanPositions, instType, "")
 	if err != nil {
 		return nil, err
 	}
 	chanKey := client.Prefix("positions")
 	create := func(cap int) chan []*banexg.Position { return make(chan []*banexg.Position, cap) }
-	args := utils.SafeParams(params)
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
 	if positions, err := e.FetchPositions(nil, args); err == nil && len(positions) > 0 {
@@ -924,6 +929,9 @@ func (e *OKX) handleWsBalanceAndPosition(client *banexg.WsClient, msg map[string
 	posChanKey := client.Prefix("positions")
 	accChanKey := client.Prefix("accConfig")
 	termKey := buildWsKey("balance_and_position", "")
+	// Check if dedicated positions channel is subscribed to avoid duplicate position updates.
+	// The positions channel provides complete data while balance_and_position provides incomplete position data.
+	posChannelSubscribed := e.hasPositionsSubscription(client)
 	for _, item := range items {
 		pTime := parseInt(getMapString(item, "pTime"))
 		balData := getMapSlice(item, "balData")
@@ -952,7 +960,10 @@ func (e *OKX) handleWsBalanceAndPosition(client *banexg.WsClient, msg map[string
 					acc.LockPos.Unlock()
 					accConfigs = updateAccLeverages(acc, positions)
 				}
-				banexg.WriteOutChan(e.Exchange, posChanKey, positions, true)
+				// Only send positions if dedicated positions channel is not subscribed
+				if !posChannelSubscribed {
+					banexg.WriteOutChan(e.Exchange, posChanKey, positions, true)
+				}
 				for _, cfg := range accConfigs {
 					banexg.WriteOutChan(e.Exchange, accChanKey, cfg, true)
 				}
@@ -964,6 +975,50 @@ func (e *OKX) handleWsBalanceAndPosition(client *banexg.WsClient, msg map[string
 			client.SetSubsKeyStamp(termKey, bntp.UTCStamp())
 		}
 	}
+}
+
+// hasPositionsSubscription checks if the dedicated 'positions' channel is subscribed for this client.
+func (e *OKX) hasPositionsSubscription(client *banexg.WsClient) bool {
+	if client == nil {
+		return false
+	}
+	// Check all WebSocket clients for positions channel subscription
+	for _, c := range e.WSClients {
+		if c.AccName != client.AccName {
+			continue
+		}
+		if c.HasSubKeyPrefix(WsChanPositions) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *OKX) handleWsPositions(client *banexg.WsClient, msg map[string]interface{}, arg map[string]interface{}) {
+	items := getMapSlice(msg, "data")
+	if len(items) == 0 {
+		return
+	}
+	instType := getMapString(arg, "instType")
+	positions := parseWsFullPositions(e, items)
+	if len(positions) == 0 {
+		return
+	}
+	posChanKey := client.Prefix("positions")
+	accChanKey := client.Prefix("accConfig")
+	termKey := buildWsKeyWithType("positions", instType, "")
+	var accConfigs []*banexg.AccountConfig
+	if acc, err := e.GetAccount(client.AccName); err == nil {
+		acc.LockPos.Lock()
+		acc.MarPositions[client.MarketType] = positions
+		acc.LockPos.Unlock()
+		accConfigs = updateAccLeverages(acc, positions)
+	}
+	banexg.WriteOutChan(e.Exchange, posChanKey, positions, true)
+	for _, cfg := range accConfigs {
+		banexg.WriteOutChan(e.Exchange, accChanKey, cfg, true)
+	}
+	client.SetSubsKeyStamp(termKey, bntp.UTCStamp())
 }
 
 func parseWsTradeItem(e *OKX, item map[string]interface{}) *banexg.Trade {
@@ -1031,6 +1086,86 @@ func parseWsBalanceData(e *OKX, items []map[string]interface{}) *banexg.Balances
 	return res.Init()
 }
 
+// parseWsFullPositions parses positions from the dedicated 'positions' channel
+// which provides complete position data including lever, liqPx, markPx, margin, mgnRatio, upl.
+func parseWsFullPositions(e *OKX, items []map[string]interface{}) []*banexg.Position {
+	if len(items) == 0 {
+		return nil
+	}
+	res := make([]*banexg.Position, 0, len(items))
+	for _, item := range items {
+		pos := parseWsFullPosition(e, item)
+		if pos != nil {
+			res = append(res, pos)
+		}
+	}
+	return res
+}
+
+func parseWsFullPosition(e *OKX, item map[string]interface{}) *banexg.Position {
+	if item == nil {
+		return nil
+	}
+	posVal := parseFloat(getMapString(item, "pos"))
+	entry := parseFloat(getMapString(item, "avgPx"))
+	if posVal == 0 && entry == 0 {
+		return nil
+	}
+	side := strings.ToLower(getMapString(item, "posSide"))
+	if side != banexg.PosSideLong && side != banexg.PosSideShort {
+		if posVal > 0 {
+			side = banexg.PosSideLong
+		} else if posVal < 0 {
+			side = banexg.PosSideShort
+		}
+	}
+	leverage, _ := strconv.Atoi(getMapString(item, "lever"))
+	liqPx := parseFloat(getMapString(item, "liqPx"))
+	markPx := parseFloat(getMapString(item, "markPx"))
+	margin := parseFloat(getMapString(item, "margin"))
+	mgnRatio := parseFloat(getMapString(item, "mgnRatio"))
+	upl := parseFloat(getMapString(item, "upl"))
+	ts := parseInt(getMapString(item, "uTime"))
+	if ts == 0 {
+		ts = parseInt(getMapString(item, "cTime"))
+	}
+	instId := getMapString(item, "instId")
+	instType := getMapString(item, "instType")
+	marketType := parseMarketType(instType, "")
+	market := getMarketByIDAny(e, instId, marketType)
+	symbol := instId
+	contractSize := 0.0
+	if market != nil {
+		symbol = market.Symbol
+		contractSize = market.ContractSize
+	}
+	notional := 0.0
+	if entry > 0 && contractSize > 0 {
+		notional = math.Abs(posVal) * entry * contractSize
+	}
+	return &banexg.Position{
+		ID:               getMapString(item, "posId"),
+		Symbol:           symbol,
+		TimeStamp:        ts,
+		Isolated:         strings.ToLower(getMapString(item, "mgnMode")) == banexg.MarginIsolated,
+		Side:             side,
+		Contracts:        math.Abs(posVal),
+		ContractSize:     contractSize,
+		EntryPrice:       entry,
+		MarkPrice:        markPx,
+		Notional:         notional,
+		Leverage:         leverage,
+		Collateral:       margin,
+		UnrealizedPnl:    upl,
+		LiquidationPrice: liqPx,
+		MarginMode:       strings.ToLower(getMapString(item, "mgnMode")),
+		MarginRatio:      mgnRatio,
+		Info:             item,
+	}
+}
+
+// parseWsPositions parses positions from the 'balance_and_position' channel
+// which provides limited position data (missing lever, liqPx, markPx, margin, mgnRatio, upl).
 func parseWsPositions(e *OKX, items []map[string]interface{}) []*banexg.Position {
 	if len(items) == 0 {
 		return nil
@@ -1132,6 +1267,11 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 	if market != nil && market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
 		accFillSz = accFillSz * market.ContractSize
 	}
+	// For triggered algo orders, prefer AlgoClOrdId over ClOrdId
+	clientID := ord.ClOrdId
+	if ord.AlgoClOrdId != "" {
+		clientID = ord.AlgoClOrdId
+	}
 	trade := &banexg.MyTrade{
 		Trade: banexg.Trade{
 			ID:        ord.TradeId,
@@ -1147,7 +1287,7 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 			Info:      item,
 		},
 		Filled:     accFillSz,
-		ClientID:   ord.ClOrdId,
+		ClientID:   clientID,
 		Average:    parseFloat(ord.AvgPx),
 		State:      mapOrderStatus(ord.State),
 		PosSide:    strings.ToLower(ord.PosSide),

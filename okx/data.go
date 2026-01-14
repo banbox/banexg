@@ -59,6 +59,7 @@ const (
 	WsChanBooks           = "books"
 	WsChanBooks5          = "books5"
 	WsChanBalancePosition = "balance_and_position"
+	WsChanPositions       = "positions"
 	WsChanOrders          = "orders"
 	WsChanMarkPrice       = "mark-price"
 	WsChanCandlePrefix    = "candle"
