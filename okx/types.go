@@ -27,6 +27,9 @@ type OKX struct {
 	// WsPendingRecons stores pending reconnection info to restore subs after login.
 	WsPendingRecons map[string]*WsPendingRecon
 	WsAuthLock      deadlock.Mutex
+	// WsMyTradesChanKey stores the channel key for mytrades output.
+	// Used to ensure algo orders (business endpoint) write to the same channel as regular orders (private endpoint).
+	WsMyTradesChanKey string
 }
 
 // Instrument describes /public/instruments response item.

@@ -522,11 +522,13 @@ func (e *OKX) WatchMyTrades(params map[string]interface{}) (chan *banexg.MyTrade
 	if err != nil {
 		return nil, err
 	}
+	chanKey := client.Prefix("mytrades")
+	// Store the channel key so algo orders (business endpoint) can write to the same channel
+	e.WsMyTradesChanKey = chanKey
 	// Subscribe to algo orders channel (on business endpoint) for trigger/conditional/oco orders
 	if err := e.subscribeAlgoOrdersChannel(args, instType, instId); err != nil {
 		log.Warn("subscribe algo orders channel fail", zap.Error(err))
 	}
-	chanKey := client.Prefix("mytrades")
 	create := func(cap int) chan *banexg.MyTrade { return make(chan *banexg.MyTrade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)
 	e.AddWsChanRefs(chanKey, "account")
@@ -1257,7 +1259,13 @@ func (e *OKX) handleWsAlgoOrders(client *banexg.WsClient, msg map[string]interfa
 		return
 	}
 	instType := getMapString(arg, "instType")
-	chanKey := client.Prefix("mytrades")
+	// Use the stored channel key from WatchMyTrades to ensure algo orders
+	// (business endpoint) write to the same channel as regular orders (private endpoint)
+	chanKey := e.WsMyTradesChanKey
+	if chanKey == "" {
+		// Fallback to client prefix if WatchMyTrades hasn't been called
+		chanKey = client.Prefix("mytrades")
+	}
 	for _, item := range items {
 		trade := parseWsAlgoOrder(e, item, instType)
 		if trade == nil {
@@ -1291,16 +1299,27 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 		ord.InstType = instType
 	}
 	fillSz := parseFloat(ord.FillSz)
-	if fillSz == 0 {
+	state := mapOrderStatus(ord.State)
+	// Report orders with fills OR orders that are done (cancelled/rejected) with no fills
+	// to ensure banbot can track order cancellations
+	if fillSz == 0 && !banexg.IsOrderDone(state) {
 		return nil
 	}
 	price := parseFloat(ord.FillPx)
 	if price == 0 {
 		price = parseFloat(ord.AvgPx)
 	}
+	// For cancelled orders with no fill, use order price
+	if price == 0 {
+		price = parseFloat(ord.Px)
+	}
 	marketType := parseMarketType(ord.InstType, "")
 	symbol := ord.InstId
 	market := getMarketByIDAny(e, ord.InstId, marketType)
+	// For cancelled orders with no fill, use order size (Sz) as amount
+	if fillSz == 0 && banexg.IsOrderDone(state) {
+		fillSz = parseFloat(ord.Sz)
+	}
 	if market != nil {
 		symbol = market.Symbol
 		// For contract markets, convert contracts to coins
@@ -1356,7 +1375,7 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 		ClientID:   clientID,
 		AlgoId:     ord.AlgoId,
 		Average:    parseFloat(ord.AvgPx),
-		State:      mapOrderStatus(ord.State),
+		State:      state,
 		PosSide:    strings.ToLower(ord.PosSide),
 		ReduceOnly: parseBoolString(ord.ReduceOnly),
 		Info:       item,
