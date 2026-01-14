@@ -93,6 +93,8 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 			e.handleWsPositions(client, msg, arg)
 		case channel == WsChanOrders:
 			e.handleWsOrders(client, msg, arg)
+		case channel == WsChanOrdersAlgo:
+			e.handleWsAlgoOrders(client, msg, arg)
 		case channel == WsChanMarkPrice:
 			e.handleWsMarkPrices(client, msg, arg)
 		case strings.HasPrefix(channel, WsChanCandlePrefix):
@@ -515,9 +517,14 @@ func (e *OKX) WatchMyTrades(params map[string]interface{}) (chan *banexg.MyTrade
 		}
 		instType = instTypeByMarket(marketType, contractType)
 	}
+	// Subscribe to regular orders channel (on private endpoint)
 	client, err := e.subscribePrivateChannel(args, WsChanOrders, instType, instId)
 	if err != nil {
 		return nil, err
+	}
+	// Subscribe to algo orders channel (on business endpoint) for trigger/conditional/oco orders
+	if err := e.subscribeAlgoOrdersChannel(args, instType, instId); err != nil {
+		log.Warn("subscribe algo orders channel fail", zap.Error(err))
 	}
 	chanKey := client.Prefix("mytrades")
 	create := func(cap int) chan *banexg.MyTrade { return make(chan *banexg.MyTrade, cap) }
@@ -525,6 +532,38 @@ func (e *OKX) WatchMyTrades(params map[string]interface{}) (chan *banexg.MyTrade
 	e.AddWsChanRefs(chanKey, "account")
 	e.DumpWS("WatchMyTrades", nil)
 	return out, nil
+}
+
+// subscribeAlgoOrdersChannel subscribes to the orders-algo channel on business endpoint.
+// This channel provides updates for algo orders (trigger/conditional/oco/twap/move_order_stop).
+func (e *OKX) subscribeAlgoOrdersChannel(params map[string]interface{}, instType, instId string) *errs.Error {
+	_, err := e.LoadMarkets(false, nil)
+	if err != nil {
+		return err
+	}
+	acc, err := e.GetAccount(e.GetAccName(params))
+	if err != nil {
+		return err
+	}
+	// Get business WebSocket client
+	client, err := e.getWsClient(wsBusiness, acc.Name)
+	if err != nil {
+		return err
+	}
+	// Login to business WebSocket
+	if err := e.wsLogin(client, acc, 0); err != nil {
+		return err
+	}
+	// Build subscription args
+	arg := map[string]interface{}{FldChannel: WsChanOrdersAlgo}
+	if instType != "" {
+		arg[FldInstType] = instType
+	}
+	if instId != "" {
+		arg[FldInstId] = instId
+	}
+	key := buildWsKeyWithType(WsChanOrdersAlgo, instType, instId)
+	return e.writeWsArgs(client, 0, true, []string{key}, []map[string]interface{}{arg})
 }
 
 func (e *OKX) getWsClient(kind, accName string) (*banexg.WsClient, *errs.Error) {
@@ -1212,6 +1251,33 @@ func (e *OKX) handleWsOrders(client *banexg.WsClient, msg map[string]interface{}
 	}
 }
 
+func (e *OKX) handleWsAlgoOrders(client *banexg.WsClient, msg map[string]interface{}, arg map[string]interface{}) {
+	items := getMapSlice(msg, "data")
+	if len(items) == 0 {
+		return
+	}
+	instType := getMapString(arg, "instType")
+	chanKey := client.Prefix("mytrades")
+	for _, item := range items {
+		trade := parseWsAlgoOrder(e, item, instType)
+		if trade == nil {
+			continue
+		}
+		subKey := buildWsKeyWithType(WsChanOrdersAlgo, instType, "")
+		if trade.Info != nil {
+			if ordInstType := getMapString(trade.Info, "instType"); ordInstType != "" {
+				instType = ordInstType
+				subKey = buildWsKeyWithType(WsChanOrdersAlgo, instType, "")
+			}
+			if instId := getMapString(trade.Info, "instId"); instId != "" {
+				subKey = buildWsKeyWithType(WsChanOrdersAlgo, instType, instId)
+			}
+		}
+		client.SetSubsKeyStamp(subKey, bntp.UTCStamp())
+		banexg.WriteOutChan(e.Exchange, chanKey, trade, true)
+	}
+}
+
 func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banexg.MyTrade {
 	if item == nil {
 		return nil
@@ -1288,8 +1354,100 @@ func parseWsMyTrade(e *OKX, item map[string]interface{}, instType string) *banex
 		},
 		Filled:     accFillSz,
 		ClientID:   clientID,
+		AlgoId:     ord.AlgoId,
 		Average:    parseFloat(ord.AvgPx),
 		State:      mapOrderStatus(ord.State),
+		PosSide:    strings.ToLower(ord.PosSide),
+		ReduceOnly: parseBoolString(ord.ReduceOnly),
+		Info:       item,
+	}
+	return trade
+}
+
+func parseWsAlgoOrder(e *OKX, item map[string]interface{}, instType string) *banexg.MyTrade {
+	if item == nil {
+		return nil
+	}
+	var ord WsAlgoOrder
+	if err := utils.DecodeStructMap(item, &ord, "json"); err != nil {
+		log.Error("ws algo order decode fail", zap.Error(err))
+		return nil
+	}
+	if ord.InstType == "" {
+		ord.InstType = instType
+	}
+	// Map algo order status
+	state := mapAlgoOrderStatus(ord.State)
+	marketType := parseMarketType(ord.InstType, "")
+	symbol := ord.InstId
+	market := getMarketByIDAny(e, ord.InstId, marketType)
+	if market != nil {
+		symbol = market.Symbol
+	} else if marketType != "" {
+		symbol = e.SafeSymbol(ord.InstId, "", marketType)
+		if symbol == "" {
+			symbol = ord.InstId
+		}
+	}
+	// Parse amounts - actualSz is executed size, sz is order size
+	actualSz := parseFloat(ord.ActualSz)
+	sz := parseFloat(ord.Sz)
+	// For contract markets, convert contracts to coins
+	if market != nil && market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+		actualSz = actualSz * market.ContractSize
+		sz = sz * market.ContractSize
+	}
+	// Use sz for Amount when actualSz is 0 (order not yet triggered)
+	amount := actualSz
+	if amount == 0 {
+		amount = sz
+	}
+	// Parse price - actualPx is the executed price
+	price := parseFloat(ord.ActualPx)
+	if price == 0 {
+		price = parseFloat(ord.TriggerPx)
+	}
+	if price == 0 {
+		price = parseFloat(ord.OrdPx)
+	}
+	// For trigger price, also try tp/sl prices
+	if price == 0 {
+		price = parseFloat(ord.TpTriggerPx)
+	}
+	if price == 0 {
+		price = parseFloat(ord.SlTriggerPx)
+	}
+	ts := parseInt(ord.TriggerTime)
+	if ts == 0 {
+		ts = parseInt(ord.UTime)
+	}
+	if ts == 0 {
+		ts = parseInt(ord.CTime)
+	}
+	// Prefer AlgoClOrdId for client ID
+	clientID := ord.AlgoClOrdId
+	if clientID == "" {
+		clientID = ord.ClOrdId
+	}
+	// Determine order type from ordType (conditional/trigger/oco/move_order_stop/twap)
+	orderType := ord.OrdType
+	trade := &banexg.MyTrade{
+		Trade: banexg.Trade{
+			ID:        ord.AlgoId, // Use algoId as trade ID for algo orders
+			Symbol:    symbol,
+			Side:      strings.ToLower(ord.Side),
+			Type:      orderType,
+			Amount:    amount,
+			Price:     price,
+			Cost:      price * amount,
+			Order:     ord.AlgoId,
+			Timestamp: ts,
+			Info:      item,
+		},
+		Filled:     actualSz,
+		ClientID:   clientID,
+		Average:    price,
+		State:      state,
 		PosSide:    strings.ToLower(ord.PosSide),
 		ReduceOnly: parseBoolString(ord.ReduceOnly),
 		Info:       item,

@@ -309,7 +309,7 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 	}
 	algoOrdType := strings.ToLower(odType)
 	switch algoOrdType {
-	case banexg.OdTypeStop, banexg.OdTypeStopMarket:
+	case banexg.OdTypeStop, banexg.OdTypeStopMarket, banexg.OdTypeLimit, banexg.OdTypeMarket:
 		algoOrdType = "trigger"
 	case banexg.OdTypeTrailingStopMarket:
 		algoOrdType = "move_order_stop"

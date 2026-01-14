@@ -202,6 +202,36 @@ type OrderResult struct {
 	SMsg    string `json:"sMsg"`
 }
 
+// WsAlgoOrder describes websocket "orders-algo" channel item.
+type WsAlgoOrder struct {
+	InstType    string `json:"instType"`
+	InstId      string `json:"instId"`
+	AlgoId      string `json:"algoId"`
+	AlgoClOrdId string `json:"algoClOrdId"`
+	ClOrdId     string `json:"clOrdId"`
+	OrdId       string `json:"ordId"`
+	Sz          string `json:"sz"`
+	OrdType     string `json:"ordType"`
+	Side        string `json:"side"`
+	PosSide     string `json:"posSide"`
+	TdMode      string `json:"tdMode"`
+	State       string `json:"state"`
+	Lever       string `json:"lever"`
+	ActualSz    string `json:"actualSz"`
+	ActualPx    string `json:"actualPx"`
+	ActualSide  string `json:"actualSide"`
+	TriggerPx   string `json:"triggerPx"`
+	TriggerTime string `json:"triggerTime"`
+	OrdPx       string `json:"ordPx"`
+	TpTriggerPx string `json:"tpTriggerPx"`
+	TpOrdPx     string `json:"tpOrdPx"`
+	SlTriggerPx string `json:"slTriggerPx"`
+	SlOrdPx     string `json:"slOrdPx"`
+	ReduceOnly  string `json:"reduceOnly"`
+	CTime       string `json:"cTime"`
+	UTime       string `json:"uTime"`
+}
+
 // FundingRate describes /public/funding-rate response item.
 type FundingRate struct {
 	InstType        string `json:"instType"`

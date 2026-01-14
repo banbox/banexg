@@ -517,6 +517,7 @@ type MyTrade struct {
 	Trade
 	Filled     float64                `json:"filled"`     // 订单累计成交量（不止当前交易）
 	ClientID   string                 `json:"clientID"`   // 客户端订单ID
+	AlgoId     string                 `json:"algoId"`     // 触发此订单的算法订单ID（OKX触发单触发后会生成新ordId）
 	Average    float64                `json:"average"`    // 平均成交价格
 	State      string                 `json:"state"`      // 状态
 	PosSide    string                 `json:"posSide"`    // 持仓方向 long/short

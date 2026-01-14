@@ -72,6 +72,7 @@ const (
 	WsChanBalancePosition = "balance_and_position"
 	WsChanPositions       = "positions"
 	WsChanOrders          = "orders"
+	WsChanOrdersAlgo      = "orders-algo" // Algo orders channel (trigger/conditional/oco/twap/move_order_stop)
 	WsChanMarkPrice       = "mark-price"
 	WsChanCandlePrefix    = "candle"
 )
