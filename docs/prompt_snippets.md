@@ -10,9 +10,12 @@ okx.md 有4万行，禁止整体阅读，只能根据okx_api_index中接口行�
 确保始终遵循banexg的规范要求，和根结构体的相关规范，如果有几个交易所共同的逻辑，则提取到外部公共包的代码文件中。
 
 ## 生成真实接口测试
-@docs/help.md 
+@docs/contribute.md @docs/help.md docs/okx_api_index.md 
 当前已初步实现okx交易所对接，不过在单元测试方面还有些问题。
-单元测试除了简单的非接口测试，还需要补充实际提交到交易所的接口测试。可参考binance中的相关单元测试；这些测试应该使用local.json中配置的apiKey和apiSecret创建一个有效的交易所对象，然后调用实际的接口方法和交易所生产环境接口进行交互。这些方法在自动测试时不应该被执行，应该只提示用户手动单个执行这些测试。并统一使用`TestApi_`前缀，方便批量测试时排除这些测试。
+单元测试除了简单的非接口测试，还需要补充实际提交到交易所的接口测试。可参考binance中的相关单元测试；
+如果需要okx接口文档，先阅读okx_api_index了解行号范围，然后再根据范围阅读 banexg/docs/okx.md 
+这些测试应该使用local.json中配置的apiKey和apiSecret创建一个有效的交易所对象，然后调用实际的接口方法和交易所生产环境接口进行交互。
+这些测试统一使用`TestApi_`前缀，在自动批量测试时应被排除，只应由用户手动单个执行这些测试。
 
 ## 检查实现是否正确
 @contribute.md @help.md docs/okx_api_index.md 
