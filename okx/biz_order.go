@@ -57,6 +57,7 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	}
 	takeProfitPrice := utils.PopMapVal(args, banexg.ParamTakeProfitPrice, float64(0))
 	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+	postOnly := utils.PopMapVal(args, banexg.ParamPostOnly, false)
 	ordType, ok := orderTypeMap[odType]
 	if !ok {
 		ordType = odType
@@ -71,6 +72,12 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		case banexg.TimeInForcePO:
 			ordType = "post_only"
 		}
+	}
+	if postOnly {
+		if ordType == "market" {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "market orders cannot be postOnly")
+		}
+		ordType = "post_only"
 	}
 	args[FldInstId] = market.ID
 	args[FldSide] = strings.ToLower(side)
@@ -91,16 +98,27 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	if reduceOnly := utils.PopMapVal(args, banexg.ParamReduceOnly, false); reduceOnly {
 		args[FldReduceOnly] = true
 	}
+	if stpMode := utils.PopMapVal(args, banexg.ParamSelfTradePreventionMode, ""); stpMode != "" {
+		args[FldStpMode] = stpMode
+	}
+	if tag := utils.PopMapVal(args, banexg.ParamTag, ""); tag != "" {
+		args[FldTag] = tag
+	}
+	if val, ok := args[banexg.ParamBanAmend]; ok {
+		args[FldBanAmend] = val
+		delete(args, banexg.ParamBanAmend)
+	}
+	if val, ok := args[banexg.ParamPxAmendType]; ok {
+		args[FldPxAmendType] = val
+		delete(args, banexg.ParamPxAmendType)
+	}
 	if market.Spot {
 		if tradeQuoteCcy := getTradeQuoteCcy(market); tradeQuoteCcy != "" {
 			args[FldTradeQuoteCcy] = tradeQuoteCcy
 		}
 	}
 	if market.Contract {
-		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "")
-		if posSide == "" {
-			return nil, errs.NewMsg(errs.CodeParamRequired, "positionSide required for contract order")
-		}
+		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "net")
 		args[FldPosSide] = strings.ToLower(posSide)
 	}
 	if ordType == "market" && market.Spot {
@@ -314,14 +332,36 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
 	method := MethodTradeGetOrdersPending
 	if algoOrder {
+		userOrdType := utils.GetMapVal(args, FldOrdType, "")
+		if userOrdType != "" {
+			method = MethodTradeGetOrdersAlgoPending
+			res := requestRetry[[]map[string]interface{}](e, method, args, tryNum)
+			if res.Error != nil {
+				return nil, res.Error
+			}
+			return parseAlgoOrders(e, res.Result, marketType, symbol)
+		}
+		// Query multiple order types: conditional+oco can be queried together, others need separate calls
+		ordTypes := []string{"conditional,oco", "move_order_stop", "trigger"}
+		allOrders := make([]*banexg.Order, 0)
 		method = MethodTradeGetOrdersAlgoPending
+		for _, ordType := range ordTypes {
+			argsClone := utils.SafeParams(args)
+			argsClone[FldOrdType] = ordType
+			res := requestRetry[[]map[string]interface{}](e, method, argsClone, tryNum)
+			if res.Error != nil {
+				continue // Skip failed types instead of returning error
+			}
+			orders, err := parseAlgoOrders(e, res.Result, marketType, symbol)
+			if err == nil && orders != nil {
+				allOrders = append(allOrders, orders...)
+			}
+		}
+		return allOrders, nil
 	}
 	res := requestRetry[[]map[string]interface{}](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
-	}
-	if algoOrder {
-		return parseAlgoOrders(e, res.Result, marketType, symbol)
 	}
 	return parseOrders(e, res.Result, marketType, symbol)
 }

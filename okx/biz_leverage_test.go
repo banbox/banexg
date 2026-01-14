@@ -74,6 +74,58 @@ func TestGetLeverage(t *testing.T) {
 	}
 }
 
+func TestMarketToInstTypeForLeverage(t *testing.T) {
+	tests := []struct {
+		name      string
+		market    *banexg.Market
+		expected  string
+		expectErr bool
+	}{
+		{
+			name:     "margin market",
+			market:   &banexg.Market{Margin: true, Contract: false},
+			expected: InstTypeMargin,
+		},
+		{
+			name:     "option market",
+			market:   &banexg.Market{Option: true},
+			expected: InstTypeOption,
+		},
+		{
+			name:     "swap market",
+			market:   &banexg.Market{Swap: true},
+			expected: InstTypeSwap,
+		},
+		{
+			name:     "future market",
+			market:   &banexg.Market{Future: true},
+			expected: InstTypeFutures,
+		},
+		{
+			name:      "spot market - should fail",
+			market:    &banexg.Market{Spot: true},
+			expectErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := marketToInstTypeForLeverage(tt.market)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
 // ============================================================================
 // API Integration Tests - require local.json with valid credentials
 // Run manually with: go test -run TestAPI_LoadLeverageBrackets -v
@@ -92,4 +144,17 @@ func TestAPI_SetLeverage(t *testing.T) {
 		panic(err)
 	}
 	t.Logf("set leverage result: %+v", res)
+}
+
+func TestAPI_GetLeverage(t *testing.T) {
+	exg := getExchange(map[string]interface{}{
+		banexg.OptMarketType: banexg.MarketLinear,
+		//banexg.OptDebugApi:   true,
+	})
+	symbol := "BTC/USDT:USDT"
+	cur, max := exg.GetLeverage(symbol, 1000, "")
+	t.Logf("current leverage: %v, max leverage: %v", cur, max)
+	if max <= 0 {
+		t.Fatalf("expected positive max leverage, got %v", max)
+	}
 }

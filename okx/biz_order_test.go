@@ -213,3 +213,23 @@ func TestAPI_CancelOrder(t *testing.T) {
 	}
 	t.Logf("cancelled order: id=%s, status=%s", order.ID, order.Status)
 }
+
+func TestAPI_CreateOrderWithStpMode(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "ETH/USDT"
+	price := 3000.0
+	amount := 0.001
+	params := map[string]interface{}{
+		banexg.ParamSelfTradePreventionMode: "cancel_maker",
+		banexg.ParamTag:                     "testtag",
+	}
+	order, err := exg.CreateOrder(symbol, banexg.OdTypeLimit, banexg.OdSideBuy, amount, price, params)
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("created order with stpMode: id=%s, symbol=%s", order.ID, order.Symbol)
+	// Cancel immediately
+	if _, err := exg.CancelOrder(order.ID, symbol, nil); err != nil {
+		t.Logf("failed to cancel: %v", err)
+	}
+}

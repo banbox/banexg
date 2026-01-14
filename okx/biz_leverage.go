@@ -59,10 +59,12 @@ func (e *OKX) SetLeverage(leverage float64, symbol string, params map[string]int
 }
 
 func (e *OKX) LoadLeverageBrackets(reload bool, params map[string]interface{}) *errs.Error {
+	// okx 不支持批量加载所有品种杠杆档位，只能单个加载；故改为在GetLeverage中加载并缓存
 	return nil
 }
 
 func (e *OKX) GetLeverage(symbol string, notional float64, account string) (float64, float64) {
+	e.LoadMarkets(false, nil)
 	info := e.findOrLoadLvgBracket(symbol)
 	maxVal := 0.0
 	if info != nil && len(info.Brackets) > 0 {
@@ -86,6 +88,16 @@ func (e *OKX) GetLeverage(symbol string, notional float64, account string) (floa
 			curLev = float64(lev)
 		}
 		acc.LockLeverage.Unlock()
+	}
+	if market, err := e.GetMarket(symbol); err == nil && market != nil {
+		if lev, err := e.fetchCurrentLeverage(market); err == nil && lev > 0 {
+			curLev = lev
+			if acc, ok := e.Accounts[account]; ok && acc != nil && acc.LockLeverage != nil {
+				acc.LockLeverage.Lock()
+				acc.Leverages[market.Symbol] = int(math.Round(lev))
+				acc.LockLeverage.Unlock()
+			}
+		}
 	}
 	return curLev, maxVal
 }
@@ -189,6 +201,40 @@ func (e *OKX) fetchPositionTiers(args map[string]interface{}) ([]PositionTier, *
 		return nil, err
 	}
 	return tiers, nil
+}
+
+func (e *OKX) fetchCurrentLeverage(market *banexg.Market) (float64, *errs.Error) {
+	if market == nil {
+		return 0, errs.NewMsg(errs.CodeParamInvalid, "market required")
+	}
+	args := map[string]interface{}{
+		FldInstId:  market.ID,
+		FldMgnMode: banexg.MarginCross,
+	}
+	tryNum := e.GetRetryNum("GetLeverage", 1)
+	res := requestRetry[[]map[string]interface{}](e, MethodAccountGetLeverageInfo, args, tryNum)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	if len(res.Result) == 0 {
+		return 0, nil
+	}
+	arr, err := decodeResult[LeverageInfo](res.Result)
+	if err != nil {
+		return 0, err
+	}
+	curLev := 0.0
+	for _, item := range arr {
+		lev := parseFloat(item.Lever)
+		if strings.ToLower(item.PosSide) == "net" {
+			curLev = lev
+			break
+		}
+		if lev > curLev {
+			curLev = lev
+		}
+	}
+	return curLev, nil
 }
 
 func buildLeverageBrackets(tiers []PositionTier) map[string]*banexg.SymbolLvgBrackets {

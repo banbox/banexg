@@ -14,7 +14,7 @@ func isAlgoOrderType(odType string) bool {
 	switch odType {
 	case banexg.OdTypeStop, banexg.OdTypeStopMarket, banexg.OdTypeStopLoss, banexg.OdTypeStopLossLimit,
 		banexg.OdTypeTakeProfit, banexg.OdTypeTakeProfitLimit, banexg.OdTypeTakeProfitMarket,
-		banexg.OdTypeTrailingStopMarket:
+		banexg.OdTypeTrailingStopMarket, "conditional", "oco", "trigger", "move_order_stop", "twap", "chase":
 		return true
 	default:
 		return false
@@ -225,6 +225,37 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 			args[FldReduceOnly] = true
 		}
 	}
+	closePosition := utils.PopMapVal(args, banexg.ParamClosePosition, false)
+	if closePosition {
+		args[FldCloseFraction] = "1"
+		if _, ok := args[FldReduceOnly]; !ok {
+			args[FldReduceOnly] = true
+		}
+		delete(args, FldSz)
+	}
+	if _, ok := args[FldCallbackRatio]; !ok {
+		if callbackRate := utils.PopMapVal(args, banexg.ParamCallbackRate, 0.0); callbackRate > 0 {
+			args[FldCallbackRatio] = strconv.FormatFloat(callbackRate, 'f', -1, 64)
+		}
+	}
+	if _, ok := args[FldCallbackSpread]; !ok {
+		if trailingDelta := utils.PopMapVal(args, banexg.ParamTrailingDelta, 0.0); trailingDelta > 0 {
+			precSpread, err := e.PrecPrice(market, trailingDelta)
+			if err != nil {
+				return nil, err
+			}
+			args[FldCallbackSpread] = strconv.FormatFloat(precSpread, 'f', -1, 64)
+		}
+	}
+	if _, ok := args[FldActivePx]; !ok {
+		if activationPrice := utils.PopMapVal(args, banexg.ParamActivationPrice, 0.0); activationPrice > 0 {
+			precPx, err := e.PrecPrice(market, activationPrice)
+			if err != nil {
+				return nil, err
+			}
+			args[FldActivePx] = strconv.FormatFloat(precPx, 'f', -1, 64)
+		}
+	}
 	if clOrdId, ok := args[FldClOrdId]; ok {
 		if s, isStr := clOrdId.(string); isStr {
 			if !validateClOrdId(s) {
@@ -246,76 +277,130 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 			args[FldTradeQuoteCcy] = tradeQuoteCcy
 		}
 	}
-	if market.Spot && odType == banexg.OdTypeMarket {
-		cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
-		if cost > 0 {
-			args[FldTgtCcy] = TgtCcyQuote
-			precCost, err := e.PrecCost(market, cost)
-			if err != nil {
-				return nil, err
+	if !closePosition {
+		if market.Spot && odType == banexg.OdTypeMarket {
+			cost := utils.PopMapVal(args, banexg.ParamCost, 0.0)
+			if cost > 0 {
+				args[FldTgtCcy] = TgtCcyQuote
+				precCost, err := e.PrecCost(market, cost)
+				if err != nil {
+					return nil, err
+				}
+				args[FldSz] = strconv.FormatFloat(precCost, 'f', -1, 64)
+			} else {
+				precAmt, err := e.PrecAmount(market, amount)
+				if err != nil {
+					return nil, err
+				}
+				args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 			}
-			args[FldSz] = strconv.FormatFloat(precCost, 'f', -1, 64)
 		} else {
-			precAmt, err := e.PrecAmount(market, amount)
+			// For contract markets, convert coin amount to contracts
+			szAmount := amount
+			if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
+				szAmount = amount / market.ContractSize
+			}
+			precAmt, err := e.PrecAmount(market, szAmount)
 			if err != nil {
 				return nil, err
 			}
 			args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 		}
-	} else {
-		// For contract markets, convert coin amount to contracts
-		szAmount := amount
-		if market.Contract && market.ContractSize > 0 && market.ContractSize != 1 {
-			szAmount = amount / market.ContractSize
-		}
-		precAmt, err := e.PrecAmount(market, szAmount)
-		if err != nil {
-			return nil, err
-		}
-		args[FldSz] = strconv.FormatFloat(precAmt, 'f', -1, 64)
 	}
-
-	if stopLossPrice == 0 && takeProfitPrice == 0 {
-		return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require stopLossPrice/takeProfitPrice for algo order")
+	algoOrdType := strings.ToLower(odType)
+	switch algoOrdType {
+	case banexg.OdTypeStop, banexg.OdTypeStopMarket:
+		algoOrdType = "trigger"
+	case banexg.OdTypeTrailingStopMarket:
+		algoOrdType = "move_order_stop"
+	case banexg.OdTypeStopLoss, banexg.OdTypeStopLossLimit, banexg.OdTypeTakeProfit, banexg.OdTypeTakeProfitLimit, banexg.OdTypeTakeProfitMarket:
+		algoOrdType = ""
 	}
-	algoOrdType := "conditional"
-	if stopLossPrice != 0 && takeProfitPrice != 0 {
-		algoOrdType = "oco"
-	}
-	args[FldOrdType] = algoOrdType
-	if takeProfitPrice != 0 {
-		tpPx, err := e.PrecPrice(market, takeProfitPrice)
-		if err != nil {
-			return nil, err
+	if algoOrdType == "" || algoOrdType == banexg.OdTypeStop || algoOrdType == banexg.OdTypeStopMarket {
+		if stopLossPrice == 0 && takeProfitPrice == 0 {
+			return nil, errs.NewMsg(errs.CodeParamRequired, "createOrder require stopLossPrice/takeProfitPrice for algo order")
 		}
-		args[FldTpTriggerPx] = strconv.FormatFloat(tpPx, 'f', -1, 64)
-		if _, ok := args[FldTpOrdPx]; !ok {
-			if odType == banexg.OdTypeTakeProfitLimit && price > 0 {
-				ordPx, err := e.PrecPrice(market, price)
-				if err != nil {
-					return nil, err
+		algoOrdType = "conditional"
+		if stopLossPrice != 0 && takeProfitPrice != 0 {
+			algoOrdType = "oco"
+		}
+		args[FldOrdType] = algoOrdType
+		if takeProfitPrice != 0 {
+			tpPx, err := e.PrecPrice(market, takeProfitPrice)
+			if err != nil {
+				return nil, err
+			}
+			args[FldTpTriggerPx] = strconv.FormatFloat(tpPx, 'f', -1, 64)
+			if _, ok := args[FldTpOrdPx]; !ok {
+				if odType == banexg.OdTypeTakeProfitLimit && price > 0 {
+					ordPx, err := e.PrecPrice(market, price)
+					if err != nil {
+						return nil, err
+					}
+					args[FldTpOrdPx] = strconv.FormatFloat(ordPx, 'f', -1, 64)
+				} else {
+					args[FldTpOrdPx] = "-1"
 				}
-				args[FldTpOrdPx] = strconv.FormatFloat(ordPx, 'f', -1, 64)
-			} else {
-				args[FldTpOrdPx] = "-1"
 			}
 		}
-	}
-	if stopLossPrice != 0 {
-		slPx, err := e.PrecPrice(market, stopLossPrice)
-		if err != nil {
-			return nil, err
+		if stopLossPrice != 0 {
+			slPx, err := e.PrecPrice(market, stopLossPrice)
+			if err != nil {
+				return nil, err
+			}
+			args[FldSlTriggerPx] = strconv.FormatFloat(slPx, 'f', -1, 64)
+			if _, ok := args[FldSlOrdPx]; !ok {
+				if odType == banexg.OdTypeStopLossLimit && price > 0 {
+					ordPx, err := e.PrecPrice(market, price)
+					if err != nil {
+						return nil, err
+					}
+					args[FldSlOrdPx] = strconv.FormatFloat(ordPx, 'f', -1, 64)
+				} else {
+					args[FldSlOrdPx] = "-1"
+				}
+			}
 		}
-		args[FldSlTriggerPx] = strconv.FormatFloat(slPx, 'f', -1, 64)
-		if _, ok := args[FldSlOrdPx]; !ok {
-			if odType == banexg.OdTypeStopLossLimit && price > 0 {
-				ordPx, err := e.PrecPrice(market, price)
+	} else {
+		args[FldOrdType] = algoOrdType
+		switch algoOrdType {
+		case "trigger":
+			if _, ok := args[FldTriggerPx]; !ok {
+				if stopLossPrice == 0 {
+					return nil, errs.NewMsg(errs.CodeParamRequired, "triggerPx required for trigger order")
+				}
+				triggerPx, err := e.PrecPrice(market, stopLossPrice)
 				if err != nil {
 					return nil, err
 				}
-				args[FldSlOrdPx] = strconv.FormatFloat(ordPx, 'f', -1, 64)
-			} else {
-				args[FldSlOrdPx] = "-1"
+				args[FldTriggerPx] = strconv.FormatFloat(triggerPx, 'f', -1, 64)
+			}
+			if _, ok := args[FldOrderPx]; !ok {
+				if price > 0 {
+					ordPx, err := e.PrecPrice(market, price)
+					if err != nil {
+						return nil, err
+					}
+					args[FldOrderPx] = strconv.FormatFloat(ordPx, 'f', -1, 64)
+				} else {
+					args[FldOrderPx] = "-1"
+				}
+			}
+		case "move_order_stop":
+			if _, ok := args[FldCallbackRatio]; !ok {
+				if _, ok := args[FldCallbackSpread]; !ok {
+					return nil, errs.NewMsg(errs.CodeParamRequired, "callbackRatio/callbackSpread required for move_order_stop")
+				}
+			}
+		case "twap":
+			if _, ok := args[FldSzLimit]; !ok {
+				return nil, errs.NewMsg(errs.CodeParamRequired, "szLimit required for twap order")
+			}
+			if _, ok := args[FldPxLimit]; !ok {
+				return nil, errs.NewMsg(errs.CodeParamRequired, "pxLimit required for twap order")
+			}
+			if _, ok := args[FldTimeInterval]; !ok {
+				return nil, errs.NewMsg(errs.CodeParamRequired, "timeInterval required for twap order")
 			}
 		}
 	}

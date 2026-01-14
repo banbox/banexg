@@ -119,6 +119,29 @@ func TestTickersToPriceMap(t *testing.T) {
 	}
 }
 
+func TestMapTickerInstType(t *testing.T) {
+	tests := []struct {
+		name         string
+		marketType   string
+		contractType string
+		expected     string
+	}{
+		{"spot", banexg.MarketSpot, "", InstTypeSpot},
+		{"margin", banexg.MarketMargin, "", InstTypeSpot},
+		{"linear", banexg.MarketLinear, banexg.MarketLinear, InstTypeSwap},
+		{"inverse", banexg.MarketInverse, banexg.MarketInverse, InstTypeSwap},
+		{"option", banexg.MarketOption, "", InstTypeOption},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mapTickerInstType(tt.marketType, tt.contractType)
+			if result != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
 // ============================================================================
 // API Integration Tests - require local.json with valid credentials
 // Run manually with: go test -run TestAPI_FetchTicker -v
@@ -178,5 +201,36 @@ func TestAPI_FetchOrderBook(t *testing.T) {
 	if ob.Bids.Depth > 0 {
 		p, s := ob.Bids.Level(0)
 		t.Logf("best bid: price=%v, size=%v", p, s)
+	}
+}
+
+func TestAPI_FetchOHLCVHistory(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "BTC/USDT"
+	since := int64(1672531200000) // 2023-01-01
+	until := int64(1675209600000) // 2023-02-01
+	klines, err := exg.FetchOHLCV(symbol, "1d", since, 10, map[string]interface{}{
+		banexg.ParamUntil: until,
+	})
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("fetched %d history klines for %s", len(klines), symbol)
+	if len(klines) > 0 {
+		t.Logf("first kline: time=%d, O=%v H=%v L=%v C=%v", klines[0].Time, klines[0].Open, klines[0].High, klines[0].Low, klines[0].Close)
+	}
+}
+
+func TestAPI_FetchOrderBookFull(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "BTC/USDT"
+	limit := 500 // Should trigger books-full
+	ob, err := exg.FetchOrderBook(symbol, limit, nil)
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("fetched full orderbook: symbol=%s, asks=%d, bids=%d, limit=%d", ob.Symbol, ob.Asks.Depth, ob.Bids.Depth, ob.Limit)
+	if ob.Asks.Depth > 400 || ob.Bids.Depth > 400 {
+		t.Logf("successfully fetched deep orderbook (>400 levels)")
 	}
 }

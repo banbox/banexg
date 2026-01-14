@@ -64,8 +64,13 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 	if until > 0 {
 		args[FldAfter] = strconv.FormatInt(until, 10)
 	}
+	method := MethodMarketGetCandles
+	// history-candles 频率限制更严格，暂不使用
+	// if since > 0 || until > 0 {
+	// 	method = MethodMarketGetHistoryCandles
+	// }
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
-	res := requestRetry[[][]string](e, MethodMarketGetCandles, args, tryNum)
+	res := requestRetry[[][]string](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -177,14 +182,22 @@ func (e *OKX) FetchOrderBook(symbol string, limit int, params map[string]interfa
 		return nil, err
 	}
 	args[FldInstId] = market.ID
-	if limit > 0 {
+	method := MethodMarketGetBooks
+	if limit > 400 {
+		method = MethodMarketGetBooksFull
+		if limit > 5000 {
+			limit = 5000
+		}
+	} else if limit > 0 {
 		if limit > 400 {
 			limit = 400
 		}
+	}
+	if limit > 0 {
 		args[FldSz] = strconv.Itoa(limit)
 	}
 	tryNum := e.GetRetryNum("FetchOrderBook", 1)
-	res := requestRetry[[]OrderBook](e, MethodMarketGetBooks, args, tryNum)
+	res := requestRetry[[]OrderBook](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
 	}

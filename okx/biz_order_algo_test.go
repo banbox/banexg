@@ -76,6 +76,92 @@ func cancelAlgoOrder(t *testing.T, exg *OKX, symbol, id string) {
 	}
 }
 
+func TestMapAlgoOrderType(t *testing.T) {
+	tests := []struct {
+		name      string
+		ordType   string
+		tpTrigger float64
+		tpOrd     float64
+		slTrigger float64
+		slOrd     float64
+		trigger   float64
+		ord       float64
+		expected  string
+	}{
+		{"oco with both prices", "oco", 100, 99, 90, 91, 0, 0, "oco"},
+		{"conditional sl market", "conditional", 0, 0, 90, -1, 0, 0, banexg.OdTypeStopLoss},
+		{"conditional sl limit", "conditional", 0, 0, 90, 91, 0, 0, banexg.OdTypeStopLossLimit},
+		{"conditional tp market", "conditional", 100, -1, 0, 0, 0, 0, banexg.OdTypeTakeProfitMarket},
+		{"conditional tp limit", "conditional", 100, 99, 0, 0, 0, 0, banexg.OdTypeTakeProfitLimit},
+		{"trigger market", "trigger", 0, 0, 0, 0, 95, -1, banexg.OdTypeStopMarket},
+		{"trigger limit", "trigger", 0, 0, 0, 0, 95, 96, banexg.OdTypeStop},
+		{"move_order_stop", "move_order_stop", 0, 0, 0, 0, 0, 0, banexg.OdTypeTrailingStopMarket},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mapAlgoOrderType(tt.ordType, tt.tpTrigger, tt.tpOrd, tt.slTrigger, tt.slOrd, tt.trigger, tt.ord)
+			if result != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestMapAlgoOrderStatus(t *testing.T) {
+	tests := []struct {
+		status   string
+		expected string
+	}{
+		{"live", banexg.OdStatusOpen},
+		{"pause", banexg.OdStatusOpen},
+		{"partially_effective", banexg.OdStatusPartFilled},
+		{"effective", banexg.OdStatusFilled},
+		{"canceled", banexg.OdStatusCanceled},
+		{"order_failed", banexg.OdStatusRejected},
+		{"unknown", "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			result := mapAlgoOrderStatus(tt.status)
+			if result != tt.expected {
+				t.Fatalf("expected %s, got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestIsAlgoOrderType(t *testing.T) {
+	tests := []struct {
+		odType   string
+		expected bool
+	}{
+		{banexg.OdTypeStop, true},
+		{banexg.OdTypeStopMarket, true},
+		{banexg.OdTypeStopLoss, true},
+		{banexg.OdTypeStopLossLimit, true},
+		{banexg.OdTypeTakeProfit, true},
+		{banexg.OdTypeTakeProfitLimit, true},
+		{banexg.OdTypeTakeProfitMarket, true},
+		{banexg.OdTypeTrailingStopMarket, true},
+		{"conditional", true},
+		{"oco", true},
+		{"trigger", true},
+		{"move_order_stop", true},
+		{"twap", true},
+		{"chase", true},
+		{banexg.OdTypeLimit, false},
+		{banexg.OdTypeMarket, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.odType, func(t *testing.T) {
+			result := isAlgoOrderType(tt.odType)
+			if result != tt.expected {
+				t.Fatalf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 // ============================================================================
 // API Integration Tests - require local.json with valid credentials
 // Run manually with: go test -run TestAPI_CreateAlgoOrderTPSL -v
@@ -215,4 +301,78 @@ func TestAPI_CreateAlgoOrderLimitTPSL(t *testing.T) {
 			t.Fatalf("expected type %s, got %s", banexg.OdTypeTakeProfitLimit, fetched.Type)
 		}
 	})
+}
+
+func TestAPI_CreateAlgoOrderTrailingStop(t *testing.T) {
+	exg, pos := getAlgoPosition(t, false)
+	symbol := pos.Symbol
+	quantity := pickPosQty(t, pos)
+	side := algoOrderSide(pos)
+	args := map[string]interface{}{
+		banexg.ParamCallbackRate:    0.01,
+		banexg.ParamActivationPrice: pickPosPrice(t, pos),
+		banexg.ParamReduceOnly:      true,
+		banexg.ParamPositionSide:    pos.Side,
+	}
+	order, err := exg.CreateOrder(symbol, banexg.OdTypeTrailingStopMarket, side, quantity, 0, args)
+	if err != nil {
+		panic(err)
+	}
+	defer cancelAlgoOrder(t, exg, symbol, order.ID)
+	t.Logf("created trailing stop order: id=%s", order.ID)
+	fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
+		banexg.ParamAlgoOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("fetch trailing stop order failed: %v", err)
+	}
+	if fetched.Type != banexg.OdTypeTrailingStopMarket {
+		t.Fatalf("expected type %s, got %s", banexg.OdTypeTrailingStopMarket, fetched.Type)
+	}
+}
+
+func TestAPI_CreateAlgoOrderClosePosition(t *testing.T) {
+	exg, pos := getAlgoPosition(t, false)
+	symbol := pos.Symbol
+	side := algoOrderSide(pos)
+	curPrice := pickPosPrice(t, pos)
+	slPrice, _ := algoPrices(pos, curPrice)
+	args := map[string]interface{}{
+		banexg.ParamStopLossPrice: slPrice,
+		banexg.ParamClosePosition: true,
+		banexg.ParamPositionSide:  pos.Side,
+	}
+	order, err := exg.CreateOrder(symbol, banexg.OdTypeStopLoss, side, 0, 0, args)
+	if err != nil {
+		panic(err)
+	}
+	defer cancelAlgoOrder(t, exg, symbol, order.ID)
+	t.Logf("created close position order: id=%s", order.ID)
+	fetched, err := exg.FetchOrder(symbol, order.ID, map[string]interface{}{
+		banexg.ParamAlgoOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("fetch close position order failed: %v", err)
+	}
+	if !fetched.ReduceOnly {
+		t.Fatalf("expected reduceOnly to be true")
+	}
+}
+
+func TestAPI_FetchAlgoOrders(t *testing.T) {
+	exg := getExchange(map[string]interface{}{
+		banexg.OptMarketType: banexg.MarketLinear,
+	})
+	symbol := "ETH/USDT:USDT"
+	orders, err := exg.FetchOpenOrders(symbol, 0, 10, map[string]interface{}{
+		banexg.ParamAlgoOrder: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	t.Logf("fetched %d algo orders", len(orders))
+	for _, order := range orders {
+		t.Logf("algo order: id=%s, type=%s, side=%s, status=%s",
+			order.ID, order.Type, order.Side, order.Status)
+	}
 }
