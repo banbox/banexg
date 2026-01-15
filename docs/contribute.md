@@ -202,8 +202,10 @@ ETH/USDT:USDT-211225-40000-C    # U本位期权
 
 
 ## 九、 核心原则
-- Debug模式下应输出所有api请求，DebugWS模式下应输出所有ws消息
+- OptDebugApi模式下应输出所有api请求，OptDebugWs模式下应输出所有ws消息
 - 密切相关的函数应该在一起维护，不要分散
 - 用户调用接口传入的币种代码应该始终是banexg的标准代码Market.Symbol，内部转为交易所品种代码Markey.ID请求接口
 - BanExg公开方法的`map[string]interface{}`参数是用户传入，其中key必须是`banexg.ParamXXX`，尽量提取为多交易所通用命名，然后内部转为交易所参数
 - 交易所go包下的结构体和方法名中，不应该包含交易所名。比如okx包下mapOkxOrderType应改为mapOrderType；这样可减少信息冗余。
+- 返回数据必须是规范的，固定几个值应添加常量枚举，动态值返回英文，永远不要返回中文。
+- 对交易所接口的单元测试应使用local.json创建一个有效的交易所对象，然后真实发出请求和交易所进行交互。统一使用`TestApi_`前缀，在自动批量测试时应被排除，只应由用户手动单个执行这些测试。

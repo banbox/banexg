@@ -54,6 +54,7 @@ func New(options map[string]interface{}) (*OKX, *errs.Error) {
 				MethodPublicGetFundingRateHistory:  {Path: "public/funding-rate-history", Host: HostPublic, Method: "GET", Cost: 5},
 				MethodPublicGetPositionTiers:       {Path: "public/position-tiers", Host: HostPublic, Method: "GET", Cost: 5},
 				MethodAccountGetBalance:            {Path: "account/balance", Host: HostPrivate, Method: "GET", Cost: 5},
+				MethodAccountGetConfig:             {Path: "account/config", Host: HostPrivate, Method: "GET", Cost: 5},
 				MethodAccountGetBills:              {Path: "account/bills", Host: HostPrivate, Method: "GET", Cost: 5},
 				MethodAccountGetBillsArchive:       {Path: "account/bills-archive", Host: HostPrivate, Method: "GET", Cost: 5},
 				MethodAccountGetPositions:          {Path: "account/positions", Host: HostPrivate, Method: "GET", Cost: 5},

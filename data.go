@@ -43,6 +43,7 @@ const (
 	ParamMethod                  = "method"
 	ParamInterval                = "interval"
 	ParamAccount                 = "account"
+	ParamBalance                 = "balance"
 	ParamMarket                  = "market"
 	ParamContract                = "contract"
 	ParamBrokerId                = "brokerId"
@@ -150,6 +151,18 @@ const (
 const (
 	MarginCross    = "cross"
 	MarginIsolated = "isolated"
+)
+
+const (
+	PosModeHedge  = "hedge"
+	PosModeOneWay = "oneway"
+)
+
+const (
+	AcctModeSpot                 = "spot"
+	AcctModeSingleCurrencyMargin = "single_currency_margin"
+	AcctModeMultiCurrencyMargin  = "multi_currency_margin"
+	AcctModePortfolioMargin      = "portfolio_margin"
 )
 
 const (

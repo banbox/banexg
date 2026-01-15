@@ -41,6 +41,7 @@ type BanExchange interface {
 	// FetchOrders Get all account orders; active, canceled, or filled. (symbol required)
 	FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error)
 	FetchBalance(params map[string]interface{}) (*Balances, *errs.Error)
+	FetchAccountAccess(params map[string]interface{}) (*AccountAccess, *errs.Error)
 	// FetchAccountPositions Get account positions on all symbols
 	FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error)
 	// FetchPositions Get position risks (default) or account positions on all symbols

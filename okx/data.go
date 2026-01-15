@@ -153,6 +153,7 @@ const (
 	MethodPublicGetFundingRateHistory  = "publicGetFundingRateHistory"
 	MethodPublicGetPositionTiers       = "publicGetPositionTiers"
 	MethodAccountGetBalance            = "accountGetBalance"
+	MethodAccountGetConfig             = "accountGetConfig"
 	MethodAccountGetBills              = "accountGetBills"
 	MethodAccountGetBillsArchive       = "accountGetBillsArchive"
 	MethodAccountGetPositions          = "accountGetPositions"
