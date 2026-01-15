@@ -166,7 +166,7 @@ func TestAlgoOrderLifecycle(t *testing.T) {
 	curPrice := pos.Notional / quantity
 
 	// 1. 下单
-	slPrice := curPrice * 0.8
+	slPrice := curPrice * 0.9
 	createArgs := map[string]interface{}{
 		banexg.ParamStopLossPrice: slPrice,
 		banexg.ParamPositionSide:  strings.ToUpper(banexg.PosSideLong),
@@ -175,7 +175,8 @@ func TestAlgoOrderLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lifecycle: Create Order Failed: %v", err)
 	}
-	t.Logf("Lifecycle: Created Order ID: %s", order.ID)
+	resStr, _ := utils.MarshalString(order.Info)
+	t.Logf("Lifecycle: Created Order ID: %s, price: %f, res: %s", order.ID, slPrice, resStr)
 
 	algoId := order.ID
 
@@ -195,9 +196,10 @@ func TestAlgoOrderLifecycle(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Lifecycle: Order %s not found in open orders", algoId)
+		t.Errorf("Lifecycle: Order %s not found in %d open orders", algoId, len(openOrders))
+	} else {
+		t.Logf("Lifecycle: Order %s found in open orders", algoId)
 	}
-	t.Logf("Lifecycle: Order %s found in open orders", algoId)
 
 	// 3. 查询单个订单详情
 	fetchArgs := map[string]interface{}{
