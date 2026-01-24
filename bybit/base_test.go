@@ -1,11 +1,16 @@
 package bybit
 
 import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"sort"
 	"testing"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"go.uber.org/zap"
 )
 
 func bybitTestOptions(param map[string]interface{}) (map[string]interface{}, error) {
@@ -122,4 +127,44 @@ func seedMarket(exg *Bybit, marketID, symbol, marketType string) {
 	}
 	exg.Markets[symbol] = market
 	exg.MarketsById[marketID] = []*banexg.Market{market}
+}
+
+func writeMapSliceToCSV(t *testing.T, data []map[string]interface{}, csvPath string) {
+	t.Helper()
+	if len(data) == 0 {
+		log.Warn("No data to write to CSV")
+		return
+	}
+
+	file, err := os.Create(csvPath)
+	if err != nil {
+		t.Fatalf("Failed to create CSV file: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	var headers []string
+	for key := range data[0] {
+		headers = append(headers, key)
+	}
+	sort.Strings(headers)
+
+	if err := writer.Write(headers); err != nil {
+		t.Fatalf("Failed to write CSV headers: %v", err)
+	}
+
+	for _, item := range data {
+		var row []string
+		for _, header := range headers {
+			val := item[header]
+			row = append(row, fmt.Sprintf("%v", val))
+		}
+		if err := writer.Write(row); err != nil {
+			t.Fatalf("Failed to write CSV row: %v", err)
+		}
+	}
+
+	log.Info("CSV file saved", zap.String("path", csvPath), zap.Int("rows", len(data)))
 }

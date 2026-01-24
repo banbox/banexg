@@ -8,7 +8,9 @@ import (
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
+	"go.uber.org/zap"
 )
 
 func TestParseBybitBalance(t *testing.T) {
@@ -263,6 +265,7 @@ func TestApi_FetchBalance(t *testing.T) {
 	bal := fetchBalanceMust(t, exg, map[string]interface{}{
 		banexg.ParamCurrency: "USDT",
 	})
+	log.Info("balance", zap.Any("balance", bal))
 	requireBalanceHasAssets(t, bal, "USDT")
 }
 

@@ -3635,8 +3635,9 @@ func TestApi_FetchOrderHistory(t *testing.T) {
 func TestApi_FetchClosedPnlHistory(t *testing.T) {
 	exg := getBybitAuthed(t, nil)
 
+	mktName := banexg.MarketLinear
 	args := map[string]interface{}{
-		"category": "linear",
+		"category": mktName,
 	}
 	tryNum := exg.GetRetryNum("FetchClosedPnl", 1)
 	res := requestRetry[V5ListResult](exg, MethodPrivateGetV5PositionClosedPnl, args, tryNum)
@@ -3647,6 +3648,11 @@ func TestApi_FetchClosedPnlHistory(t *testing.T) {
 		t.Fatal("expected closed pnl items slice")
 	}
 	log.Info("closed pnl history", zap.Int("count", len(res.Result.List)), zap.Any("data", res.Result.List))
+
+	if len(res.Result.List) > 0 {
+		csvPath := "../docs/" + mktName + "_pos_his.csv"
+		writeMapSliceToCSV(t, res.Result.List, csvPath)
+	}
 }
 
 func TestApi_FetchIncomeHistory(t *testing.T) {
@@ -3694,5 +3700,61 @@ func TestApi_FetchMyTradesTimeRange(t *testing.T) {
 	}
 	if items == nil {
 		t.Fatal("expected trades slice")
+	}
+}
+
+func TestApi_FetchOrderHistoryToCSV(t *testing.T) {
+	exg := getBybitAuthed(t, nil)
+
+	symbol := "XRP/USDT:USDT"
+	now := time.Now().UTC()
+	since := now.Add(-7 * 24 * time.Hour).UnixMilli()
+	until := now.UnixMilli()
+	limit := 500
+
+	args := map[string]interface{}{
+		banexg.ParamUntil: until,
+	}
+
+	orders, err := exg.FetchOrders(symbol, since, limit, args)
+	if err != nil {
+		t.Fatalf("FetchOrders failed: %v", err)
+	}
+
+	if orders == nil {
+		t.Fatal("expected orders slice")
+	}
+
+	log.Info("order history fetched", zap.String("symbol", symbol), zap.Int("count", len(orders)))
+
+	if len(orders) > 0 {
+		var dataList []map[string]interface{}
+		for _, order := range orders {
+			item := map[string]interface{}{
+				"id":            order.ID,
+				"clientOrderId": order.ClientOrderID,
+				"symbol":        order.Symbol,
+				"type":          order.Type,
+				"side":          order.Side,
+				"price":         order.Price,
+				"amount":        order.Amount,
+				"cost":          order.Cost,
+				"average":       order.Average,
+				"filled":        order.Filled,
+				"remaining":     order.Remaining,
+				"status":        order.Status,
+				"timestamp":     order.Timestamp,
+				"datetime":      time.UnixMilli(order.Timestamp).UTC().Format("2006-01-02 15:04:05"),
+			}
+			if order.Fee != nil {
+				item["feeCost"] = order.Fee.Cost
+				item["feeCurrency"] = order.Fee.Currency
+			}
+			dataList = append(dataList, item)
+		}
+
+		mktType := banexg.MarketLinear
+		csvPath := fmt.Sprintf("../docs/%s_%s_orders.csv", mktType, strings.ReplaceAll(symbol, "/", "_"))
+		writeMapSliceToCSV(t, dataList, csvPath)
 	}
 }
