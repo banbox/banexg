@@ -21,106 +21,106 @@ BanExg 是一个用Go语言开发的多交易所统一SDK类库，旨在为加�
 ### 根目录 - 核心接口与基础实现
 
 #### 接口定义
-- **intf.go**: BanExchange核心接口，定义100+统一方法（LoadMarkets/FetchTicker/FetchOHLCV/FetchOrderBook/CreateOrder/CancelOrder/EditOrder/SetLeverage/FetchBalance/FetchPositions/FetchAccountAccess/WatchOrderBooks等），WsConn接口定义WebSocket连接操作
-- **types.go**: 核心数据结构，Exchange基础实现（ExgInfo/Hosts/Fees/Apis/Accounts/WSClients/Options/Retries/CalcRateLimiterCost/WS录制回放字段），Account多账户管理（Creds/MarPositions/MarBalances/Leverages/NoTrade），ExgInfo交易所元信息（ID/Name/Markets/Currencies/OrderBooks/MarkPrices/锁保护），ExgHosts主机配置（TestNet/Prod/Test），ExgFee费率配置（Main/Linear/Inverse/Option），Entry接口端点（Path/Host/Method/Cost/CacheSecs）
+- **intf.go**: BanExchange核心接口，定义100+统一方法（LoadMarkets/FetchTicker/FetchOHLCV/CreateOrder/CancelOrder/FetchBalance/WatchOrderBooks/WatchBalance等），支持市场数据/交易操作/账户管理/实时订阅/精度处理/录制回放
+- **types.go**: 核心数据结构，Exchange基础实现（ExgInfo/Apis/Accounts/Markets/WSClients/Sign/OnWsMsg等），ExgInfo交易所元信息（ID/Name/Markets/DebugAPI等），Account多账户管理（Name/Creds/MarBalances等），函数类型定义（FuncSign/FuncOnWsMsg/FuncCalcFee等）
 
 #### 业务逻辑实现
-- **biz.go**: Exchange通用业务逻辑，Init初始化（HttpClient/代理解析/凭证解析/速率控制/WS间隔/重试配置/API缓存/WS录制回放/费率/CareMarkets/各类锁初始化），SafeCurrency币种安全获取，LoadMarkets/FetchTicker/FetchTickers/FetchOHLCV/FetchOrderBook市场行情，CreateOrder/CancelOrder/EditOrder订单操作，FetchBalance/FetchPositions账户查询，SetDump/SetReplay/ReplayOne/ReplayAll WS录制回放，PrecAmount/PrecPrice/PrecCost/PrecFee精度处理
-- **biz_account.go**: 账户访问权限，AccountAccess结构（TradeAllowed/WithdrawAllowed/IPAny/PosMode/AcctMode/MarginMode），FetchAccountAccess从余额信息提取权限，FillAccountAccessFromInfo权限字段解析，MergeAccountAccess权限合并，BoolFromInfo/ParseBool/NormalizePosMode辅助函数
-- **common.go**: 通用工具函数，Precision/LimitRange/MarketLimits/CodeLimits/Balances结构体ToString方法，Balances.Init初始化（TimeStamp/Free/Used/Total），Asset.IsEmpty空资产判断，OrderBook/OdBookSide订单簿操作（SetSide/Update/Set/SumVolTo/AvgPrice/Level/Reset），NewOdBookSide构造函数，Kline.Clone克隆，MergeMyTrades合并交易，IsOrderDone订单状态判断，GetHostRetryWait/SetHostRetryWait主机重试等待，GetHostFlowChan流量控制，SetBoolArg布尔参数格式化
-- **base.go**: 基础功能，ExgHosts.GetHost主机获取（TestNet/Prod自动切换），Credential.CheckFilled凭证校验（ApiKey/Secret/UID/Password），IsContract市场类型判断
+- **biz.go**: Exchange通用业务逻辑，Init初始化（HttpClient/代理解析/速率控制/重试策略/录制回放/环境切换/市场筛选/调试开关等配置项），SafeCurrency币种安全获取
+- **biz_account.go**: 账户访问权限，AccountAccess结构（TradeAllowed/WithdrawAllowed/PosMode/AcctMode等），FetchAccountAccess权限提取，FillAccountAccessFromInfo权限解析，NormalizePosMode持仓模式标准化
+- **common.go**: 通用工具函数，Balances.Init余额初始化，OrderBook订单簿操作（Update/SetSide/AvgPrice等），IsOrderDone订单状态判断，GetHostRetryWait重试等待，SetBoolArg参数格式化
+- **base.go**: 基础功能，ExgHosts.GetHost主机获取（TestNet/Prod/Test自动切换），Credential.CheckFilled凭证校验（ApiKey/Secret/UID/Password必填检查），IsContract市场类型判断（future/swap/linear/inverse）
 
 #### 常量与配置
-- **data.go**: 参数常量定义（ParamClientOrderId/ParamTimeInForce/ParamTriggerPrice等50+），默认配置（DefReqHeaders/DefCurrCodeMap/DefWsIntvs/DefRetries），状态常量（BoolNull/BoolTrue/BoolFalse），Options配置键（OptProxy/OptApiKey/OptEnv等25+），精度模式常量（PrecModeDecimalPlace/PrecModeSignifDigits/PrecModeTickSize），市场/合约/保证金类型常量，订单状态/类型/方向/持仓方向常量，TimeInForce常量，Api方法名常量（ApiFetchTicker/ApiCreateOrder等30+），市场缓存管理（exgCacheMarkets/exgMarketTS/exgMarketExpireMins），HTTP并发控制HostHttpConcurr
+- **data.go**: 参数常量60+个（ParamClientOrderId/ParamTriggerPrice/ParamMarginMode/ParamPositionSide等），默认配置（DefReqHeaders/DefRetries/HostHttpConcurr等），精度模式（PrecModeDecimalPlace/PrecModeTickSize等），Has常量（HasFail/HasOk/HasEmulated）
 
 #### WebSocket实现
-- **websocket.go**: WebSocket客户端实现，WsClient连接管理（多连接池/订阅恢复/超时检测），AsyncConn异步消息发送，WebSocket底层封装（自动重连/读写分离），订阅管理（SubscribeKeys/SubsKeyStamps），深度订阅odBookLimits
+- **websocket.go**: WsClient连接管理（conns连接池/SubscribeKeys/JobInfos/OnMessage/OnError等回调），AsyncConn异步消息处理，支持自动重连/订阅恢复/心跳保活/多连接池
 
 #### 扩展工具
-- **exts.go**: 日志扩展，HttpHeader实现zapcore.ObjectMarshaler接口用于日志输出
+- **exts.go**: HttpHeader实现zapcore.ObjectMarshaler接口用于日志输出
 - **tickers.go**: Ticker工具函数，BuildSymbolSet符号集合构建，FilterTickers按符号集过滤，TickersToLastPrices转最新价列表，TickersToPriceMap转价格映射表
 
 ### 基础设施层
 
 #### bex/ - 交易所工厂
-- **common.go**: 工厂函数类型定义FuncNewExchange
-- **entrys.go**: 交易所注册表，init注册binance/bybit/china/okx四个交易所，New工厂方法动态创建交易所实例
+- **common.go**: FuncNewExchange工厂函数类型定义，WrapNew泛型包装器将具体交易所构造函数转换为统一接口
+- **entrys.go**: 交易所注册表，init注册binance/bybit/china/okx四个交易所到newExgs映射，New工厂方法根据name动态创建交易所实例
 
 #### errs/ - 错误处理
 - **types.go**: Error结构体（Code/msg/Stack/err/BizCode/Data）
-- **main.go**: 错误创建（NewFull/NewMsg/New），错误格式化（Short/Error/Message），堆栈跟踪CallStack，错误码名称管理UpdateErrNames
-- **data.go**: 错误码常量定义（CodeNetFail/CodeNotSupport/CodeParamInvalid/CodeUnmarshalFail/CodeTimeout/CodeNoTrade等40+个错误码），错误码名称映射表errCodeNames，PrintErr自定义错误打印函数
+- **main.go**: 错误创建（NewFull全参数/NewMsg仅消息/New仅错误），错误格式化（Short简短/Error详细/Message消息/CodeName码名），堆栈跟踪CallStack（skip跳过层级/maxNum最大数量），错误码名称管理UpdateErrNames，支持错误链Unwrap
+- **data.go**: 错误码常量48个（CodeNetFail/CodeInvalidRequest/CodeSignFail/CodeParamInvalid/CodeConnectFail/CodeTimeout/CodeUnauthorized/CodeServerError等），errCodeNames映射表，PrintErr错误打印
 
 #### log/ - 日志系统
-- **log.go**: 日志核心，InitLogger初始化配置（文件/控制台输出），ReplaceGlobals全局日志替换，分级日志获取（debugL/infoL/warnL/errorL），Sync日志刷新，LogFilePath获取日志文件路径
-- **config.go**: 日志配置，FileLogConfig文件日志配置（LogPath/MaxSize/MaxDays/MaxBackups），Config日志配置（Level/Format/Stdout/Development等），ZapProperties日志属性封装
-- **global.go**: 全局日志函数，Debug/Info/Warn/Error/Panic/Fatal日志输出，With字段附加，SetLevel动态调整日志级别，WithTraceID/WithReqID/WithModule上下文日志，Ctx获取上下文日志器
+- **log.go**: 日志核心，InitLogger初始化（File/Stdout/Level/Handlers），InitLoggerWithWriteSyncer自定义输出，newStdLogger标准日志器，全局日志原子存储，LogFilePath获取日志文件路径
+- **config.go**: FileLogConfig文件配置（LogPath/MaxSize/MaxDays/MaxBackups），Config日志配置（Level/Format/Stdout/File/Sampling等），ZapProperties日志属性，newZapTextEncoder编码器
+- **global.go**: 全局日志函数（Debug/Info/Warn/Error等），With字段附加，SetLevel/GetLevel级别管理，WithTraceID/WithModule上下文日志
 
 #### utils/ - 工具函数库
-- **common.go**: 时间工具（YMD日期格式化/ISO8601转换），字符串分析SplitParts（按数字/字符串/浮点分段），时间范围解析ParseTimeRanges
-- **crypto.go**: 加密签名，Signature统一签名接口（支持rsa/eddsa/hmac三种方法，sha256/sha384/sha512哈希，base64/hex摘要），rsaSign/Eddsa/HMAC具体实现，loadPrivateKey私钥加载，EncodeToLatin1编码转换
-- **dec_precs.go**: 精度处理，DecToPrec精度格式化（PrecModeDecimalPlace保留小数位/PrecModeSignifDigits有效数字/PrecModeTickSize最小单位整数倍），支持截断/四舍五入/尾部填充零
-- **exg.go**: 交易所工具，PrecisionFromString精度提取，SafeParams参数安全复制，ParseTimeFrame解析时间周期字符串
-- **file.go**: 文件操作，ReadFile/WriteFile/ReadJsonFile/WriteJsonFile文件读写，WriteCacheFile/ReadCacheFile缓存文件（支持过期时间），GetCacheDir获取系统缓存目录（跨平台支持）
-- **misc.go**: 杂项工具，UUID生成随机ID，ArrSum/ArrContains数组操作，UrlEncodeMap/EncodeURIComponent URL编码，GetMapVal/PopMapVal/SafeMapVal泛型字典取值（支持切片类型转换），SetFieldBy字段设置，OmitMapKeys删除键，MapValStr值转字符串，SafeParams安全复制参数，EqualNearly浮点数近似相等，GetSystemProxy/GetSystemEnvProxy代理配置，Marshal/Unmarshal序列化（基于sonic），KeysOfMap/ValsOfMap字典键值提取，DecodeStructMap结构体转字典，IsNil空值判断
-- **num_utils.go**: 数值工具，ParseNum字符串转数值
-- **text.go**: 文本工具，UcFirst首字母大写
-- **tf_utils.go**: 时间周期工具，TFToSecs/TFToSecSafe时间周期转秒数（支持s/m/h/d/w/M/q/Y单位），SecsToTF秒数转时间周期，AlignTfSecs/AlignTfMSecs时间戳对齐到周期头部，AlignTfSecsOffset/AlignTfMSecsOffset带偏移对齐，GetTfAlignOrigin获取对齐基准，RegTfSecs注册自定义时间周期
+- **common.go**: 时间工具（YMD日期格式化/ISO8601转换），SplitParts字符串分段，ParseTimeRanges时间范围解析
+- **crypto.go**: Signature统一签名接口（method支持rsa/eddsa/hmac，hashName支持sha256等，digest支持base64/hex），rsaSign/Eddsa/HMAC具体实现，loadPrivateKey私钥加载
+- **dec_precs.go**: DecToPrec精度格式化（支持DecimalPlace/SignifDigits/TickSize三种模式），isRound四舍五入，基于decimal高精度计算
+- **exg.go**: PrecisionFromString精度提取，SafeParams参数安全复制，ParseTimeFrame解析时间周期（支持s/m/h/d/w/M/y单位）
+- **file.go**: 文件操作（WriteFile/ReadFile/WriteJsonFile/ReadJsonFile），缓存文件（WriteCacheFile/ReadCacheFile支持过期），GetCacheDir跨平台缓存目录
+- **misc.go**: UUID随机ID生成，ArrContains泛型包含检查，Marshal/Unmarshal JSON序列化，GetSystemProxy系统代理获取，GetMapVal泛型字典取值等辅助工具
+- **tf_utils.go**: TFOrigin时间周期对齐原点，RegTfSecs注册自定义周期，parseTimeFrame解析周期（支持s/m/h/d/w/M/q/Y），AlignTfSecs/AlignTfMSecs时间戳对齐
 
 ### 交易所实现层
 
 #### binance/ - Binance交易所完整实现
-- **entry.go**: 交易所入口，New构造函数（ExgInfo/Hosts配置/Fees费率/Apis路由表），TestNet和Prod双环境配置，支持现货/杠杆/U本位/币本位/期权五大市场，HTTP和WebSocket端点配置
-- **data.go**: 常量定义，Host类型常量（HostSApi/HostDApiPublic/HostFApiPrivate/HostEApiPublic/HostPApi/WssApi等），OptRecvWindow配置项，订单状态/类型映射（OdStatus/OdType/OdSide等），400+ MethodXXX方法名常量（涵盖现货/杠杆/合约/期权所有API）
-- **types.go**: 数据结构，Binance主结构体（RecvWindow/streamIndex/streamBySubHash/streamLimits/wsRequestId/LeverageBrackets），Bnb前缀的原始响应结构体（BnbCurrency/BnbNetwork/BnbMarket/BnbFilter/BnbTicker/BnbOrder/BnbPosition/BnbKline等），账户结构（SpotAccount/SpotAsset/MarginCrossBalances），LinearSymbolLvgBrackets/InversePairLvgBrackets杠杆档位
-- **biz.go**: 业务逻辑入口，Init初始化（RecvWindow/CareMarkets/streamIndex/streamLimits/wsRequestId/重放处理注册/CalcRateLimiterCost），markRiskyApis危险API标记（order/leverage/transfer等路径），makeSign签名函数（HMAC-SHA256签名/recvWindow时间窗口/账户权限检查/NoTrade限制）
-- **account_access.go**: 账户访问权限，FetchAccountAccess提取账户权限信息（canTrade/canWithdraw/dualSidePosition/permissions）
-- **biz_account.go**: 账户信息，FetchAccounts查询账户列表
-- **biz_balance.go**: 资产查询，FetchBalance资产余额（现货/杠杆/合约统一处理），parseBalance余额解析（Spot/Margin/Linear/Inverse四种市场），FetchPositions持仓查询（Linear/Inverse合约），parsePosition持仓解析
-- **biz_order.go**: 订单查询，FetchOrder单个订单查询，FetchOrders历史订单列表，FetchOpenOrders未完成订单，parseOrder泛型订单解析器（SpotOrder/MarginOrder/LinearOrder/InverseOrder），订单状态映射parseOrderStatus
-- **biz_order_create.go**: 订单创建，CreateOrder下单（Spot/Margin/Linear/Inverse/Option），EditOrder改单，参数校验与转换（amount/price/stopPrice/leverage）
-- **biz_order_algo.go**: 算法订单，条件单/止盈止损单创建，算法订单查询与取消
-- **biz_order_book.go**: 订单簿，FetchOrderBook深度数据查询
-- **biz_ticker.go**: 行情数据，FetchTicker单个行情，FetchTickers批量行情，parseTickers泛型行情解析器（SpotTicker/LinearTicker/InverseTicker/OptionTicker），FetchOHLCV K线数据（Spot/Linear/Inverse/Option），FetchLastPrices最新价，FetchFundingRate/FetchFundingRates资金费率
-- **common.go**: 通用转换，BnbMarket.GetPrecision精度提取（QuantityPrecision/PricePrecision/QuantityScale/PriceScale），BnbMarket.GetMarketLimits限额转换（PRICE_FILTER/LOT_SIZE/MARKET_LOT_SIZE/MIN_NOTIONAL/NOTIONAL过滤器），LinearSymbolLvgBrackets/InversePairLvgBrackets.ToStdBracket杠杆档位标准化转换
-- **ws_biz.go**: WebSocket业务，makeHandleWsMsg消息路由函数（depthUpdate/trade/kline/markPriceUpdate/24hrTicker/executionReport等20+事件），handleOrderBook/handleTrade/handleOHLCV/handleBalance等具体处理器
-- **ws_order.go**: WebSocket订单，WatchMyTrades我的成交监听，WatchBalance资产变动监听，WatchPositions持仓变动监听，WatchAccountConfig账户配置监听
+- **entry.go**: 交易所入口，New构造函数（ExgInfo基础信息，RateLimit=50ms，Hosts双环境配置，Fees四种市场费率，Apis路由表600+条），支持Spot/Margin/Linear/Inverse/Option五大市场，HTTP和WebSocket端点按市场类型分离
+- **data.go**: Host类型常量24个（HostPublic/HostPrivate/HostFApi/HostDApi/HostSApi等），订单状态常量（OdStatusNew/OdStatusFilled/OdStatusCanceled等），Method方法名常量600+个（按MethodSapi/MethodPublic/MethodFapi/MethodDapi等分类），命名规范Method+ApiType+Action
+- **types.go**: Binance主结构体（RecvWindow/streamBySubHash/LeverageBrackets等），Bnb前缀原始响应结构体（BnbMarket/BnbTicker/BnbOrder/BnbPosition等），SpotAccount/LinearAccount账户结构
+- **biz.go**: 业务逻辑入口，Init初始化（Exchange.Init/RecvWindow/streamLimits/CalcRateLimiterCost/markRiskyApis等），markRiskyApis标记危险API，makeSign签名（HMAC-SHA256/X-MBX-APIKEY/账户权限检查）
+- **account_access.go**: FetchAccountAccess提取账户权限（canTrade/canWithdraw/dualSidePosition/permissions字段）
+- **biz_account.go**: FetchAccounts查询账户列表
+- **biz_balance.go**: FetchBalance资产余额（Spot/Margin/Linear/Inverse统一处理），parseBalance余额解析，FetchPositions持仓查询
+- **biz_order.go**: FetchOrder单个订单查询，FetchOrders历史订单，FetchOpenOrders未完成订单，parseOrder泛型订单解析器
+- **biz_order_create.go**: CreateOrder下单（Spot/Margin/Linear/Inverse/Option），EditOrder改单，参数校验，市场类型路由
+- **biz_order_algo.go**: 算法订单创建（条件单/止盈止损单），算法订单查询与取消
+- **biz_order_book.go**: FetchOrderBook深度数据查询
+- **biz_ticker.go**: FetchTicker单个行情，FetchTickers批量行情，parseTickers泛型行情解析器，FetchOHLCV K线，FetchLastPrices最新价，FetchFundingRate资金费率
+- **common.go**: BnbMarket.GetPrecision精度提取，BnbMarket.GetMarketLimits限额转换（filters过滤器解析），SymbolLvgBrackets.ToStdBracket杠杆档位标准化
+- **ws_biz.go**: makeHandleWsMsg消息路由（depthUpdate/trade/kline/markPriceUpdate/24hrTicker/ACCOUNT_UPDATE/executionReport等20+事件），handleOrderBook/handleTrade/handleBalance/handleOrderUpdate等具体处理器
+- **ws_order.go**: WatchMyTrades我的成交监听，WatchBalance资产变动，WatchPositions持仓变动，WatchAccountConfig账户配置监听，listenKey管理
 
 #### bybit/ - Bybit交易所部分实现
-- **entry.go**: 交易所入口，New构造函数（支持Spot/Linear/Inverse/Option），Apis路由表（涵盖v3/v5两个版本API），TestNet和Prod环境配置，费率配置（Main/Linear/Inverse/Option），HTTP和WebSocket端点配置（按市场类型分离）
-- **data.go**: 常量定义，Host类型（HostPublic/HostPrivate/HostWsPublicSpot/HostWsPublicLinear/HostWsPublicInverse/HostWsPublicOption/HostWsPrivate），300+ MethodXXX方法名常量（Spot/Derivatives/V5多版本），OptRecvWindow配置项，订单状态/时间周期映射表
-- **types.go**: 数据结构，Bybit主结构体（RecvWindow），原始响应结构体
-- **biz.go**: 业务逻辑，Init初始化，makeSign签名函数（HMAC-SHA256/X-BAPI-*头部/openapi与v5双模式签名），markRiskyApis危险API标记
-- **biz_market.go**: 市场加载，LoadMarkets市场数据加载和解析
-- **biz_balance.go**: 资产查询，FetchBalance资产余额查询，FetchPositions持仓查询
-- **biz_order.go**: 订单操作，CreateOrder/EditOrder/CancelOrder/FetchOrder/FetchOrders/FetchOpenOrders
-- **biz_ticker.go**: 行情数据，FetchTicker/FetchTickers/FetchOHLCV/FetchOrderBook/FetchFundingRate
-- **biz_leverage.go**: 杠杆管理，LoadLeverageBrackets/GetLeverage/SetLeverage/CalcMaintMargin
-- **common_util.go**: 通用工具与低层封装（V5Resp/V5ListResult/BybitTime/V5分页cursor/数值解析/retCode映射/FetchAccountAccess/WebSocket重放）
-- **ws_biz.go**: WebSocket业务，消息路由和处理
+- **entry.go**: 交易所入口，New构造函数（支持Spot/Linear/Inverse/Option四种市场），Apis路由表（涵盖V5 API版本），TestNet和Prod双环境配置，费率Main/Linear/Inverse/Option，HTTP端点（HostPublic/HostPrivate），WebSocket端点（HostWsPublicSpot/HostWsPublicLinear/HostWsPublicInverse/HostWsPublicOption/HostWsPrivate按市场分离），Has能力声明
+- **data.go**: Host类型常量（HostPublic/HostPrivate/HostWsPublicSpot/HostWsPublicLinear/HostWsPrivate等），Method方法名常量300+个（MethodV5开头），订单状态/类型/方向映射（orderStatusMap/orderTypeMap/sideMap）
+- **types.go**: Bybit主结构体（RecvWindow接收窗口），V5Resp通用响应结构，V5ListResult列表结构，BybitTime时间类型，原始响应结构体
+- **common_util.go**: V5Resp.ToStdCode/ToErr错误转换，V5ListResult分页处理，BybitTime.UnmarshalJSON时间解析，ParseNum数值解析，FetchAccountAccess账户权限提取
+- **biz_market.go**: LoadMarkets市场数据加载（V5接口），解析instruments为标准市场结构
+- **biz_balance.go**: FetchBalance资产余额（统一账户），FetchPositions持仓查询
+- **biz_order.go**: CreateOrder/EditOrder/CancelOrder订单操作，FetchOrder/FetchOrders/FetchOpenOrders订单查询，按市场类型路由到V5接口
+- **biz_ticker.go**: FetchTicker/FetchTickers行情查询，FetchOHLCV K线，FetchOrderBook订单簿，FetchFundingRate资金费率
+- **biz_leverage.go**: LoadLeverageBrackets加载杠杆档位，GetLeverage获取杠杆，SetLeverage设置杠杆，CalcMaintMargin维持保证金计算
+- **biz_data.go**: FetchLastPrices最新价，数据查询相关接口
+- **ws_biz.go**: makeHandleWsMsg消息路由，handleTicker/handleTrade/handleOrderBook/handleKline处理器
+- **ws_client.go**: WebSocket连接管理，订阅管理，重连逻辑
+- **ws_parse.go**: WebSocket消息解析，事件分发
 
 #### okx/ - OKX交易所完整实现
-- **entry.go**: 交易所入口，New构造函数（支持Spot/Linear/Inverse/Option），Apis路由表（涵盖public/market/account/trade所有端点），REST和WebSocket三端点配置（Public/Private/Business），Has能力声明（FetchTicker/CreateOrder/WatchOrderBooks等30+接口），CredKeys需Password
-- **data.go**: 常量定义，Host类型（HostPublic/HostPrivate/HostWsPublic/HostWsPrivate/HostWsBusiness），OKX字段常量（FldInstType/FldInstId/FldMgnMode/FldPosMode等），WebSocket通道名（WsChanTrades/WsChanBooks/WsChanOrders/WsChanBalAndPos等），instType常量（SPOT/MARGIN/SWAP/FUTURES/OPTION），40+ MethodXXX方法名常量，orderStatusMap/orderTypeMap/posSideMap映射
-- **types.go**: 数据结构，OKX主结构体（LeverageBrackets/WsPendingRecons），Okx前缀原始响应结构体（OkxInstrument/OkxTicker/OkxOrderBook/OkxBalance/OkxPosition/OkxOrder/OkxWsOrder/OkxFundingRate/OkxBill等），WsPendingRecon WebSocket重连待处理结构
-- **biz.go**: 业务逻辑入口，Init初始化，makeSign签名函数（OK-ACCESS-*头部/HMAC-SHA256/base64摘要/Passphrase），markRiskyApis危险API标记，requestRetry泛型请求函数，makeFetchMarkets市场加载
-- **account_access.go**: 账户访问权限，FetchAccountAccess提取账户权限信息
-- **biz_balance.go**: 资产查询，FetchBalance余额（统一账户模式），FetchPositions持仓查询
-- **biz_order.go**: 订单操作，CreateOrder/EditOrder/CancelOrder/FetchOrder/FetchOrders/FetchOpenOrders
-- **biz_order_algo.go**: 算法订单，条件单/止盈止损单创建和管理
-- **biz_ticker.go**: 行情数据，FetchTicker/FetchTickers/FetchOHLCV/FetchOrderBook/FetchFundingRate
-- **biz_leverage.go**: 杠杆管理，LoadLeverageBrackets加载杠杆档位，GetLeverage获取当前杠杆，SetLeverage设置杠杆，CalcMaintMargin计算维持保证金
-- **biz_account_history.go**: 账户历史，FetchIncomeHistory账单流水查询（支持archive归档）
-- **common.go**: 通用工具，marketToInstType市场类型映射，parseMarketType/parseInstrument品种解析，parseOrder/parseTicker数据转换，getInstType/parseWsKey辅助函数
-- **ws_biz.go**: WebSocket业务，makeHandleWsMsg消息路由（trades/books/balance_and_position/orders/mark-price/candle），WatchOrderBooks/WatchTrades/WatchOHLCVs/WatchMarkPrices订阅，WatchMyTrades/WatchBalance/WatchPositions私有订阅，wsLogin认证
+- **entry.go**: 交易所入口，New构造函数（支持Spot/Linear/Inverse/Option），RateLimit=20ms，Hosts双环境三端点，Fees费率Main/Linear，Apis路由表，Has能力声明30+接口，CredKeys需ApiKey/Secret/Password
+- **data.go**: Host常量（HostPublic/HostPrivate/HostWsPublic等），字段常量（FldInstType/FldOrdType等），WebSocket通道名（WsChanTrades/WsChanBooks/WsChanOrders等），Method方法名常量40+个，订单状态/类型映射
+- **types.go**: OKX主结构体（LeverageBrackets/WsPendingRecons），Okx前缀原始响应（OkxInstrument/OkxTicker/OkxOrder/OkxPosition等），WsPendingRecon重连待处理
+- **biz.go**: Init初始化，makeSign签名（OK-ACCESS-*头部，HMAC-SHA256，base64摘要），markRiskyApis危险API标记，requestRetry泛型请求
+- **account_access.go**: FetchAccountAccess提取账户权限（acctLv/posMode/mgnMode等字段）
+- **biz_balance.go**: FetchBalance余额查询（统一账户模式），FetchPositions持仓查询
+- **biz_order.go**: CreateOrder/EditOrder/CancelOrder订单操作，FetchOrder/FetchOrders/FetchOpenOrders订单查询
+- **biz_order_algo.go**: 算法订单创建（条件单/止盈止损/跟踪单），算法订单查询取消
+- **biz_ticker.go**: FetchTicker/FetchTickers行情，FetchOHLCV K线，FetchOrderBook订单簿，FetchFundingRate资金费率
+- **biz_leverage.go**: LoadLeverageBrackets杠杆档位，GetLeverage获取杠杆，SetLeverage设置杠杆，CalcMaintMargin维持保证金
+- **biz_account_history.go**: FetchIncomeHistory账单流水（支持archive归档查询）
+- **common.go**: marketToInstType市场类型映射，parseInstrument品种解析，parseOrder/parseTicker转换
+- **ws_biz.go**: makeHandleWsMsg消息路由（trades/books/balance_and_position/orders/mark-price/candle等），WatchOrderBooks/WatchTrades/WatchOHLCVs/WatchMarkPrices公有订阅，WatchMyTrades/WatchBalance/WatchPositions私有订阅，wsLogin认证
 
-#### china/ - 中国期货交易所（本地模拟）
-- **entry.go**: 交易所入口，New构造函数，无网络请求的本地模拟交易所，Has声明仅支持LoadLeverageBrackets/GetLeverage两个接口
-- **data.go**: 常量定义，defTimeLoc默认时区
-- **types.go**: 数据结构，China主结构体，Exchange交易所信息（Code/Title/IndexUrl/Suffix/CaseLower/DateNum/OptionDash），ItemMarket品种描述（Code/Title/Market/Exchange/Multiplier/PriceTick/LimitChgPct/MarginPct/DayRanges/NightRanges/Fee/Alias），Fee手续费结构（Unit/Val/ValCT/ValTD），CnMarkets配置结构
-- **biz.go**: 业务逻辑，Init初始化，loadRawMarkets从markets.yml加载品种配置（embed嵌入），LoadMarkets市场加载（支持股票/期货），MapMarket品种ID映射（支持年度合约/主连/指数自动识别），parseMarket解析品种符号（处理期货/期权/现货），GetLeverage获取杠杆，CalcMaintMargin计算维持保证金，makeCalcFee手续费计算（wan万分之/lot每手）
-- **common.go**: 通用工具，ItemMarket.Resolve继承解析，ItemMarket.ToStdSymbol/ToRawSymbol品种符号转换，Fee.ParseStd手续费标准化
-- **markets.yml**: 品种配置文件（embed嵌入），包含期货交易所/合约品种基础信息（合约乘数/最小变动价位/涨跌停板/保证金比率/交易时间/手续费等）
+#### china/ - 中国期货交易所本地模拟
+- **entry.go**: New构造函数（ExgInfo基本信息ID/Name/Countries，FixedLvg=true固定杠杆，RateLimit=50ms），无网络请求的本地模拟，Fees仅Linear手续费0.0002，Has声明仅支持LoadLeverageBrackets/GetLeverage，所有其他接口HasFail，makeCalcFee手续费计算
+- **data.go**: defTimeLoc默认时区
+- **types.go**: China主结构体，Exchange交易所信息（Code/Title/Suffix），ItemMarket品种描述（Code/Market/Multiplier/PriceTick/MarginPct/DayRanges/Fee），Fee手续费结构
+- **biz.go**: Init初始化，loadRawMarkets从markets.yml加载品种配置（embed），LoadMarkets市场加载，MapMarket品种ID映射，parseMarket解析品种符号，GetLeverage获取杠杆，makeCalcFee手续费计算
+- **common.go**: ItemMarket.Resolve继承解析，ToStdSymbol/ToRawSymbol品种符号转换，Fee.ParseStd手续费标准化
+- **markets.yml**: 品种配置文件（embed嵌入），期货交易所和合约品种基础信息
 
 ## 项目特点
 本节原内容与上文“技术架构与实现方案”高度重合，已合并到该节以减少重复。
@@ -129,20 +129,23 @@ BanExg 是一个用Go语言开发的多交易所统一SDK类库，旨在为加�
 
 ### 添加新交易所
 1. 在新包中定义交易所结构体，嵌入`*banexg.Exchange`
-2. 实现`BanExchange`接口的所有方法
-3. 在`bex/entrys.go`中注册工厂函数
-4. 参考`binance`包的实现模式
+2. 在entry.go中配置ExgInfo/Hosts/Fees/Apis，实现New构造函数
+3. 实现`BanExchange`接口的核心方法（LoadMarkets/FetchTicker/CreateOrder/FetchBalance等）
+4. 在`bex/entrys.go`中注册工厂函数
+5. 参考binance/okx的完整实现模式
 
-### Binance开发规范
-1. **新增REST API**: data.go定义Method常量 → entry.go注册Apis路由 → types.go定义响应结构 → biz_*.go实现业务方法
-2. **市场与参数**: 所有业务方法首行调用`LoadArgsMarket`预处理参数和市场
-3. **Host选择**: Spot用HostPublic/HostPrivate，U本位用HostFApi*，币本位用HostDApi*，杠杆用HostSApi*，期权用HostEApi*
-4. **错误处理**: 统一使用`*errs.Error`，参数错误用`errs.CodeParamInvalid`
-5. **WebSocket**: 在`ws_biz.go`的`makeHandleWsMsg`中根据`item.Event`路由到具体处理器
+### 新增REST API标准流程
+1. **data.go**: 定义Method常量（命名规范Method+ApiType+Action）
+2. **entry.go**: 在Apis注册路由（Path/Host/Method/Cost）
+3. **types.go**: 定义原始响应结构体（通常以交易所前缀开头）
+4. **biz_*.go**: 实现业务方法（LoadArgsMarket预处理→请求参数准备→RequestApiRetry请求→解析转换为标准结构）
 
-### 通用开发原则
-- 严格遵守DRY原则，避免重复代码，提取公共函数
-- 保持代码简洁，只实现当前需要的功能，不过度设计
-- 所有导出函数添加注释说明参数和返回值
-- 使用`utils`包提供的工具函数，避免重复实现
-- 并发访问共享状态必须加锁保护
+### 通用开发约定
+- **DRY原则**: 避免重复代码，提取公共函数
+- **参数处理**: 业务方法首行调用`LoadArgsMarket`预处理参数和市场
+- **错误处理**: 统一使用`*errs.Error`，参数错误用`errs.CodeParamInvalid`
+- **签名实现**: 在biz.go中实现makeSign函数，赋值给Exchange.Sign
+- **WebSocket**: 在ws_biz.go实现makeHandleWsMsg消息路由，根据event分发到具体处理器
+- **并发安全**: 访问共享状态必须加锁保护（使用deadlock.Mutex）
+- **精度处理**: 使用decimal库保证高精度计算，实现GetPrecision/GetMarketLimits方法
+- **代码风格**: 简洁实用，不过度设计，导出函数添加注释
