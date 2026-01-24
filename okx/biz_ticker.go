@@ -2,6 +2,7 @@ package okx
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
@@ -52,18 +53,29 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
 	// OKX API: after=请求此时间戳之前的数据(ts < after), before=请求此时间戳之后的数据(ts > before)
 	// since表示起始时间，应使用before；until表示结束时间，应使用after
+	// 注意：OKX文档说明 before 单独使用时会返回最新数据，必须配合 after 使用
 	// 减1ms以包含since时间点的K线（before是严格大于）
 	if since > 0 {
 		args[FldBefore] = strconv.FormatInt(since-1, 10)
+		// 必须设置after来限制上界，否则OKX会忽略before返回最新数据
+		if until <= 0 {
+			tfSecs := utils.TFToSecs(timeframe)
+			until = since + int64(limit*tfSecs*1000)
+		}
 	}
 	if until > 0 {
 		args[FldAfter] = strconv.FormatInt(until, 10)
 	}
 	method := MethodMarketGetCandles
-	// history-candles 频率限制更严格，暂不使用
-	// if since > 0 || until > 0 {
-	// 	method = MethodMarketGetHistoryCandles
-	// }
+	// history-candles 用于获取历史K线，当指定since且数据较老时使用
+	// 对于最近的数据（1天内），使用regular candles以获取最新数据
+	if since > 0 {
+		nowMs := time.Now().UnixMilli()
+		// 如果since在1天以前，使用history-candles
+		if nowMs-since > 86400000 {
+			method = MethodMarketGetHistoryCandles
+		}
+	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
 	res := requestRetry[[][]string](e, method, args, tryNum)
 	if res.Error != nil {

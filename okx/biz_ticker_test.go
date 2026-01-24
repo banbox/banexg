@@ -148,6 +148,31 @@ func TestMapTickerInstType(t *testing.T) {
 // These tests are prefixed with TestAPI_ to distinguish them from unit tests.
 // ============================================================================
 
+func assertKlinesAsc(t *testing.T, klines []*banexg.Kline) {
+	t.Helper()
+	for i := 1; i < len(klines); i++ {
+		if klines[i] == nil || klines[i-1] == nil {
+			t.Fatalf("nil kline at %d/%d", i-1, i)
+		}
+		if klines[i].Time <= klines[i-1].Time {
+			t.Fatalf("klines not ascending at %d: prev=%d cur=%d", i, klines[i-1].Time, klines[i].Time)
+		}
+	}
+}
+
+func mustFetchOHLCV(t *testing.T, exg *OKX, symbol, timeframe string, since int64, limit int, params map[string]interface{}) []*banexg.Kline {
+	t.Helper()
+	klines, err := exg.FetchOHLCV(symbol, timeframe, since, limit, params)
+	if err != nil {
+		t.Fatalf("FetchOHLCV(symbol=%s, tf=%s, since=%d, limit=%d, params=%v): %v", symbol, timeframe, since, limit, params, err)
+	}
+	if len(klines) == 0 {
+		t.Fatalf("FetchOHLCV returned empty result (symbol=%s, tf=%s, since=%d, limit=%d, params=%v)", symbol, timeframe, since, limit, params)
+	}
+	assertKlinesAsc(t, klines)
+	return klines
+}
+
 func TestAPI_FetchTicker(t *testing.T) {
 	exg := getExchange(nil)
 	symbol := "BTC/USDT"
@@ -172,17 +197,40 @@ func TestAPI_FetchTickers(t *testing.T) {
 	}
 }
 
-func TestAPI_FetchOHLCV(t *testing.T) {
+func TestApi_FetchOHLCV_Basic(t *testing.T) {
 	exg := getExchange(nil)
 	symbol := "BTC/USDT"
-	since := int64(1704067200000) // 2024-01-01 00:00:00 UTC
-	klines, err := exg.FetchOHLCV(symbol, "1d", since, 10, nil)
-	if err != nil {
-		panic(err)
+	since := int64(1735689600000)
+	klines := mustFetchOHLCV(t, exg, symbol, "1h", since, 10, nil)
+	if len(klines) > 10 {
+		t.Fatalf("expected <= 10 klines, got %d", len(klines))
+	}
+	firstTime, lastTime := int64(0), int64(0)
+	if len(klines) > 0 {
+		firstTime = klines[0].Time
+		lastTime = klines[len(klines)-1].Time
+	}
+	if firstTime != since {
+		t.Fatalf("expected first kline time == since (inclusive). since=%d first=%d", since, firstTime)
 	}
 	t.Logf("fetched %d klines for %s", len(klines), symbol)
+	t.Logf("firstTime=%d, lastTime=%d", firstTime, lastTime)
+}
+
+func TestApi_FetchOHLCV_SinceOnly(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "BTC/USDT"
+	// Use server-returned ts to avoid timezone/alignment issues.
+	ref := mustFetchOHLCV(t, exg, symbol, "4h", 0, 20, nil)
+	since := ref[len(ref)-1].Time
+	klines := mustFetchOHLCV(t, exg, symbol, "4h", since, 100, nil)
+	if klines[0].Time != since {
+		t.Fatalf("expected first kline time == since (inclusive). since=%d first=%d", since, klines[0].Time)
+	}
 	for _, k := range klines {
-		t.Logf("kline: time=%d, O=%v H=%v L=%v C=%v V=%v", k.Time, k.Open, k.High, k.Low, k.Close, k.Volume)
+		if k.Time < since {
+			t.Fatalf("unexpected kline time < since: since=%d k=%d", since, k.Time)
+		}
 	}
 }
 
@@ -204,20 +252,55 @@ func TestAPI_FetchOrderBook(t *testing.T) {
 	}
 }
 
-func TestAPI_FetchOHLCVHistory(t *testing.T) {
+func TestApi_FetchOHLCV_UntilOnly(t *testing.T) {
 	exg := getExchange(nil)
 	symbol := "BTC/USDT"
-	since := int64(1672531200000) // 2023-01-01
-	until := int64(1675209600000) // 2023-02-01
-	klines, err := exg.FetchOHLCV(symbol, "1d", since, 10, map[string]interface{}{
+	ref := mustFetchOHLCV(t, exg, symbol, "4h", 0, 20, nil)
+	until := ref[len(ref)-1].Time
+	klines := mustFetchOHLCV(t, exg, symbol, "4h", 0, 50, map[string]interface{}{
 		banexg.ParamUntil: until,
 	})
-	if err != nil {
-		panic(err)
+	// OKX docs: after=请求此时间戳之前的数据(ts < after)
+	if klines[len(klines)-1].Time >= until {
+		t.Fatalf("expected last kline time < until (exclusive). until=%d last=%d", until, klines[len(klines)-1].Time)
 	}
-	t.Logf("fetched %d history klines for %s", len(klines), symbol)
-	if len(klines) > 0 {
-		t.Logf("first kline: time=%d, O=%v H=%v L=%v C=%v", klines[0].Time, klines[0].Open, klines[0].High, klines[0].Low, klines[0].Close)
+}
+
+func TestApi_FetchOHLCV_SinceUntil(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "BTC/USDT"
+	ref := mustFetchOHLCV(t, exg, symbol, "1h", 0, 80, nil)
+	if len(ref) < 60 {
+		t.Fatalf("need >= 60 reference klines, got %d", len(ref))
+	}
+	since := ref[10].Time
+	until := ref[50].Time
+	if until <= since {
+		t.Fatalf("invalid ref range: since=%d until=%d", since, until)
+	}
+	klines := mustFetchOHLCV(t, exg, symbol, "1h", since, 200, map[string]interface{}{
+		banexg.ParamUntil: until,
+	})
+	if klines[0].Time != since {
+		t.Fatalf("expected first kline time == since (inclusive). since=%d first=%d", since, klines[0].Time)
+	}
+	for _, k := range klines {
+		if k.Time < since || k.Time >= until {
+			t.Fatalf("kline time out of range: since=%d until=%d got=%d", since, until, k.Time)
+		}
+	}
+	if klines[len(klines)-1].Time >= until {
+		t.Fatalf("expected last kline time < until (exclusive). until=%d last=%d", until, klines[len(klines)-1].Time)
+	}
+}
+
+func TestApi_FetchOHLCV_DefaultLimit(t *testing.T) {
+	exg := getExchange(nil)
+	symbol := "BTC/USDT"
+	// limit<=0 should default to 100 internally.
+	klines := mustFetchOHLCV(t, exg, symbol, "1m", 0, 0, nil)
+	if len(klines) != 100 {
+		t.Fatalf("expected default limit to return 100 klines, got %d", len(klines))
 	}
 }
 

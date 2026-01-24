@@ -1,5 +1,5 @@
 from aibaton import run, set_default, start_process, setup_logger, logger
-import os
+import os, re
 import subprocess
 
 '''
@@ -17,7 +17,7 @@ import subprocess
 而工作流为了通用性，划分的任务较细，流程略长，agent交互次数更多。
 
 【agent工作流的好处是？】
-需要人工参与的时间更少，通过定制流程减少错误，让对banexg不太了解的人也可快速对接新交易所
+减少约80%人工参与的时间，通过定制流程减少错误，让对banexg不太了解的人也可快速对接新交易所
 '''
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,13 +29,28 @@ set_default(provider="codex", dangerous_permissions=True, cwd=os.path.dirname(ba
 
 exg_name = 'bybit'
 exg_doc = 'bybit_v5'
+doc_is_single = False # 如果文档是单个超大文件，设置为True
 exg_dir = os.path.join(banexg_dir, exg_name)
 
+read_exg_doc = f"""如果需要{exg_name}接口文档，先阅读{exg_name}_index定位接口文件路径，阅读docs/{exg_doc}下的详细接口文档。也可直接在文件夹下搜索关键词查看相关文档。"""
+if doc_is_single:
+    read_exg_doc = f"""如果需要{exg_name}接口文档，先阅读{exg_name}_index确定接口行号范围，然后阅读docs/{exg_doc}下指定范围的接口文档。也可在文档中按关键词搜索查看相关内容，文档有几万行，严禁阅读全文。"""
+
 gen_doc_index = f"""
-请帮我创建 docs/{exg_name}_index.md 文件，这个文件应该用于描述 docs/{exg_doc} 下的所有文件的路径和每个文件的简单单行介绍。
-用于AI通过此文件快速定位所需功能的路径。请使用最少的文本简要概括每个markdown文件的主要作用。
+docs/{exg_doc} 下的所有文件的路径和每个文件的简单单行介绍。
 {exg_doc}下的每个文件只需读取前20~40行左右即可，每个文件都是一个接口，了解其大概作用即可。
+请帮我创建 docs/{exg_name}_index.md 文件，这个文件是完整文档的索引文件。
+用于AI通过此文件快速定位所需功能的路径。请使用最少的文本简要概括每个markdown文件的主要作用。
 最后创建{exg_name}_index.md ，减少冗余的文字，每个文件都要介绍到。应当分批进行，阅读一批，更新一次文件，然后继续阅读下一批。
+"""
+if doc_is_single:
+    gen_doc_index = f"""
+docs/{exg_doc} 是{exg_name}的全部接口文档，有几万行，严禁阅读全文。
+目前需要生成此接口文档的索引文件，用于从接口名称和描述快速定位所需接口的行号范围。
+已有示例go脚本 docs/parse_test.go 可参考。首先需要明确此文档的格式特点，如何使用程序根据特点进行解析划分。
+请根据 inf.go 了解 banexg要求实现的接口，然后选择有代表性的几个接口（REST/Websocket都涉及），根据关键词从 docs/{exg_doc} 中搜索，然后阅读前后一定范围的文档，了解其格式特点。
+然后修改 parse_test.go 中的相关代码，使其能够正确解析出接口的名称、描述、行号范围等信息。
+最后直接执行此go脚本，生成 docs/{exg_name}_index.md 文件。
 """
 
 pick_plan_step = f"""
@@ -47,7 +62,7 @@ pick_plan_step = f"""
 run_plan_step = f"""
 @docs/help.md @docs/contribute.md  @docs/{exg_name}_dev.md  @docs/{exg_name}_index.md 
 目前需要对接{exg_name}交易所，实现banexg中需要的相关接口。请根据{exg_name}_dev.md 这个详细的实施计划，帮我开始逐步对接{exg_name}交易所。
-根据banexg的已有接口规范和币安、okx的参考，从{exg_name}_index中查找需要的接口，实现接口时根据接口路径从docs/{exg_doc} 下阅读详细文档。
+{read_exg_doc}
 对接过程中始终遵循DRY准则，检查是否有冗余或相似代码，有则提取公共部分，方便维护。
 确保始终遵循banexg的规范要求，和根结构体的相关规范，如果有几个交易所共同的逻辑，则提取到外部公共包的代码文件中。
 现在需要对接的部分是：{{section}}
@@ -56,8 +71,8 @@ run_plan_step = f"""
 run_plan_check = f"""
 @contribute.md @help.md @docs/{exg_name}_dev.md @docs/{exg_name}_index.md 
 目前正在对接{exg_name}，目前已完成 {{section}} 部分，需要检查是否实现有错误或不完善的地方。
+{read_exg_doc}
 请阅读banexg接口和参数要求，适当参考binance中的处理，了解哪些参数和逻辑需要处理。
-然后根据{exg_name}_index定位接口文件路径，阅读docs/{exg_doc}下的详细接口文档。
 注意一些常见重要的参数都需要支持，但部分不常用的，交易所特有的参数无需支持。可参考binance/okx等接口相关方法。
 最后把发现的需要修改或完善的地方总结给我。如果此部分的实现均正确且无缺漏，则在响应最后输出<promise>DONE</promise>。
 请注意只关注 {{section}} 部分。
@@ -89,7 +104,7 @@ run_plan_test = f"""
 @docs/contribute.md @docs/help.md @docs/{exg_name}_dev.md @docs/{exg_name}_index.md 
 目前正在对接{exg_name}，目前已完成 {{section}} 部分，现在需要对这部分完善单元测试用例并确保测试通过。
 单元测试需要两类：一类是简单的函数测试（不发出接口请求）；另一类是实际提交到交易所的接口测试（统一使用`TestApi_`前缀）。可参考binance中的相关单元测试；
-然后根据{exg_name}_index定位接口文件路径，阅读docs/{exg_doc}下的详细接口文档。
+{read_exg_doc}
 首先确保第一类测试完整并全部通过，如果有错误自行分析解决，重复测试直到通过。
 然后开始第二类测试，这些测试应该使用local.json中配置的apiKey和apiSecret创建一个有效的交易所对象，然后调用实际的接口方法和交易所生产环境接口进行交互。
 第二类测试有些需要提前有仓位，可以先执行某个单元测试下单创建仓位，然后测试相关的接口。
@@ -110,11 +125,11 @@ run(gen_doc_index)
 
 logger.info('开始生成实施计划...')
 run(f"""
-@docs/help.md @docs/contribute.md  @docs/{exg_doc}  @docs/{exg_name}_index.md 
+@docs/help.md @docs/contribute.md  @docs/{exg_name}_index.md 
 目前需要对接{exg_name}交易所，实现banexg中需要的相关接口。
 请先阅读help.md和contribute.md，了解banexg的架构和实现规范。明确需要实现的接口。
-然后阅读{exg_name}_index.md 了解{exg_name}提供的所有接口；
-然后随意挑选7个{exg_doc}下的接口文档阅读，了解{exg_name}接口参数和返回数据的格式特点。明确需要如何处理接口数据解析。
+{read_exg_doc}
+然后随意挑选7个{exg_name}的接口文档阅读，了解{exg_name}接口参数和返回数据的格式特点。明确需要如何处理接口数据解析。
 目前主要有两种：binance是接口返回数据完全不同，直接每个接口定义结构体解析即可；okx是接口返回的数据有部分一致，比如全都嵌套在data字段中，这种可以通过泛型传入不同部分，减少代码冗余。
 然后根据banexg中的其他要求，自行从{exg_name}文档中阅读所需信息概要。
 最后综合所有信息，制定一份实施计划；此计划中禁止大段代码，以简洁凝练的风格逐步描述分阶段的实施步骤，但任务粒度要足够小尽可能详细。
@@ -152,10 +167,11 @@ run_plan_steps()
 
 logger.info('开始整体检查是否接口有错误...')
 run(f"""
-@docs/help.md @docs/contribute.md  @docs/{exg_name}_dev.md @docs/{exg_doc}  @docs/{exg_name}_index.md 
+@docs/help.md @docs/contribute.md  @docs/{exg_name}_dev.md  @docs/{exg_name}_index.md 
 目前正在对接{exg_name}交易所，现在已初步实现大部分必要的接口。但仍可能有很多潜在问题或bug或遗漏。
 请先阅读help.md和contribute.md，了解banexg的架构和实现规范。明确需要实现的接口。
-然后阅读{exg_name}_dev.md 了解初步的实施计划方案。再阅读{exg_name}_index.md 了解{exg_name}提供的所有接口；
+然后阅读{exg_name}_dev.md 了解初步的实施计划方案。
+{read_exg_doc}
 注意banexg中涉及的所有交易所接口和各种参数都需要实现，尽可能从接口文档中找到对应的，整理到{exg_name}_dev中
 然后以banexg接口为单位，逐个根据参数，适当参考binance中的参数实现；再阅读{exg_name}中涉及的相关接口文档，对于必要的所有参数都需要支持，检查是否有遗漏或错误。
 将发现的所有错误或遗漏等更新到{exg_name}_dev.md中，简述即可，不需要详细代码描述。把需要修改的部分状态改为待完成。
@@ -212,7 +228,7 @@ def get_ban_exchange_methods():
 
 # 测试驱动开发，每个接口都生成充分的测试用例执行检查
 prg_path = os.path.join(banexg_dir, "docs/tdd_methods.md")
-if not os.path.exists(prg_path):
+if os.path.exists(prg_path):
     with open(prg_path, "r", encoding="utf-8") as f:
         tdd_methods = f.read()
 else:
@@ -232,6 +248,7 @@ for method in methods:
 目前已经完成了{exg_name}交易所的对接，不过接口单元测试还不够全面。请检查{exg_name}包下的 {method} 方法，根据其中涉及的{exg_name}接口，查阅对应的{exg_name}接口文档。
 然后根据当前banexg支持的参数情况，适当参考binance/okx的实现，了解每一个接口的可能的参数组合有哪些。
 根据每种参数组合，都单独生成一个测试用例，确保测试用例能够覆盖到所有可能的参数组合。(比如下单接口市价单、触发单所需参数不同；只是参数值不一样的应视为一个用例)
+单元测试必须使用表格驱动测试，确保测试用例能覆盖所有可能的参数组合，并对输出结果进行检查。
 这些测试用例应该直接发出HTTP请求，所以都以`TestApi_`前缀开头。如果不需要新增单元测试，则直接结束。
 生成的单元测试必须放在方法所在文件对应的_test.go文件中。如method在exg.go中，则放在exg_test.go中。
 执行单元测试前，先执行命令清空仓位和未成交挂单：
@@ -262,7 +279,7 @@ banexg/docs/help.md
 banexg/docs/{exg_name}_index.md
 {{holder}}
 请阅读相关banbot和banexg中{exg_name}的相关代码。帮我分析解决；
-如果需要{exg_name}接口文档，先阅读{exg_name}_index定位接口文件路径，阅读docs/{exg_doc}下的详细接口文档。
+{read_exg_doc}
 深入思考，了解根本原因并解决。只需修复代码即可，可允许单元测试和编译测试，禁止重新执行实盘。
 如果日志符合预期没有异常，无需修复，则在响应最后输出<promise>DONE</promise>。
 """
