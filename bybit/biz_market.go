@@ -2,7 +2,6 @@ package bybit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -20,17 +19,22 @@ func (e *Bybit) Init() *errs.Error {
 	if err != nil {
 		return err
 	}
-	utils.SetFieldBy(&e.RecvWindow, e.Options, OptRecvWindow, 30000)
+	utils.SetFieldBy(&e.RecvWindow, e.Options, banexg.OptRecvWindow, 30000)
 	if len(e.CareMarkets) == 0 {
-		e.CareMarkets = DefCareMarkets
+		e.CareMarkets = banexg.DefaultCareMarkets()
 	}
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true
+	e.OnWsMsg = makeHandleWsMsg(e)
+	e.OnWsReCon = makeHandleWsReCon(e)
+	e.WsAuthed = map[string]bool{}
+	e.WsAuthDone = map[string]chan *errs.Error{}
+	e.WsPendingRecons = map[string]*WsPendingRecon{}
+	e.regReplayHandles()
 	markRiskyApis(e)
 	return nil
 }
 
-// markRiskyApis 标记危险API端点
 func markRiskyApis(e *Bybit) {
 	riskyPaths := []string{
 		"order", "cancel", "batch", "leverage", "margin",
@@ -54,7 +58,6 @@ func makeSign(e *Bybit) banexg.FuncSign {
 	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		var params = utils.SafeParams(args)
 		accID := e.PopAccName(params)
-		// 检查NoTrade限制
 		if err := e.CheckRiskyAllowed(api, accID); err != nil {
 			return &banexg.HttpReq{Error: err, Private: true}
 		}
@@ -147,20 +150,14 @@ func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tr
 	if res.Error != nil {
 		return res
 	}
-	var rsp = struct {
-		RetCode    int             `json:"retCode"`
-		RetMsg     string          `json:"retMsg"`
-		Result     T               `json:"result"`
-		RetExtInfo json.RawMessage `json:"retExtInfo"`
-		Time       int64           `json:"time"`
-	}{}
+	var rsp V5Resp[T]
 	err := utils.UnmarshalString(res.Content, &rsp, utils.JsonNumDefault)
 	if err != nil {
 		res.Error = errs.New(errs.CodeUnmarshalFail, err)
 		return res
 	}
 	if rsp.RetCode != 0 {
-		res.Error = errs.NewMsg(errs.CodeRunTime, "[%v] %s", rsp.RetCode, rsp.RetMsg)
+		res.Error = mapBybitRetCode(rsp.RetCode, rsp.RetMsg)
 	} else {
 		res.Result = rsp.Result
 		e.CacheApiRes(api, res_)
@@ -176,6 +173,11 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 		} else if utils.GetMapVal(params, banexg.ParamAccount, "") == "" {
 			params[banexg.ParamAccount] = ":first"
 		}
+		if ccy := utils.PopMapVal(params, banexg.ParamCurrency, ""); ccy != "" {
+			if _, ok := params["coin"]; !ok {
+				params["coin"] = ccy
+			}
+		}
 		res := requestRetry[struct {
 			Rows []map[string]interface{} `json:"rows"`
 		}](e, MethodPrivateGetV5AssetCoinQueryInfo, params, tryNum)
@@ -183,10 +185,9 @@ func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {
 			return nil, res.Error
 		}
 		var currList = res.Result
-		var currArr []*Currency
-		err := utils.DecodeStructMap(currList.Rows, &currArr, "json")
+		currArr, err := decodeBybitList[*Currency](currList.Rows)
 		if err != nil {
-			return nil, errs.New(errs.CodeUnmarshalFail, err)
+			return nil, err
 		}
 		var result = make(banexg.CurrencyMap)
 		for i, row := range currArr {
@@ -311,22 +312,23 @@ func makeFetchMarkets(e *Bybit) banexg.FuncFetchMarkets {
 
 func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "spot"
-	list, arr, _, _, err := getMarkets[*SpotMarket](e, MethodPublicGetV5MarketInstrumentsInfo, params)
+	delete(params, banexg.ParamLimit)
+	delete(params, banexg.ParamAfter)
+	delete(params, "cursor")
+	list, arr, _, err := getMarketsLoop[*SpotMarket](e, MethodPublicGetV5MarketInstrumentsInfo, params, 0)
 	if err != nil {
 		return nil, err
 	}
 	var result = make(banexg.MarketMap)
 	for i, it := range arr {
-		var amtPrec, pricePrec float64
-		var minOrderQty, maxOrderQty float64
-		var minOrderAmt, maxOrderAmt float64
+		amtPrec, minOrderQty, maxOrderQty, minOrderAmt, maxOrderAmt := it.LotSizeFilter.parse()
+		var quotePrec float64
+		var maxMarketOrderQty float64
 		if it.LotSizeFilter != nil {
-			amtPrec, _ = strconv.ParseFloat(it.LotSizeFilter.BasePrecision, 64)
-			minOrderQty, _ = strconv.ParseFloat(it.LotSizeFilter.MinOrderQty, 64)
-			maxOrderQty, _ = strconv.ParseFloat(it.LotSizeFilter.MaxOrderQty, 64)
-			minOrderAmt, _ = strconv.ParseFloat(it.LotSizeFilter.MinOrderAmt, 64)
-			maxOrderAmt, _ = strconv.ParseFloat(it.LotSizeFilter.MaxOrderAmt, 64)
+			quotePrec = parseBybitNum(it.LotSizeFilter.QuotePrecision)
+			maxMarketOrderQty = parseBybitNum(it.LotSizeFilter.MaxMarketOrderQty)
 		}
+		var pricePrec float64
 		if it.PriceFilter != nil {
 			pricePrec, _ = strconv.ParseFloat(it.PriceFilter.TickSize, 64)
 		}
@@ -342,6 +344,10 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 			ModeAmount: banexg.PrecModeTickSize,
 			Price:      pricePrec,
 			ModePrice:  banexg.PrecModeTickSize,
+			Base:       amtPrec,
+			ModeBase:   banexg.PrecModeTickSize,
+			Quote:      quotePrec,
+			ModeQuote:  banexg.PrecModeTickSize,
 		}
 		mar.Limits = &banexg.MarketLimits{
 			Leverage: &banexg.LimitRange{
@@ -357,6 +363,12 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 				Max: maxOrderAmt,
 			},
 		}
+		if maxMarketOrderQty > 0 {
+			mar.Limits.Market = &banexg.LimitRange{
+				Min: minOrderQty,
+				Max: maxMarketOrderQty,
+			}
+		}
 		mar.Info = list[i]
 		result[mar.Symbol] = mar
 	}
@@ -365,54 +377,48 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 
 func getMarkets[T any](e *Bybit, method string, params map[string]interface{}) ([]map[string]interface{}, []T, string, string, *errs.Error) {
 	tryNum := e.GetRetryNum("FetchMarkets", 1)
-	rsp := requestRetry[struct {
-		Category       string                   `json:"category"`
-		List           []map[string]interface{} `json:"list"`
-		NextPageCursor string                   `json:"nextPageCursor"`
-	}](e, method, params, tryNum)
+	rsp := requestRetry[V5ListResult](e, method, params, tryNum)
 	if rsp.Error != nil {
 		return nil, nil, "", "", rsp.Error
 	}
 	var res = rsp.Result
-	var arr []T
-	if len(res.List) > 0 {
-		err_ := utils.DecodeStructMap(res.List, &arr, "json")
-		if err_ != nil {
-			return nil, nil, "", "", errs.New(errs.CodeUnmarshalFail, err_)
-		}
+	arr, err := decodeBybitList[T](res.List)
+	if err != nil {
+		return nil, nil, "", "", err
 	}
 	return res.List, arr, res.Category, res.NextPageCursor, nil
 }
 
-func getMarketsLoop[T any](e *Bybit, method string, params map[string]interface{}) ([]map[string]interface{}, []T, string, *errs.Error) {
-	if _, ok := params[banexg.ParamLimit]; !ok {
-		params[banexg.ParamLimit] = 1000
+func getMarketsLoop[T any](e *Bybit, method string, params map[string]interface{}, defaultLimit int) ([]map[string]interface{}, []T, string, *errs.Error) {
+	if defaultLimit > 0 {
+		if _, ok := params[banexg.ParamLimit]; !ok {
+			params[banexg.ParamLimit] = defaultLimit
+		}
 	}
 	var category string
 	var items []map[string]interface{}
 	var arrList []T
+	cursor := popV5Cursor(params)
 	for {
-		list, arr, cate, cursor, err := getMarkets[T](e, method, params)
+		setV5Cursor(params, cursor)
+		list, arr, cate, nextCursor, err := getMarkets[T](e, method, params)
 		if err != nil {
 			return nil, nil, "", err
 		}
 		items = append(items, list...)
 		arrList = append(arrList, arr...)
 		category = cate
+		cursor = nextCursor
 		if cursor == "" {
 			break
 		}
-		params["cursor"] = cursor
 	}
 	return items, arrList, category, nil
 }
 
-/*
-https://bybit-exchange.github.io/docs/v5/market/instrument
-*/
 func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	method := MethodPublicGetV5MarketInstrumentsInfo
-	items, arr, category, err := getMarketsLoop[*FutureMarket](e, method, params)
+	items, arr, category, err := getMarketsLoop[*FutureMarket](e, method, params, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +466,14 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 		}
 		mar.Taker = fee.Taker
 		mar.Maker = fee.Maker
-		minOrderQty, maxOrderQty, lotQtyStep := it.LotSizeFilter.parse()
+		minOrderQty, maxOrderQty, lotQtyStep, maxMarketOrderQty := it.LotSizeFilter.parse()
+		if maxOrderQty == 0 {
+			maxOrderQty = maxMarketOrderQty
+		}
+		var minNotional float64
+		if it.LotSizeFilter != nil {
+			minNotional = parseBybitNum(it.LotSizeFilter.MinNotionalValue)
+		}
 		if isInverse {
 			mar.ContractSize = minOrderQty
 		}
@@ -479,6 +492,15 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 			Min: minOrderQty,
 			Max: maxOrderQty,
 		}
+		if maxMarketOrderQty > 0 {
+			mar.Limits.Market = &banexg.LimitRange{
+				Min: minOrderQty,
+				Max: maxMarketOrderQty,
+			}
+		}
+		if minNotional > 0 {
+			mar.Limits.Cost.Min = minNotional
+		}
 		mar.Info = items[i]
 		result[mar.Symbol] = mar
 	}
@@ -488,7 +510,7 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "option"
 	method := MethodPublicGetV5MarketInstrumentsInfo
-	items, arr, _, err := getMarketsLoop[*OptionMarket](e, method, params)
+	items, arr, _, err := getMarketsLoop[*OptionMarket](e, method, params, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +518,17 @@ func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.Market
 	for i, it := range arr {
 		mar := it.ContractMarket.ToStdMarket(e)
 		codeArr := strings.Split(it.Symbol, "-")
-		mar.Symbol = fmt.Sprintf("%s-%s-%s", mar.Symbol, codeArr[2], codeArr[3])
+		symbol := mar.Symbol
+		expiry := parseBybitInt(it.DeliveryTime)
+		if expiry <= 0 && len(codeArr) > 1 {
+			symbol = symbol + "-" + codeArr[1]
+		}
+		if len(codeArr) >= 4 {
+			symbol = fmt.Sprintf("%s-%s-%s", symbol, codeArr[2], codeArr[3])
+		} else if len(codeArr) >= 3 {
+			symbol = fmt.Sprintf("%s-%s", symbol, codeArr[2])
+		}
+		mar.Symbol = symbol
 		mar.Type = banexg.MarketOption
 		mar.Option = true
 		mar.Taker = e.Fees.Option.Taker
@@ -572,176 +604,54 @@ func (m *ContractMarket) ToStdMarket(e *Bybit) *banexg.Market {
 	return mar
 }
 
-/*
-return minOrderQty, maxOrderQty, lotQtyStep
-*/
-func (f *OptionLotSizeFt) parse() (float64, float64, float64) {
-	var minOrderQty, maxOrderQty, lotQtyStep float64
-	if f != nil {
-		minOrderQty, _ = strconv.ParseFloat(f.MinOrderQty, 64)
-		maxOrderQty, _ = strconv.ParseFloat(f.MaxOrderQty, 64)
-		lotQtyStep, _ = strconv.ParseFloat(f.QtyStep, 64)
+func minPositive(vals ...float64) float64 {
+	var res float64
+	for _, val := range vals {
+		if val <= 0 {
+			continue
+		}
+		if res == 0 || val < res {
+			res = val
+		}
 	}
+	return res
+}
+
+func (f *LotSizeFt) parse() (float64, float64, float64, float64, float64) {
+	if f == nil {
+		return 0, 0, 0, 0, 0
+	}
+	amtPrec := parseBybitNum(f.BasePrecision)
+	minOrderQty := parseBybitNum(f.MinOrderQty)
+	maxOrderQty := parseBybitNum(f.MaxOrderQty)
+	minOrderAmt := parseBybitNum(f.MinOrderAmt)
+	maxOrderAmt := parseBybitNum(f.MaxOrderAmt)
+	maxLimitQty := parseBybitNum(f.MaxLimitOrderQty)
+	maxMarketQty := parseBybitNum(f.MaxMarketOrderQty)
+	maxQty := minPositive(maxLimitQty, maxMarketQty)
+	if maxQty > 0 {
+		maxOrderQty = maxQty
+	}
+	return amtPrec, minOrderQty, maxOrderQty, minOrderAmt, maxOrderAmt
+}
+
+func (f *OptionLotSizeFt) parse() (float64, float64, float64) {
+	if f == nil {
+		return 0, 0, 0
+	}
+	minOrderQty := parseBybitNum(f.MinOrderQty)
+	maxOrderQty := parseBybitNum(f.MaxOrderQty)
+	lotQtyStep := parseBybitNum(f.QtyStep)
 	return minOrderQty, maxOrderQty, lotQtyStep
 }
 
-func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
-	args, market, err := e.LoadArgsMarket(symbol, params)
-	if err != nil {
-		return nil, err
+func (f *FutureLotSizeFt) parse() (float64, float64, float64, float64) {
+	if f == nil {
+		return 0, 0, 0, 0
 	}
-	args["symbol"] = market.ID
-	if limit <= 0 {
-		limit = 200
-	}
-	args["limit"] = limit
-	if since > 0 {
-		args["start"] = since
-	}
-	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
-	if until > 0 {
-		args["end"] = until
-	}
-	args["interval"] = utils.TFToSecs(timeframe) / 60
-	var method string
-	if market.Spot {
-		args["categoty"] = "spot"
-		method = MethodPublicGetV5MarketKline
-	} else {
-		price := utils.PopMapVal(args, "price", "")
-		if market.Linear {
-			args["categoty"] = "linear"
-		} else if market.Inverse {
-			args["categoty"] = "inverse"
-		} else {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "not support market: %v", market.Type)
-		}
-		if price == "mark" {
-			method = MethodPublicGetV5MarketMarkPriceKline
-		} else if price == "index" {
-			method = MethodPublicGetV5MarketIndexPriceKline
-		} else if price == "premiumIndex" {
-			method = MethodPublicGetV5MarketPremiumIndexPriceKline
-		} else {
-			method = MethodPublicGetV5MarketKline
-		}
-	}
-	tryNum := e.GetRetryNum("FetchOHLCV", 1)
-	rsp := requestRetry[struct {
-		Symbol   string     `json:"symbol"`
-		Category string     `json:"category"`
-		List     [][]string `json:"list"`
-	}](e, method, args, tryNum)
-	if rsp.Error != nil {
-		return nil, rsp.Error
-	}
-	var res = make([]*banexg.Kline, 0, len(rsp.Result.List))
-	for _, row := range rsp.Result.List {
-		var arr = make([]float64, 0, len(row)-1)
-		stamp, _ := strconv.ParseInt(row[0], 10, 64)
-		for _, str := range row[1:] {
-			val, _ := strconv.ParseFloat(str, 64)
-			arr = append(arr, val)
-		}
-		kline := &banexg.Kline{
-			Time:  stamp,
-			Open:  arr[0],
-			High:  arr[1],
-			Low:   arr[2],
-			Close: arr[3],
-		}
-		if len(arr) >= 6 {
-			kline.Volume = arr[4]
-			kline.Info = arr[5]
-		}
-	}
-	return res, nil
-}
-
-const maxFundRateBatch = 200 // 一次最多返回200个
-
-func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.FundingRate, *errs.Error) {
-	if symbol == "" {
-		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for bybit FetchFundingRateHistory")
-	}
-	if limit <= 0 {
-		limit = maxFundRateBatch
-	}
-	args, market, err := e.LoadArgsMarket(symbol, params)
-	if err != nil {
-		return nil, err
-	}
-	if market.Spot || market.Option {
-		return nil, errs.NewMsg(errs.CodeNotSupport, "only linear/inverse market support")
-	}
-	args["limit"] = min(limit, maxFundRateBatch)
-	args["symbol"] = market.ID
-	args["category"] = market.Type
-	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
-	if since > 0 {
-		args["startTime"] = since
-		if until <= 0 {
-			interval := int64(60 * 60 * 8 * 1000)
-			until = since + int64(limit)*interval
-		}
-	}
-	if until > 0 {
-		args["endTime"] = until
-	}
-	items := make([]*banexg.FundingRate, 0)
-	for {
-		list, hasMore, err := e.getFundRateHis(market.Type, until, args)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, list...)
-		if !hasMore {
-			break
-		}
-		// 有未完成的数据，需要继续请求
-		intv := list[1].Timestamp - list[0].Timestamp
-		since = list[len(list)-1].Timestamp + intv
-		args["startTime"] = since
-	}
-	return items, nil
-}
-
-func (e *Bybit) getFundRateHis(marketType string, until int64, args map[string]interface{}) ([]*banexg.FundingRate, bool, *errs.Error) {
-	method := MethodPublicGetV5MarketFundingHistory
-	tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
-	rsp := requestRetry[struct {
-		Category string                   `json:"category"`
-		List     []map[string]interface{} `json:"list"`
-	}](e, method, args, tryNum)
-	if rsp.Error != nil {
-		return nil, false, rsp.Error
-	}
-	var arr = rsp.Result.List
-	var items = make([]*FundRate, 0, len(arr))
-	err := utils.DecodeStructMap(arr, &items, "json")
-	if err != nil {
-		return nil, false, errs.New(errs.CodeUnmarshalFail, err)
-	}
-	var lastMS int64
-	var list = make([]*banexg.FundingRate, 0, len(rsp.Result.List))
-	for i, it := range items {
-		code := e.SafeSymbol(it.Symbol, "", marketType)
-		stamp, _ := strconv.ParseInt(it.FundingRateTimestamp, 10, 64)
-		if stamp > lastMS {
-			lastMS = stamp
-		}
-		if code == "" {
-			continue
-		}
-		rate, _ := strconv.ParseFloat(it.FundingRate, 64)
-		list = append(list, &banexg.FundingRate{
-			Symbol:      code,
-			FundingRate: rate,
-			Timestamp:   stamp,
-			Info:        arr[i],
-		})
-	}
-	interval := int64(60 * 60 * 8 * 1000)
-	hasMore := until > 0 && len(rsp.Result.List) == maxFundRateBatch && lastMS+interval < until
-	return list, hasMore, nil
+	minOrderQty := parseBybitNum(f.MinOrderQty)
+	maxOrderQty := parseBybitNum(f.MaxOrderQty)
+	lotQtyStep := parseBybitNum(f.QtyStep)
+	maxMarketOrderQty := parseBybitNum(f.MaxMktOrderQty)
+	return minOrderQty, maxOrderQty, lotQtyStep, maxMarketOrderQty
 }

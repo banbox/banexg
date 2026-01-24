@@ -1,7 +1,5 @@
 package binance
 
-import "github.com/banbox/banexg"
-
 const (
 	HostDApiPublic    = "dapiPublic"
 	HostDApiPrivate   = "dapiPrivate"
@@ -23,16 +21,6 @@ const (
 	HostFApiData      = "fapiData"
 	HostPApi          = "papi"
 	WssApi            = "ws"
-)
-
-const (
-	OptRecvWindow = "RecvWindow"
-)
-
-var (
-	DefCareMarkets = []string{
-		banexg.MarketSpot, banexg.MarketLinear, banexg.MarketInverse,
-	}
 )
 
 const (

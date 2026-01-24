@@ -54,10 +54,11 @@ const (
 	ParamDirection               = "direction"
 	ParamDebug                   = "debug"
 	ParamNoCache                 = "noCache"
-	ParamAfter                   = "after"    // Pagination cursor - records after this ID
-	ParamBefore                  = "before"   // Pagination cursor - records before this ID
-	ParamCurrency                = "currency" // Currency code
-	ParamArchive                 = "archive"  // Whether to use archive endpoint
+	ParamAfter                   = "after"       // Pagination cursor - records after this ID
+	ParamBefore                  = "before"      // Pagination cursor - records before this ID
+	ParamCurrency                = "currency"    // Currency code
+	ParamArchive                 = "archive"     // Whether to use archive endpoint
+	ParamSettleCoins             = "settleCoins" // Settlement coins for position queries
 )
 
 var (
@@ -129,6 +130,7 @@ const (
 	OptReplayPath      = "ReplayPath"
 	OptEnv             = "Env"
 	OptWsTimeout       = "WsTimeout"
+	OptRecvWindow      = "RecvWindow"
 )
 
 const (
@@ -136,6 +138,12 @@ const (
 	PrecModeSignifDigits = utils.PrecModeSignifDigits // 保留有效数字位数
 	PrecModeTickSize     = utils.PrecModeTickSize     // 返回给定数字的整数倍
 )
+
+func DefaultCareMarkets() []string {
+	// Return a fresh slice to avoid sharing mutations between exchange instances.
+	markets := []string{MarketSpot, MarketLinear, MarketInverse}
+	return markets
+}
 
 const (
 	MarketSpot    = "spot"   // 现货交易

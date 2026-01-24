@@ -18,7 +18,7 @@ func (e *OKX) Init() *errs.Error {
 		return err
 	}
 	if len(e.CareMarkets) == 0 {
-		e.CareMarkets = DefCareMarkets
+		e.CareMarkets = banexg.DefaultCareMarkets()
 	}
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true

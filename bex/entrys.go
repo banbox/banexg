@@ -13,7 +13,7 @@ import (
 func init() {
 	newExgs = map[string]FuncNewExchange{
 		"binance": binance.NewExchange,
-		"bybit":   bybit.NewExchange,
+		"bybit":   WrapNew(bybit.New),
 		"china":   china.NewExchange,
 		"okx":     okx.NewExchange,
 	}

@@ -12,6 +12,8 @@ func (e *Binance) FetchAccountAccess(params map[string]interface{}) (*banexg.Acc
 	if bal, ok := args[banexg.ParamBalance].(*banexg.Balances); ok && bal != nil {
 		banexg.FillAccountAccessFromInfo(res, bal.Info)
 	}
+	// Remove internal params that should not be sent to API
+	delete(args, banexg.ParamBalance)
 	rsp, err := e.Call(MethodSapiGetAccountApiRestrictions, args)
 	if err != nil {
 		if res.HasAny() {

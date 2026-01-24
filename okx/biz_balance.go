@@ -61,6 +61,7 @@ func (e *OKX) FetchPositions(symbols []string, params map[string]interface{}) ([
 
 func (e *OKX) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
+	delete(args, banexg.ParamSettleCoins) // not supported by okx
 	if len(symbols) > 0 {
 		_, err := e.LoadMarkets(false, nil)
 		if err != nil {

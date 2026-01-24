@@ -1,2 +1,8 @@
 okx.md
 okx_api_index.md
+bybit_v5
+.venv
+*.log
+bybit_dev.md
+bybit_index.md
+tdd_methods.md

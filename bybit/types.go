@@ -2,11 +2,26 @@ package bybit
 
 import (
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
+	"github.com/sasha-s/go-deadlock"
 )
 
 type Bybit struct {
 	*banexg.Exchange
-	RecvWindow int // 允许的和服务器最大毫秒时间差
+	RecvWindow           int // 允许的和服务器最大毫秒时间差
+	LeverageBrackets     map[string]*banexg.SymbolLvgBrackets
+	LeverageBracketsLock deadlock.Mutex
+	WsAuthLock           deadlock.Mutex
+	WsAuthed             map[string]bool
+	WsAuthDone           map[string]chan *errs.Error
+	WsPendingRecons      map[string]*WsPendingRecon
+}
+
+// orderRef is shared by multiple response structs that carry both orderId/orderLinkId.
+// Keep it unexported to avoid widening the public surface area of the bybit package.
+type orderRef struct {
+	OrderId     string `json:"orderId"`
+	OrderLinkId string `json:"orderLinkId"`
 }
 
 /*
@@ -54,12 +69,15 @@ type SpotMarket struct {
 }
 
 type LotSizeFt struct {
-	BasePrecision  string `json:"basePrecision"`
-	QuotePrecision string `json:"quotePrecision"`
-	MinOrderQty    string `json:"minOrderQty"`
-	MaxOrderQty    string `json:"maxOrderQty"`
-	MinOrderAmt    string `json:"minOrderAmt"`
-	MaxOrderAmt    string `json:"maxOrderAmt"`
+	BasePrecision         string `json:"basePrecision"`
+	QuotePrecision        string `json:"quotePrecision"`
+	MinOrderQty           string `json:"minOrderQty"`
+	MaxOrderQty           string `json:"maxOrderQty"`
+	MinOrderAmt           string `json:"minOrderAmt"`
+	MaxOrderAmt           string `json:"maxOrderAmt"`
+	MaxLimitOrderQty      string `json:"maxLimitOrderQty"`
+	MaxMarketOrderQty     string `json:"maxMarketOrderQty"`
+	PostOnlyMaxLimitOrder string `json:"postOnlyMaxLimitOrderSize"`
 }
 
 type PriceFt struct {
@@ -189,4 +207,148 @@ type FundRate struct {
 	Symbol               string `json:"symbol"`
 	FundingRate          string `json:"fundingRate"`
 	FundingRateTimestamp string `json:"fundingRateTimestamp"`
+}
+
+/*
+*****************************   Account / Position   ***********************************
+ */
+
+type WalletBalanceResult struct {
+	List []map[string]interface{} `json:"list"`
+}
+
+type WalletBalance struct {
+	AccountType            string              `json:"accountType"`
+	AccountIMRate          string              `json:"accountIMRate"`
+	AccountMMRate          string              `json:"accountMMRate"`
+	TotalEquity            string              `json:"totalEquity"`
+	TotalWalletBalance     string              `json:"totalWalletBalance"`
+	TotalMarginBalance     string              `json:"totalMarginBalance"`
+	TotalAvailableBalance  string              `json:"totalAvailableBalance"`
+	TotalPerpUPL           string              `json:"totalPerpUPL"`
+	TotalInitialMargin     string              `json:"totalInitialMargin"`
+	TotalMaintenanceMargin string              `json:"totalMaintenanceMargin"`
+	Coin                   []WalletBalanceCoin `json:"coin"`
+}
+
+type WalletBalanceCoin struct {
+	Coin            string `json:"coin"`
+	Equity          string `json:"equity"`
+	WalletBalance   string `json:"walletBalance"`
+	Locked          string `json:"locked"`
+	BorrowAmount    string `json:"borrowAmount"`
+	SpotBorrow      string `json:"spotBorrow"`
+	TotalOrderIM    string `json:"totalOrderIM"`
+	TotalPositionIM string `json:"totalPositionIM"`
+	TotalPositionMM string `json:"totalPositionMM"`
+	UnrealisedPnl   string `json:"unrealisedPnl"`
+	Bonus           string `json:"bonus"`
+	CumRealisedPnl  string `json:"cumRealisedPnl"`
+}
+
+type PositionInfo struct {
+	PositionIdx    int    `json:"positionIdx"`
+	Symbol         string `json:"symbol"`
+	Side           string `json:"side"`
+	Size           string `json:"size"`
+	AvgPrice       string `json:"avgPrice"`
+	MarkPrice      string `json:"markPrice"`
+	PositionValue  string `json:"positionValue"`
+	Leverage       string `json:"leverage"`
+	PositionIM     string `json:"positionIM"`
+	PositionMM     string `json:"positionMM"`
+	UnrealisedPnl  string `json:"unrealisedPnl"`
+	LiqPrice       string `json:"liqPrice"`
+	TradeMode      int    `json:"tradeMode"`
+	UpdatedTime    string `json:"updatedTime"`
+	CreatedTime    string `json:"createdTime"`
+	PositionStatus string `json:"positionStatus"`
+}
+
+type RiskLimitInfo struct {
+	ID                int    `json:"id"`
+	Symbol            string `json:"symbol"`
+	RiskLimitValue    string `json:"riskLimitValue"`
+	MaintenanceMargin string `json:"maintenanceMargin"`
+	InitialMargin     string `json:"initialMargin"`
+	IsLowestRisk      int    `json:"isLowestRisk"`
+	MaxLeverage       string `json:"maxLeverage"`
+	MmDeduction       string `json:"mmDeduction"`
+}
+
+/*
+*****************************   Order / Trade   ***********************************
+ */
+
+type OrderResult struct {
+	orderRef
+}
+
+type OrderInfo struct {
+	orderRef
+	Symbol        string `json:"symbol"`
+	Side          string `json:"side"`
+	OrderType     string `json:"orderType"`
+	OrderStatus   string `json:"orderStatus"`
+	TimeInForce   string `json:"timeInForce"`
+	Price         string `json:"price"`
+	Qty           string `json:"qty"`
+	LeavesQty     string `json:"leavesQty"`
+	CumExecQty    string `json:"cumExecQty"`
+	CumExecValue  string `json:"cumExecValue"`
+	CumExecFee    string `json:"cumExecFee"`
+	AvgPrice      string `json:"avgPrice"`
+	TriggerPrice  string `json:"triggerPrice"`
+	TakeProfit    string `json:"takeProfit"`
+	StopLoss      string `json:"stopLoss"`
+	TpLimitPrice  string `json:"tpLimitPrice"`
+	SlLimitPrice  string `json:"slLimitPrice"`
+	StopOrderType string `json:"stopOrderType"`
+	OrderIv       string `json:"orderIv"`
+	MarketUnit    string `json:"marketUnit"`
+	ReduceOnly    bool   `json:"reduceOnly"`
+	PositionIdx   int    `json:"positionIdx"`
+	CreatedTime   string `json:"createdTime"`
+	UpdatedTime   string `json:"updatedTime"`
+}
+
+type ExecutionInfo struct {
+	Symbol string `json:"symbol"`
+	orderRef
+	Side          string `json:"side"`
+	OrderType     string `json:"orderType"`
+	StopOrderType string `json:"stopOrderType"`
+	OrderPrice    string `json:"orderPrice"`
+	OrderQty      string `json:"orderQty"`
+	LeavesQty     string `json:"leavesQty"`
+	ExecId        string `json:"execId"`
+	ExecPrice     string `json:"execPrice"`
+	ExecQty       string `json:"execQty"`
+	ExecValue     string `json:"execValue"`
+	ExecFee       string `json:"execFee"`
+	FeeCurrency   string `json:"feeCurrency"`
+	FeeRate       string `json:"feeRate"`
+	ExecType      string `json:"execType"`
+	ExecTime      string `json:"execTime"`
+	IsMaker       bool   `json:"isMaker"`
+}
+
+type TransLogInfo struct {
+	ID              string `json:"id"`
+	Symbol          string `json:"symbol"`
+	Category        string `json:"category"`
+	Side            string `json:"side"`
+	TransactionTime string `json:"transactionTime"`
+	Type            string `json:"type"`
+	Qty             string `json:"qty"`
+	Size            string `json:"size"`
+	Currency        string `json:"currency"`
+	TradePrice      string `json:"tradePrice"`
+	Funding         string `json:"funding"`
+	Fee             string `json:"fee"`
+	CashFlow        string `json:"cashFlow"`
+	Change          string `json:"change"`
+	FeeRate         string `json:"feeRate"`
+	TradeId         string `json:"tradeId"`
+	orderRef
 }

@@ -372,28 +372,36 @@ func GetWsOutChan[T any](e *Exchange, chanKey string, create func(int) T, args m
 }
 
 func WriteOutChan[T any](e *Exchange, chanKey string, msg T, popIfNeed bool) bool {
+	// Keep lock held during send so DelWsChanRefs can't close the channel concurrently.
+	// Otherwise, we can panic with "send on closed channel" under unsubscribe races.
 	e.lockOutChan.Lock()
 	outRaw, outOk := e.WsOutChans[chanKey]
-	e.lockOutChan.Unlock()
-	if outOk {
-		out, ok := outRaw.(chan T)
-		if !ok {
-			log.Error("out chan type error", zap.String("k", chanKey))
+	if !outOk {
+		e.lockOutChan.Unlock()
+		return false
+	}
+	out, ok := outRaw.(chan T)
+	if !ok {
+		e.lockOutChan.Unlock()
+		log.Error("out chan type error", zap.String("k", chanKey))
+		return false
+	}
+	select {
+	case out <- msg:
+		e.lockOutChan.Unlock()
+		return true
+	default:
+		if !popIfNeed {
+			e.lockOutChan.Unlock()
+			log.Error("out chan full", zap.String("k", chanKey))
 			return false
 		}
-		select {
-		case out <- msg:
-		default:
-			if !popIfNeed {
-				log.Error("out chan full", zap.String("k", chanKey))
-				return false
-			}
-			// chan通道满了，弹出最早的消息，重新发送
-			<-out
-			out <- msg
-		}
+		// chan通道满了，弹出最早的消息，重新发送
+		<-out
+		out <- msg
+		e.lockOutChan.Unlock()
+		return true
 	}
-	return outOk
 }
 
 func (e *Exchange) AddWsChanRefs(chanKey string, keys ...string) {

@@ -92,7 +92,7 @@ func TestTickersToLastPrices(t *testing.T) {
 		{Symbol: "ETH/USDT", Last: 200.1, TimeStamp: 1700000001000},
 		nil,
 	}
-	lasts := tickersToLastPrices(tickers)
+	lasts := banexg.TickersToLastPrices(tickers, nil)
 	if len(lasts) != 2 {
 		t.Fatalf("unexpected last prices len: %d", len(lasts))
 	}
@@ -110,7 +110,7 @@ func TestTickersToPriceMap(t *testing.T) {
 		{Symbol: "ETH/USDT", Last: 200.1},
 		nil,
 	}
-	prices := tickersToPriceMap(tickers)
+	prices := banexg.TickersToPriceMap(tickers, nil)
 	if len(prices) != 2 {
 		t.Fatalf("unexpected price map len: %d", len(prices))
 	}

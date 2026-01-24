@@ -27,6 +27,8 @@ func (e *OKX) FetchAccountAccess(params map[string]interface{}) (*banexg.Account
 	if bal, ok := args[banexg.ParamBalance].(*banexg.Balances); ok && bal != nil {
 		banexg.FillAccountAccessFromInfo(res, bal.Info)
 	}
+	// Remove internal params that should not be sent to API
+	delete(args, banexg.ParamBalance)
 	rsp, err := e.Call(MethodAccountGetConfig, args)
 	if err != nil {
 		if res.HasAny() {

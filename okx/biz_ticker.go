@@ -9,12 +9,7 @@ import (
 )
 
 func (e *OKX) FetchTickers(symbols []string, params map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
-	args := utils.SafeParams(params)
-	marketType, contractType, err := e.LoadArgsMarketType(args, symbols...)
-	if err != nil {
-		return nil, err
-	}
-	return e.fetchTickersByType(marketType, contractType, symbols, args)
+	return e.fetchTickersWithArgs(symbols, params)
 }
 
 func (e *OKX) FetchTicker(symbol string, params map[string]interface{}) (*banexg.Ticker, *errs.Error) {
@@ -78,33 +73,40 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 }
 
 func (e *OKX) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
-	args := utils.SafeParams(params)
-	marketType, contractType, err := e.LoadArgsMarketType(args, symbol)
-	if err != nil {
-		return nil, err
-	}
 	var symbols []string
 	if symbol != "" {
 		symbols = []string{symbol}
 	}
-	tickers, err := e.fetchTickersByType(marketType, contractType, symbols, args)
+	tickers, err := e.fetchTickersWithArgs(symbols, params)
 	if err != nil {
 		return nil, err
 	}
-	return tickersToPriceMap(tickers), nil
+	return banexg.TickersToPriceMap(tickers, nil), nil
 }
 
 func (e *OKX) FetchLastPrices(symbols []string, params map[string]interface{}) ([]*banexg.LastPrice, *errs.Error) {
+	tickers, err := e.fetchTickersWithArgs(symbols, params)
+	if err != nil {
+		return nil, err
+	}
+	return banexg.TickersToLastPrices(tickers, nil), nil
+}
+
+func (e *OKX) loadTickersArgs(symbols []string, params map[string]interface{}) (string, string, map[string]interface{}, *errs.Error) {
 	args := utils.SafeParams(params)
 	marketType, contractType, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
-		return nil, err
+		return "", "", nil, err
 	}
-	tickers, err := e.fetchTickersByType(marketType, contractType, symbols, args)
+	return marketType, contractType, args, nil
+}
+
+func (e *OKX) fetchTickersWithArgs(symbols []string, params map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
+	marketType, contractType, args, err := e.loadTickersArgs(symbols, params)
 	if err != nil {
 		return nil, err
 	}
-	return tickersToLastPrices(tickers), nil
+	return e.fetchTickersByType(marketType, contractType, symbols, args)
 }
 
 func (e *OKX) fetchTickersByType(marketType, contractType string, symbols []string, args map[string]interface{}) ([]*banexg.Ticker, *errs.Error) {
@@ -124,56 +126,12 @@ func (e *OKX) fetchTickersByType(marketType, contractType string, symbols []stri
 		return nil, err
 	}
 	result := make([]*banexg.Ticker, 0, len(arr))
-	var symbolSet map[string]struct{}
-	if len(symbols) > 0 {
-		symbolSet = make(map[string]struct{}, len(symbols))
-		for _, s := range symbols {
-			symbolSet[s] = struct{}{}
-		}
-	}
 	for i, item := range arr {
 		ticker := parseTicker(e, &item, items[i], marketType)
-		if ticker == nil {
-			continue
-		}
-		if symbolSet != nil {
-			if _, ok := symbolSet[ticker.Symbol]; !ok {
-				continue
-			}
-		}
 		result = append(result, ticker)
 	}
-	return result, nil
-}
-
-func tickersToLastPrices(tickers []*banexg.Ticker) []*banexg.LastPrice {
-	if len(tickers) == 0 {
-		return nil
-	}
-	result := make([]*banexg.LastPrice, 0, len(tickers))
-	for _, ticker := range tickers {
-		if ticker == nil || ticker.Symbol == "" {
-			continue
-		}
-		result = append(result, &banexg.LastPrice{
-			Symbol:    ticker.Symbol,
-			Timestamp: ticker.TimeStamp,
-			Price:     ticker.Last,
-			Info:      ticker.Info,
-		})
-	}
-	return result
-}
-
-func tickersToPriceMap(tickers []*banexg.Ticker) map[string]float64 {
-	result := make(map[string]float64)
-	for _, ticker := range tickers {
-		if ticker == nil || ticker.Symbol == "" {
-			continue
-		}
-		result[ticker.Symbol] = ticker.Last
-	}
-	return result
+	symbolSet := banexg.BuildSymbolSet(symbols)
+	return banexg.FilterTickers(result, symbolSet), nil
 }
 
 func (e *OKX) FetchOrderBook(symbol string, limit int, params map[string]interface{}) (*banexg.OrderBook, *errs.Error) {
@@ -187,10 +145,6 @@ func (e *OKX) FetchOrderBook(symbol string, limit int, params map[string]interfa
 		method = MethodMarketGetBooksFull
 		if limit > 5000 {
 			limit = 5000
-		}
-	} else if limit > 0 {
-		if limit > 400 {
-			limit = 400
 		}
 	}
 	if limit > 0 {
@@ -262,8 +216,8 @@ func parseOrderBook(market *banexg.Market, ob *OrderBook, limit int) *banexg.Ord
 	if ob == nil || market == nil {
 		return nil
 	}
-	asks := parseBookSide(ob.Asks)
-	bids := parseBookSide(ob.Bids)
+	asks := utils.ParseBookSide(ob.Asks, parseFloat)
+	bids := utils.ParseBookSide(ob.Bids, parseFloat)
 	return &banexg.OrderBook{
 		Symbol:    market.Symbol,
 		TimeStamp: parseInt(ob.Ts),
@@ -311,20 +265,6 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 	// OKX返回数据是降序的（最新在前），需要反转为升序（最旧在前）以与其他交易所保持一致
 	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
 		res[i], res[j] = res[j], res[i]
-	}
-	return res
-}
-
-func parseBookSide(levels [][]string) [][2]float64 {
-	if len(levels) == 0 {
-		return nil
-	}
-	res := make([][2]float64, 0, len(levels))
-	for _, lvl := range levels {
-		if len(lvl) < 2 {
-			continue
-		}
-		res = append(res, [2]float64{parseFloat(lvl[0]), parseFloat(lvl[1])})
 	}
 	return res
 }

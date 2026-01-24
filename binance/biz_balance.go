@@ -2,14 +2,15 @@ package binance
 
 import (
 	"context"
+	"math"
+	"strconv"
+	"strings"
+
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"go.uber.org/zap"
-	"math"
-	"strconv"
-	"strings"
 )
 
 /*
@@ -147,6 +148,7 @@ FetchAccountPositions
 */
 func (e *Binance) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
 	args := utils.SafeParams(params)
+	delete(args, banexg.ParamSettleCoins) // not supported by binance
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
 		return nil, err
