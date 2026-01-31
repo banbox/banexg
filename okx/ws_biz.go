@@ -1501,7 +1501,7 @@ func parseWsCandleItem(item map[string]interface{}) *banexg.Kline {
 		Low:    low,
 		Close:  closeP,
 		Volume: vol,
-		Info:   info,
+		Quote:  info,
 	}
 }
 

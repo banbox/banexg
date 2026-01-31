@@ -305,7 +305,7 @@ func parseBybitOHLCV(rows [][]string) []*banexg.Kline {
 			Low:    low,
 			Close:  closeP,
 			Volume: vol,
-			Info:   info,
+			Quote:  info,
 		})
 	}
 	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {

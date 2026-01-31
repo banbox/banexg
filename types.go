@@ -408,13 +408,15 @@ type ISymbolLvgBracket interface {
 type OHLCVArr = [6]float64
 
 type Kline struct {
-	Time   int64
-	Open   float64
-	High   float64
-	Low    float64
-	Close  float64
-	Volume float64
-	Info   float64
+	Time      int64
+	Open      float64
+	High      float64
+	Low       float64
+	Close     float64
+	Volume    float64
+	Quote     float64 // volume in quote
+	BuyVolume float64 // taker buy volume
+	TradeNum  int64
 }
 
 type PairTFKline struct {

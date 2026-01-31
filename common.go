@@ -2,16 +2,17 @@ package banexg
 
 import (
 	"fmt"
-	"github.com/banbox/banexg/errs"
-	"github.com/banbox/banexg/log"
-	"github.com/banbox/banexg/utils"
-	"github.com/banbox/bntp"
-	"go.uber.org/zap"
 	"math"
 	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/log"
+	"github.com/banbox/banexg/utils"
+	"github.com/banbox/bntp"
+	"go.uber.org/zap"
 )
 
 func (p *Precision) ToString() string {
@@ -314,13 +315,15 @@ func (b *OrderBook) Update(book *OrderBook) {
 
 func (k *Kline) Clone() *Kline {
 	return &Kline{
-		Time:   k.Time,
-		Open:   k.Open,
-		High:   k.High,
-		Low:    k.Low,
-		Close:  k.Close,
-		Volume: k.Volume,
-		Info:   k.Info,
+		Time:      k.Time,
+		Open:      k.Open,
+		High:      k.High,
+		Low:       k.Low,
+		Close:     k.Close,
+		Volume:    k.Volume,
+		Quote:     k.Quote,
+		BuyVolume: k.BuyVolume,
+		TradeNum:  k.TradeNum,
 	}
 }
 

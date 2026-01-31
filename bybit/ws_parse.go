@@ -377,7 +377,7 @@ func parseBybitWsKlineItem(item map[string]interface{}) *banexg.Kline {
 		Low:    parseBybitNum(item["low"]),
 		Close:  parseBybitNum(item["close"]),
 		Volume: parseBybitNum(item["volume"]),
-		Info:   parseBybitNum(item["turnover"]),
+		Quote:  parseBybitNum(item["turnover"]),
 	}
 }
 

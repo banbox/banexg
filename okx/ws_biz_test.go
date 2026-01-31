@@ -207,8 +207,8 @@ func TestParseWsCandleItem(t *testing.T) {
 	if kline.Open != 100 || kline.High != 110 || kline.Low != 90 || kline.Close != 105 {
 		t.Fatalf("unexpected kline: %+v", kline)
 	}
-	if kline.Info != 300 {
-		t.Fatalf("unexpected kline info: %+v", kline.Info)
+	if kline.Quote != 300 {
+		t.Fatalf("unexpected kline quote: %+v", kline.Quote)
 	}
 }
 

@@ -271,7 +271,7 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 			Low:    low,
 			Close:  closeP,
 			Volume: vol,
-			Info:   info,
+			Quote:  info,
 		})
 	}
 	// OKX返回数据是降序的（最新在前），需要反转为升序（最旧在前）以与其他交易所保持一致
