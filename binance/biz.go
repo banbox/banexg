@@ -81,6 +81,8 @@ func markRiskyApis(e *Binance) {
 
 func makeSign(e *Binance) banexg.FuncSign {
 	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
+		// ParamSettleCoins is introduced for bybit; binance APIs do not support it.
+		delete(args, banexg.ParamSettleCoins)
 		var params = utils.SafeParams(args)
 		accID := e.PopAccName(params)
 		// 检查NoTrade限制
