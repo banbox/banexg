@@ -364,6 +364,79 @@ func validateBybitTimeWindow(args map[string]interface{}) *errs.Error {
 	return nil
 }
 
+func normalizeBybitLoopIntv(loopIntv int64, autoClip bool) (int64, *errs.Error) {
+	if loopIntv <= 0 {
+		return 0, nil
+	}
+	if loopIntv > bybitHistoryWindowMS {
+		if autoClip {
+			return bybitHistoryWindowMS, nil
+		}
+		return 0, errs.NewMsg(errs.CodeParamInvalid, "loopIntv must be within 7 days for bybit (or enable autoClip)")
+	}
+	return loopIntv, nil
+}
+
+func setBybitTimeRangeArgs(args map[string]interface{}, start, end int64) {
+	if start > 0 {
+		args["startTime"] = start
+	} else {
+		delete(args, "startTime")
+	}
+	if end > 0 {
+		args["endTime"] = end
+	} else {
+		delete(args, "endTime")
+	}
+}
+
+func clearBybitPagingArgs(args map[string]interface{}) {
+	// fetchV5List uses and may leave paging cursor/limit in args.
+	delete(args, "cursor")
+}
+
+func bybitLoopTimeRange(since, until, loopIntv int64, direction string, nowMS int64, cb func(start, end int64) (bool, *errs.Error)) *errs.Error {
+	if loopIntv <= 0 {
+		return errs.NewMsg(errs.CodeParamInvalid, "loopIntv is required")
+	}
+	if until <= 0 {
+		until = nowMS
+	}
+	endToStart := (direction == "" && since == 0) || direction == "endToStart"
+	if endToStart {
+		curEnd := until
+		for {
+			curStart := max(since, curEnd-loopIntv)
+			stop, err := cb(curStart, curEnd)
+			if err != nil || stop {
+				return err
+			}
+			if curStart <= since {
+				return nil
+			}
+			curEnd = curStart
+			if curEnd <= 0 {
+				return nil
+			}
+		}
+	}
+	if since <= 0 {
+		return errs.NewMsg(errs.CodeParamInvalid, "since is required for startToEnd")
+	}
+	curStart := since
+	for {
+		curEnd := min(until, curStart+loopIntv)
+		stop, err := cb(curStart, curEnd)
+		if err != nil || stop {
+			return err
+		}
+		if curEnd >= until {
+			return nil
+		}
+		curStart = curEnd
+	}
+}
+
 func validateBybitOrderExtraArgs(market *banexg.Market, orderType string, args map[string]interface{}) *errs.Error {
 	if market == nil {
 		return nil
@@ -587,6 +660,25 @@ func parseBybitMyTrade(e *Bybit, item *ExecutionInfo, info map[string]interface{
 		State:    state,
 		Info:     info,
 	}
+}
+
+func parseBybitMyTrades(e *Bybit, items []map[string]interface{}, marketType string, symbol string) ([]*banexg.MyTrade, *errs.Error) {
+	arr, err := decodeBybitList[ExecutionInfo](items)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*banexg.MyTrade, 0, len(arr))
+	for i, item := range arr {
+		trade := parseBybitMyTrade(e, &item, items[i], marketType)
+		if trade == nil {
+			continue
+		}
+		if symbol != "" && trade.Symbol != symbol {
+			continue
+		}
+		result = append(result, trade)
+	}
+	return result, nil
 }
 
 func parseBybitIncome(e *Bybit, item *TransLogInfo, info map[string]interface{}, marketType string) *banexg.Income {
@@ -1128,16 +1220,94 @@ func (e *Bybit) FetchOrders(symbol string, since int64, limit int, params map[st
 		return nil, err
 	}
 	applyBybitClientOrderID(args)
-	applyBybitTimeRange(args, since)
-	if err := validateBybitTimeWindow(args); err != nil {
-		return nil, err
-	}
 	tryNum := e.GetRetryNum("FetchOrders", 1)
-	items, err := fetchV5List(e, MethodPrivateGetV5OrderHistory, args, tryNum, limit, 50)
-	if err != nil {
-		return nil, err
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	loopIntv := utils.PopMapVal(args, banexg.ParamLoopIntv, int64(0))
+	direction := utils.PopMapVal(args, banexg.ParamDirection, "")
+	autoClip := utils.PopMapVal(args, banexg.ParamAutoClip, false)
+	loopIntv, err2 := normalizeBybitLoopIntv(loopIntv, autoClip)
+	if err2 != nil {
+		return nil, err2
 	}
-	return parseBybitOrders(e, items, marketType, symbol)
+
+	needLoop := loopIntv > 0
+	if !needLoop {
+		// Single request first; if it violates Bybit's 7-day constraint and autoClip is enabled, fall back to windowed fetch.
+		setBybitTimeRangeArgs(args, since, until)
+		if err := validateBybitTimeWindow(args); err != nil {
+			if !(autoClip && since > 0 && until > 0) {
+				return nil, err
+			}
+			needLoop = true
+			loopIntv = bybitHistoryWindowMS
+		}
+	}
+	if !needLoop {
+		items, err := fetchV5List(e, MethodPrivateGetV5OrderHistory, args, tryNum, limit, 50)
+		if err != nil {
+			return nil, err
+		}
+		return parseBybitOrders(e, items, marketType, symbol)
+	}
+
+	nowMS := e.MilliSeconds()
+	if until <= 0 {
+		until = nowMS
+	}
+	if loopIntv > bybitHistoryWindowMS {
+		// Should never happen due to normalizeBybitLoopIntv, but keep a hard guard here.
+		loopIntv = bybitHistoryWindowMS
+	}
+	result := make([]*banexg.Order, 0)
+	seen := make(map[string]struct{})
+	loopErr := bybitLoopTimeRange(since, until, loopIntv, direction, nowMS, func(start, end int64) (bool, *errs.Error) {
+		clearBybitPagingArgs(args)
+		setBybitTimeRangeArgs(args, start, end)
+		if err := validateBybitTimeWindow(args); err != nil {
+			return true, err
+		}
+		remLimit := limit
+		if limit > 0 {
+			remLimit = limit - len(result)
+			if remLimit <= 0 {
+				return true, nil
+			}
+		}
+		items, err := fetchV5List(e, MethodPrivateGetV5OrderHistory, args, tryNum, remLimit, 50)
+		if err != nil {
+			return true, err
+		}
+		orders, err := parseBybitOrders(e, items, marketType, symbol)
+		if err != nil {
+			return true, err
+		}
+		for _, od := range orders {
+			if od == nil {
+				continue
+			}
+			key := od.ID
+			if key == "" {
+				if od.ClientOrderID != "" {
+					key = od.Symbol + ":" + od.ClientOrderID
+				} else {
+					key = od.Symbol + ":" + strconv.FormatInt(od.Timestamp, 10)
+				}
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, od)
+			if limit > 0 && len(result) >= limit {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if loopErr != nil {
+		return result, loopErr
+	}
+	return result, nil
 }
 
 func (e *Bybit) FetchMyTrades(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.MyTrade, *errs.Error) {
@@ -1149,29 +1319,86 @@ func (e *Bybit) FetchMyTrades(symbol string, since int64, limit int, params map[
 		return nil, err
 	}
 	applyBybitClientOrderID(args)
-	applyBybitTimeRange(args, since)
-	if err := validateBybitTimeWindow(args); err != nil {
-		return nil, err
-	}
 	tryNum := e.GetRetryNum("FetchMyTrades", 1)
-	items, err := fetchV5List(e, MethodPrivateGetV5ExecutionList, args, tryNum, limit, 100)
-	if err != nil {
-		return nil, err
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	loopIntv := utils.PopMapVal(args, banexg.ParamLoopIntv, int64(0))
+	direction := utils.PopMapVal(args, banexg.ParamDirection, "")
+	autoClip := utils.PopMapVal(args, banexg.ParamAutoClip, false)
+	loopIntv, err2 := normalizeBybitLoopIntv(loopIntv, autoClip)
+	if err2 != nil {
+		return nil, err2
 	}
-	arr, err := decodeBybitList[ExecutionInfo](items)
-	if err != nil {
-		return nil, err
+
+	needLoop := loopIntv > 0
+	if !needLoop {
+		setBybitTimeRangeArgs(args, since, until)
+		if err := validateBybitTimeWindow(args); err != nil {
+			if !(autoClip && since > 0 && until > 0) {
+				return nil, err
+			}
+			needLoop = true
+			loopIntv = bybitHistoryWindowMS
+		}
 	}
-	result := make([]*banexg.MyTrade, 0, len(arr))
-	for i, item := range arr {
-		trade := parseBybitMyTrade(e, &item, items[i], marketType)
-		if trade == nil {
-			continue
+	if !needLoop {
+		items, err := fetchV5List(e, MethodPrivateGetV5ExecutionList, args, tryNum, limit, 100)
+		if err != nil {
+			return nil, err
 		}
-		if symbol != "" && trade.Symbol != symbol {
-			continue
+		return parseBybitMyTrades(e, items, marketType, symbol)
+	}
+
+	nowMS := e.MilliSeconds()
+	if until <= 0 {
+		until = nowMS
+	}
+	if loopIntv > bybitHistoryWindowMS {
+		loopIntv = bybitHistoryWindowMS
+	}
+	result := make([]*banexg.MyTrade, 0)
+	seen := make(map[string]struct{})
+	loopErr := bybitLoopTimeRange(since, until, loopIntv, direction, nowMS, func(start, end int64) (bool, *errs.Error) {
+		clearBybitPagingArgs(args)
+		setBybitTimeRangeArgs(args, start, end)
+		if err := validateBybitTimeWindow(args); err != nil {
+			return true, err
 		}
-		result = append(result, trade)
+		remLimit := limit
+		if limit > 0 {
+			remLimit = limit - len(result)
+			if remLimit <= 0 {
+				return true, nil
+			}
+		}
+		items, err := fetchV5List(e, MethodPrivateGetV5ExecutionList, args, tryNum, remLimit, 100)
+		if err != nil {
+			return true, err
+		}
+		trades, err := parseBybitMyTrades(e, items, marketType, symbol)
+		if err != nil {
+			return true, err
+		}
+		for _, t := range trades {
+			if t == nil {
+				continue
+			}
+			key := t.ID
+			if key == "" {
+				key = t.Symbol + ":" + strconv.FormatInt(t.Timestamp, 10)
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, t)
+			if limit > 0 && len(result) >= limit {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if loopErr != nil {
+		return result, loopErr
 	}
 	return result, nil
 }

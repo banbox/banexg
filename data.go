@@ -52,13 +52,16 @@ const (
 	ParamRetry                   = "retry"
 	ParamLoopIntv                = "loopIntv"
 	ParamDirection               = "direction"
-	ParamDebug                   = "debug"
-	ParamNoCache                 = "noCache"
-	ParamAfter                   = "after"       // Pagination cursor - records after this ID
-	ParamBefore                  = "before"      // Pagination cursor - records before this ID
-	ParamCurrency                = "currency"    // Currency code
-	ParamArchive                 = "archive"     // Whether to use archive endpoint
-	ParamSettleCoins             = "settleCoins" // Settlement coins for position queries
+	// ParamAutoClip allows an exchange adapter to automatically clip/split parameters (e.g. time range)
+	// to satisfy exchange-specific constraints instead of returning an error.
+	ParamAutoClip    = "autoClip"
+	ParamDebug       = "debug"
+	ParamNoCache     = "noCache"
+	ParamAfter       = "after"       // Pagination cursor - records after this ID
+	ParamBefore      = "before"      // Pagination cursor - records before this ID
+	ParamCurrency    = "currency"    // Currency code
+	ParamArchive     = "archive"     // Whether to use archive endpoint
+	ParamSettleCoins = "settleCoins" // Settlement coins for position queries
 )
 
 var (
