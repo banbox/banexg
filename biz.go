@@ -28,11 +28,30 @@ import (
 	"go.uber.org/zap"
 )
 
-func (e *Exchange) Init() *errs.Error {
-	e.HttpClient = &http.Client{}
-	// 代理解析：优先传入Proxy，其次环境变量HTTP(S)_PROXY，最后系统代理配置
-	proxyUrl := utils.GetMapVal(e.Options, OptProxy, "")
+// globalProxy holds the process-wide HTTP proxy function set via SetProxy.
+// It is applied by NewHttpClient and as a fallback in Exchange.Init.
+var globalProxy func(*http.Request) (*url.URL, error)
+
+// SetProxy sets a process-wide HTTP proxy.  It also patches
+// http.DefaultTransport so that any code using http.Get / http.DefaultClient
+// automatically goes through the proxy.
+//   - "no"    : explicitly disable proxy
+//   - ""      : if globalProxy is already set, keep it; otherwise try
+//     HTTPS_PROXY / HTTP_PROXY env, then system proxy
+//   - other   : use as proxy URL
+func SetProxy(proxyUrl string) *errs.Error {
+	if proxyUrl == "no" {
+		globalProxy = nil
+		if t, ok := http.DefaultTransport.(*http.Transport); ok {
+			t.Proxy = http.ProxyFromEnvironment
+		}
+		return nil
+	}
 	if proxyUrl == "" {
+		if globalProxy != nil {
+			return nil
+		}
+		// 尝试从环境变量和系统代理中解析
 		proxyUrl = utils.GetSystemEnvProxy()
 		if proxyUrl == "" {
 			prx, err := utils.GetSystemProxy()
@@ -42,17 +61,62 @@ func (e *Exchange) Init() *errs.Error {
 				proxyUrl = fmt.Sprintf("%s://%s:%s", prx.Protocol, prx.Host, prx.Port)
 			}
 		}
-	} else if proxyUrl == "no" {
-		proxyUrl = ""
+		if proxyUrl == "" {
+			return nil
+		}
 	}
-	if proxyUrl != "" {
+	parsed, err := url.Parse(proxyUrl)
+	if err != nil {
+		return errs.New(errs.CodeParamInvalid, err)
+	}
+	globalProxy = http.ProxyURL(parsed)
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		t.Proxy = globalProxy
+	}
+	return nil
+}
+
+// GetProxy returns the current global proxy URL string, or empty if not set.
+func GetProxy() string {
+	if globalProxy == nil {
+		return ""
+	}
+	u, err := globalProxy(nil)
+	if err != nil || u == nil {
+		return ""
+	}
+	return u.String()
+}
+
+// NewHttpClient creates an *http.Client that inherits the global proxy set
+// via SetProxy.  Callers may further customise the returned client.
+func NewHttpClient() *http.Client {
+	client := &http.Client{}
+	if globalProxy != nil {
+		client.Transport = &http.Transport{Proxy: globalProxy}
+	}
+	return client
+}
+
+func (e *Exchange) Init() *errs.Error {
+	e.HttpClient = &http.Client{}
+	// 代理解析：优先传入Proxy(no表示禁用)，其次全局代理(含env/system自动检测)
+	proxyUrl := utils.GetMapVal(e.Options, OptProxy, "")
+	if proxyUrl == "no" {
+		// 显式禁用代理
+	} else if proxyUrl != "" {
 		proxy, err := url.Parse(proxyUrl)
 		if err != nil {
 			return errs.New(errs.CodeParamInvalid, err)
 		}
 		e.Proxy = http.ProxyURL(proxy)
-		e.HttpClient.Transport = &http.Transport{
-			Proxy: e.Proxy,
+		e.HttpClient.Transport = &http.Transport{Proxy: e.Proxy}
+	} else {
+		// 空字符串：尝试触发全局自动检测，然后使用全局代理
+		_ = SetProxy("")
+		if globalProxy != nil {
+			e.Proxy = globalProxy
+			e.HttpClient.Transport = &http.Transport{Proxy: globalProxy}
 		}
 	}
 	e.parseOptCreds()
