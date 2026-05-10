@@ -2,6 +2,8 @@ package yahoo
 
 import (
 	"testing"
+
+	"github.com/banbox/banexg"
 )
 
 func TestSplitTicker(t *testing.T) {
@@ -96,6 +98,40 @@ func TestParseQuote_OK(t *testing.T) {
 	}
 	if tk.TimeStamp != 1700000000*1000 {
 		t.Errorf("ts want %d, got %d", 1700000000*1000, tk.TimeStamp)
+	}
+}
+
+func TestAggregate_4h(t *testing.T) {
+	// 8 hourly bars starting at 2024-01-01 00:00 UTC → expect 2 bars of 4h.
+	hour := int64(60 * 60 * 1000)
+	t0 := int64(1704067200000) // 2024-01-01T00:00:00Z, aligned to 4h boundary
+	in := []*banexg.Kline{
+		{Time: t0 + 0*hour, Open: 100, High: 102, Low: 99, Close: 101, Volume: 10},
+		{Time: t0 + 1*hour, Open: 101, High: 105, Low: 100, Close: 104, Volume: 20},
+		{Time: t0 + 2*hour, Open: 104, High: 106, Low: 103, Close: 105, Volume: 30},
+		{Time: t0 + 3*hour, Open: 105, High: 107, Low: 102, Close: 106, Volume: 40},
+		{Time: t0 + 4*hour, Open: 106, High: 108, Low: 105, Close: 107, Volume: 50},
+		{Time: t0 + 5*hour, Open: 107, High: 109, Low: 106, Close: 108, Volume: 60},
+		{Time: t0 + 6*hour, Open: 108, High: 110, Low: 107, Close: 109, Volume: 70},
+		{Time: t0 + 7*hour, Open: 109, High: 111, Low: 108, Close: 110, Volume: 80},
+	}
+	out := aggregate(in, 4*hour)
+	if len(out) != 2 {
+		t.Fatalf("want 2 4h bars, got %d", len(out))
+	}
+	if out[0].Time != t0 || out[0].Open != 100 || out[0].Close != 106 ||
+		out[0].High != 107 || out[0].Low != 99 || out[0].Volume != 100 {
+		t.Errorf("bucket0 wrong: %+v", out[0])
+	}
+	if out[1].Time != t0+4*hour || out[1].Open != 106 || out[1].Close != 110 ||
+		out[1].High != 111 || out[1].Low != 105 || out[1].Volume != 260 {
+		t.Errorf("bucket1 wrong: %+v", out[1])
+	}
+}
+
+func TestAggregate_Empty(t *testing.T) {
+	if got := aggregate(nil, 4*60*60*1000); got != nil {
+		t.Errorf("want nil for empty input, got %v", got)
 	}
 }
 

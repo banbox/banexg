@@ -134,3 +134,51 @@ func TestFetchOHLCV_BadSymbol(t *testing.T) {
 		t.Fatal("expected error for unknown symbol")
 	}
 }
+
+// TestFetchOHLCV_AAPL_AllTimeframes hits Yahoo for AAPL across every
+// timeframe the project promises: 1m, 5m, 1h, 4h, 1D, 1W, 1M.
+// Skips when BANEXG_YAHOO_LIVE != 1.
+func TestFetchOHLCV_AAPL_AllTimeframes(t *testing.T) {
+	exg := liveOrSkip(t)
+	cases := []struct {
+		tf      string
+		minBars int
+	}{
+		{"1m", 1},   // intraday recent only (5d window); empty on weekends
+		{"5m", 1},   // last 60d
+		{"1h", 100}, // last 730d
+		{"4h", 25},  // aggregated from 1h
+		{"1D", 200}, // 1y default
+		{"1W", 50},  // weekly, full max
+		{"1M", 12},  // monthly, full max
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.tf, func(t *testing.T) {
+			klines, err := exg.FetchOHLCV("AAPL", c.tf, 0, 0, nil)
+			if err != nil {
+				t.Fatalf("FetchOHLCV %s: %v", c.tf, err)
+			}
+			if len(klines) < c.minBars {
+				t.Fatalf("%s: want >=%d bars, got %d", c.tf, c.minBars, len(klines))
+			}
+			// Sanity: monotonically increasing timestamps, positive OHLC.
+			for i, k := range klines {
+				if k.Open <= 0 || k.High <= 0 || k.Low <= 0 || k.Close <= 0 {
+					t.Errorf("%s bar %d non-positive OHLC: %+v", c.tf, i, k)
+				}
+				if k.High < k.Low {
+					t.Errorf("%s bar %d high<low: %+v", c.tf, i, k)
+				}
+				if i > 0 && k.Time <= klines[i-1].Time {
+					t.Fatalf("%s timestamps not strictly increasing at %d", c.tf, i)
+				}
+			}
+			first, last := klines[0], klines[len(klines)-1]
+			t.Logf("%-3s  %d bars  first=%s O=%.2f C=%.2f  last=%s O=%.2f C=%.2f",
+				c.tf, len(klines),
+				time.UnixMilli(first.Time).UTC().Format("2006-01-02 15:04"), first.Open, first.Close,
+				time.UnixMilli(last.Time).UTC().Format("2006-01-02 15:04"), last.Open, last.Close)
+		})
+	}
+}

@@ -26,12 +26,19 @@ func (e *Yahoo) Init() *errs.Error {
 		"30m": "30m",
 		"60m": "60m",
 		"1h":  "60m",
+		"1H":  "60m",
 		"90m": "90m",
+		// 4h has no native Yahoo interval; FetchOHLCV aggregates from 1h.
+		"4h":  "4h",
+		"4H":  "4h",
 		"1d":  "1d",
+		"1D":  "1d",
 		"5d":  "5d",
 		"1w":  "1wk",
+		"1W":  "1wk",
 		"1wk": "1wk",
 		"1mo": "1mo",
+		"1M":  "1mo",
 		"3mo": "3mo",
 	}
 	e.ExgInfo.Min1mHole = 1
@@ -99,6 +106,22 @@ func (e *Yahoo) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 	interval := e.GetTimeFrame(timeframe)
 	if interval == "" {
 		return nil, errs.NewMsg(errs.CodeInvalidTimeFrame, "unsupported timeframe: %s", timeframe)
+	}
+	// 4h has no native Yahoo interval; fetch 1h and aggregate.
+	if interval == "4h" {
+		baseLimit := 0
+		if limit > 0 {
+			baseLimit = limit * 4
+		}
+		base, err := e.FetchOHLCV(symbol, "1h", since, baseLimit, params)
+		if err != nil {
+			return nil, err
+		}
+		out := aggregate(base, 4*60*60*1000)
+		if limit > 0 && len(out) > limit {
+			out = out[len(out)-limit:]
+		}
+		return out, nil
 	}
 	args := utils.SafeParams(params)
 	args["symbol"] = symbol

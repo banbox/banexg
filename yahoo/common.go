@@ -105,7 +105,7 @@ func chooseRange(interval string, limit int) string {
 		return "5d"
 	case "2m", "5m", "15m", "30m":
 		return "60d"
-	case "60m", "90m":
+	case "60m", "90m", "4h":
 		return "730d"
 	case "1d":
 		if limit > 0 && limit <= 252 {
@@ -162,6 +162,50 @@ func parseChart(body string) ([]*banexg.Kline, *errs.Error) {
 		})
 	}
 	return out, nil
+}
+
+// aggregate groups input klines into buckets of `bucketMs` size, aligned to
+// epoch (i.e. bucket start = floor(t / bucketMs) * bucketMs). Used for
+// timeframes Yahoo doesn't return natively — currently 4h built on 1h.
+// Volumes sum, highs/lows extend, open is taken from the first bar in the
+// bucket, close from the last.
+func aggregate(in []*banexg.Kline, bucketMs int64) []*banexg.Kline {
+	if len(in) == 0 || bucketMs <= 0 {
+		return in
+	}
+	out := make([]*banexg.Kline, 0, len(in))
+	var cur *banexg.Kline
+	var curBucket int64 = -1
+	for _, k := range in {
+		bucket := k.Time / bucketMs
+		if cur == nil || bucket != curBucket {
+			if cur != nil {
+				out = append(out, cur)
+			}
+			cur = &banexg.Kline{
+				Time:   bucket * bucketMs,
+				Open:   k.Open,
+				High:   k.High,
+				Low:    k.Low,
+				Close:  k.Close,
+				Volume: k.Volume,
+			}
+			curBucket = bucket
+			continue
+		}
+		if k.High > cur.High {
+			cur.High = k.High
+		}
+		if k.Low < cur.Low {
+			cur.Low = k.Low
+		}
+		cur.Close = k.Close
+		cur.Volume += k.Volume
+	}
+	if cur != nil {
+		out = append(out, cur)
+	}
+	return out
 }
 
 func parseQuote(body string) ([]*banexg.Ticker, *errs.Error) {
