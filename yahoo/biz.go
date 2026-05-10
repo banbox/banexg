@@ -61,14 +61,9 @@ func (e *Yahoo) Init() *errs.Error {
 func (e *Yahoo) LoadMarkets(reload bool, params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	var symbols []string
 	if params != nil {
-		if v, ok := params[banexg.ParamSymbols]; ok && v != nil {
-			symbols, _ = v.([]string)
-		}
+		symbols = coerceSymbols(params[banexg.ParamSymbols])
 	}
 	for _, s := range symbols {
-		if s == "" {
-			continue
-		}
 		e.registerMarket(buildMarket(s))
 	}
 	e.MarketsLock.Lock()
@@ -185,9 +180,7 @@ func (e *Yahoo) FetchTicker(symbol string, params map[string]interface{}) (*bane
 func (e *Yahoo) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
 	var symbols []string
 	if symbol == "" {
-		if v, ok := params[banexg.ParamSymbols]; ok && v != nil {
-			symbols, _ = v.([]string)
-		}
+		symbols = coerceSymbols(params[banexg.ParamSymbols])
 	} else {
 		symbols = []string{symbol}
 	}

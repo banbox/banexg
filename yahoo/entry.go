@@ -3,12 +3,13 @@ package yahoo
 import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/utils"
 )
 
 func New(Options map[string]interface{}) (*Yahoo, *errs.Error) {
-	if Options == nil {
-		Options = make(map[string]interface{})
-	}
+	// Work on a copy so we don't mutate the caller's map (e.g. injecting our
+	// default User-Agent into a shared option map shared across exchanges).
+	Options = utils.SafeParams(Options)
 	if _, ok := Options[banexg.OptUserAgent]; !ok {
 		Options[banexg.OptUserAgent] = defaultUserAgent
 	}

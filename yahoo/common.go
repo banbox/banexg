@@ -164,6 +164,46 @@ func parseChart(body string) ([]*banexg.Kline, *errs.Error) {
 	return out, nil
 }
 
+// coerceSymbols extracts a []string of tickers from a heterogeneous params
+// value. Callers commonly pass []string, but JSON-decoded params arrive as
+// []interface{} and human-typed config often uses a comma-separated string.
+// Empty/whitespace entries are dropped.
+func coerceSymbols(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case []string:
+		out := make([]string, 0, len(t))
+		for _, s := range t {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			if s, ok := item.(string); ok {
+				if s = strings.TrimSpace(s); s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+		return out
+	case string:
+		parts := strings.Split(t, ",")
+		out := make([]string, 0, len(parts))
+		for _, s := range parts {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // aggregate groups input klines into buckets of `bucketMs` size, aligned to
 // epoch (i.e. bucket start = floor(t / bucketMs) * bucketMs). Used for
 // timeframes Yahoo doesn't return natively — currently 4h built on 1h.

@@ -38,6 +38,21 @@ func TestNewExchange_NoNetwork(t *testing.T) {
 	}
 }
 
+// TestNew_DoesNotMutateOptions guards the regression CodeRabbit flagged on
+// PR #8: New() must not inject defaults into the caller's Options map.
+func TestNew_DoesNotMutateOptions(t *testing.T) {
+	opts := map[string]interface{}{}
+	if _, err := New(opts); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, ok := opts[banexg.OptUserAgent]; ok {
+		t.Errorf("caller's Options was mutated: UserAgent injected")
+	}
+	if len(opts) != 0 {
+		t.Errorf("caller's Options was mutated: extra keys=%v", opts)
+	}
+}
+
 func TestMapMarket_Lazy(t *testing.T) {
 	exg, err := New(nil)
 	if err != nil {

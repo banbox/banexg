@@ -135,6 +135,38 @@ func TestAggregate_Empty(t *testing.T) {
 	}
 }
 
+func TestCoerceSymbols(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want []string
+	}{
+		{"slice", []string{"AAPL", "MSFT"}, []string{"AAPL", "MSFT"}},
+		{"slice_trim", []string{" AAPL ", "", "MSFT"}, []string{"AAPL", "MSFT"}},
+		{"interface_slice", []interface{}{"AAPL", "MSFT"}, []string{"AAPL", "MSFT"}},
+		{"interface_slice_mixed_types", []interface{}{"AAPL", 42, "MSFT"}, []string{"AAPL", "MSFT"}},
+		{"comma_string", "AAPL,MSFT,GOOG", []string{"AAPL", "MSFT", "GOOG"}},
+		{"comma_with_spaces", "AAPL, MSFT , , GOOG", []string{"AAPL", "MSFT", "GOOG"}},
+		{"single_string", "AAPL", []string{"AAPL"}},
+		{"nil", nil, nil},
+		{"unknown_type", 42, nil},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			got := coerceSymbols(c.in)
+			if len(got) != len(c.want) {
+				t.Fatalf("len got=%d want=%d (%v)", len(got), len(c.want), got)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("[%d] got=%q want=%q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestChooseRange(t *testing.T) {
 	cases := map[string]string{
 		"1m":  "5d",
