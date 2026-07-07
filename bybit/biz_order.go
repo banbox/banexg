@@ -77,6 +77,14 @@ func applyBybitPositionIdx(args map[string]interface{}) *errs.Error {
 	return nil
 }
 
+func bybitPositionModeMismatch(err *errs.Error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Message())
+	return err.BizCode == 10001 && strings.Contains(msg, "position idx") && strings.Contains(msg, "position mode")
+}
+
 func normalizeBybitTimeInForce(tif string) string {
 	if tif == "" {
 		return ""
@@ -870,10 +878,13 @@ func (e *Bybit) CreateOrder(symbol, odType, side string, amount, price float64, 
 			return nil, errs.NewMsg(errs.CodeParamRequired, "orderLinkId required for option orders")
 		}
 	}
+	autoPositionIdx := false
 	if market.Contract {
+		_, explicitPositionIdx := args["positionIdx"]
 		if err := ensureBybitPositionIdx(args); err != nil {
 			return nil, err
 		}
+		autoPositionIdx = !explicitPositionIdx && args["positionIdx"] != 0
 	}
 	orderType := bybitOrderTypeFrom(odType, price)
 	args["orderType"] = orderType
@@ -1010,6 +1021,10 @@ func (e *Bybit) CreateOrder(symbol, odType, side string, amount, price float64, 
 	}
 	tryNum := e.GetRetryNum("CreateOrder", 1)
 	res := requestRetry[OrderResult](e, MethodPrivatePostV5OrderCreate, args, tryNum)
+	if bybitPositionModeMismatch(res.Error) && autoPositionIdx {
+		args["positionIdx"] = 0
+		res = requestRetry[OrderResult](e, MethodPrivatePostV5OrderCreate, args, tryNum)
+	}
 	if res.Error != nil {
 		return nil, res.Error
 	}

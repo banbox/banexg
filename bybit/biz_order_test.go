@@ -1087,6 +1087,67 @@ func TestCreateOrderPositionIdxReduceOnly(t *testing.T) {
 	}
 }
 
+func TestCreateOrderAutoPositionIdxFallbacksToOneWay(t *testing.T) {
+	exg := newBybitWithMarket("XRPUSDT", "XRP/USDT:USDT", banexg.MarketLinear)
+	ensureBybitMarketPrecision(exg, "XRP/USDT:USDT")
+	calls := 0
+	setBybitTestRequestWithEndpoint(t, MethodPrivatePostV5OrderCreate, func(params map[string]interface{}) *banexg.HttpRes {
+		calls++
+		switch calls {
+		case 1:
+			if params["positionIdx"] != 1 {
+				t.Fatalf("expected first request positionIdx=1 from positionSide long, got %v", params["positionIdx"])
+			}
+			body := `{"retCode":10001,"retMsg":"position idx not match position mode","result":{},"retExtInfo":{},"time":1700000000000}`
+			return &banexg.HttpRes{Status: 200, Content: body}
+		case 2:
+			if params["positionIdx"] != 0 {
+				t.Fatalf("expected retry positionIdx=0 for one-way mode, got %v", params["positionIdx"])
+			}
+			body := `{"retCode":0,"retMsg":"OK","result":{"orderId":"order-oneway","orderLinkId":""},"retExtInfo":{},"time":1700000000000}`
+			return &banexg.HttpRes{Status: 200, Content: body}
+		default:
+			t.Fatalf("unexpected extra request: %d", calls)
+			return nil
+		}
+	})
+	order, err := exg.CreateOrder("XRP/USDT:USDT", banexg.OdTypeMarket, banexg.OdSideBuy, 10, 0, map[string]interface{}{
+		banexg.ParamPositionSide: banexg.PosSideLong,
+	})
+	if err != nil {
+		t.Fatalf("CreateOrder fallback failed: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected two requests, got %d", calls)
+	}
+	if order.ID != "order-oneway" {
+		t.Fatalf("unexpected order id: %s", order.ID)
+	}
+}
+
+func TestCreateOrderExplicitPositionIdxDoesNotFallback(t *testing.T) {
+	exg := newBybitWithMarket("XRPUSDT", "XRP/USDT:USDT", banexg.MarketLinear)
+	ensureBybitMarketPrecision(exg, "XRP/USDT:USDT")
+	calls := 0
+	setBybitTestRequestWithEndpoint(t, MethodPrivatePostV5OrderCreate, func(params map[string]interface{}) *banexg.HttpRes {
+		calls++
+		if params["positionIdx"] != 1 {
+			t.Fatalf("expected explicit positionIdx=1, got %v", params["positionIdx"])
+		}
+		body := `{"retCode":10001,"retMsg":"position idx not match position mode","result":{},"retExtInfo":{},"time":1700000000000}`
+		return &banexg.HttpRes{Status: 200, Content: body}
+	})
+	_, err := exg.CreateOrder("XRP/USDT:USDT", banexg.OdTypeMarket, banexg.OdSideBuy, 10, 0, map[string]interface{}{
+		"positionIdx": 1,
+	})
+	if err == nil || err.BizCode != 10001 {
+		t.Fatalf("expected Bybit position mode error, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one request for explicit positionIdx, got %d", calls)
+	}
+}
+
 func TestCreateOrderSpotMarketByAmount(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT", banexg.MarketSpot)
 	market := ensureBybitMarketPrecision(exg, "BTC/USDT")
