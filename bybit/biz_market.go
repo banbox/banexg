@@ -7,11 +7,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/sasha-s/go-deadlock"
+)
+
+const (
+	bybitRateLimitFallbackDelay = time.Second
+	bybitRateLimitSafetyDelay   = 50 * time.Millisecond
 )
 
 func (e *Bybit) Init() *errs.Error {
@@ -143,26 +149,62 @@ func makeSign(e *Bybit) banexg.FuncSign {
 	}
 }
 
+func isBybitRateLimitCode(retCode int) bool {
+	switch retCode {
+	case 10006, 10429, 20003, 429:
+		return true
+	default:
+		return false
+	}
+}
+
+func bybitRateLimitDelay(headers http.Header, serverTime BybitTime) time.Duration {
+	delay := bybitRateLimitFallbackDelay
+	if resetText := headers.Get("X-Bapi-Limit-Reset-Timestamp"); resetText != "" {
+		if resetMS, err := strconv.ParseInt(resetText, 10, 64); err == nil {
+			baseMS := int64(serverTime)
+			if baseMS <= 0 {
+				baseMS = time.Now().UnixMilli()
+			}
+			if waitMS := resetMS - baseMS; waitMS > 0 {
+				delay = time.Duration(waitMS) * time.Millisecond
+			}
+		}
+	}
+	return delay + bybitRateLimitSafetyDelay
+}
+
 func requestRetry[T any](e *Bybit, api string, params map[string]interface{}, tryNum int) *banexg.ApiRes[T] {
+	return requestRetryWithSleep[T](e, api, params, tryNum, time.Sleep)
+}
+
+func requestRetryWithSleep[T any](e *Bybit, api string, params map[string]interface{}, tryNum int, sleep func(time.Duration)) *banexg.ApiRes[T] {
 	noCache := utils.PopMapVal(params, banexg.ParamNoCache, false)
-	res_ := e.RequestApiRetryAdv(context.Background(), api, params, tryNum, !noCache, false)
-	res := &banexg.ApiRes[T]{HttpRes: res_}
-	if res.Error != nil {
-		return res
-	}
-	var rsp V5Resp[T]
-	err := utils.UnmarshalString(res.Content, &rsp, utils.JsonNumDefault)
-	if err != nil {
-		res.Error = errs.New(errs.CodeUnmarshalFail, err)
-		return res
-	}
-	if rsp.RetCode != 0 {
+	retryLeft := max(tryNum, 0)
+	for {
+		res_ := e.RequestApiRetryAdv(context.Background(), api, params, retryLeft, !noCache, false)
+		res := &banexg.ApiRes[T]{HttpRes: res_}
+		if res.Error != nil {
+			return res
+		}
+		var rsp V5Resp[T]
+		err := utils.UnmarshalString(res.Content, &rsp, utils.JsonNumDefault)
+		if err != nil {
+			res.Error = errs.New(errs.CodeUnmarshalFail, err)
+			return res
+		}
+		if rsp.RetCode == 0 {
+			res.Result = rsp.Result
+			e.CacheApiRes(api, res_)
+			return res
+		}
 		res.Error = mapBybitRetCode(rsp.RetCode, rsp.RetMsg)
-	} else {
-		res.Result = rsp.Result
-		e.CacheApiRes(api, res_)
+		if !isBybitRateLimitCode(rsp.RetCode) || retryLeft == 0 {
+			return res
+		}
+		retryLeft--
+		sleep(bybitRateLimitDelay(res.Headers, rsp.Time))
 	}
-	return res
 }
 
 func makeFetchCurr(e *Bybit) banexg.FuncFetchCurr {

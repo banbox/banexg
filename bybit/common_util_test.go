@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
-	"github.com/banbox/banexg"
-	"github.com/banbox/banexg/errs"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 )
 
 // ---- api_account_access_test.go ----
@@ -263,6 +266,101 @@ func TestRequestRetryErrors(t *testing.T) {
 	if res.Error == nil || res.Error.Code != errs.CodeUnmarshalFail {
 		t.Fatalf("expected unmarshal error, got %v", res.Error)
 	}
+}
+
+func TestRequestRetryBybitRateLimit(t *testing.T) {
+	t.Run("recovers", func(t *testing.T) {
+		calls := 0
+		var waits []time.Duration
+		sleep := func(delay time.Duration) {
+			waits = append(waits, delay)
+		}
+		setBybitTestRequest(t, func(_ context.Context, _ string, _ map[string]interface{}, retryNum int, _, _ bool) *banexg.HttpRes {
+			calls++
+			if calls == 1 {
+				if retryNum != 1 {
+					t.Fatalf("expected one retry on first request, got %d", retryNum)
+				}
+				return &banexg.HttpRes{
+					Headers: http.Header{"X-Bapi-Limit-Reset-Timestamp": []string{"2000"}},
+					Content: `{"retCode":10006,"retMsg":"Too many visits","result":{},"time":1000}`,
+				}
+			}
+			if retryNum != 0 {
+				t.Fatalf("expected retries to be consumed, got %d", retryNum)
+			}
+			return &banexg.HttpRes{Content: `{"retCode":0,"retMsg":"OK","result":{"value":"ok"},"time":2000}`}
+		})
+
+		res := requestRetryWithSleep[map[string]string](
+			&Bybit{Exchange: &banexg.Exchange{}},
+			MethodPublicGetV5MarketTime,
+			map[string]interface{}{},
+			1,
+			sleep,
+		)
+		if res.Error != nil {
+			t.Fatalf("expected rate-limit retry to recover, got %v", res.Error)
+		}
+		if calls != 2 || res.Result["value"] != "ok" {
+			t.Fatalf("unexpected retry result: calls=%d result=%v", calls, res.Result)
+		}
+		if len(waits) != 1 || waits[0] != 1050*time.Millisecond {
+			t.Fatalf("unexpected rate-limit wait: %v", waits)
+		}
+	})
+
+	t.Run("exhausted", func(t *testing.T) {
+		calls := 0
+		waits := 0
+		sleep := func(time.Duration) {
+			waits++
+		}
+		setBybitTestRequest(t, func(_ context.Context, _ string, _ map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
+			calls++
+			return &banexg.HttpRes{Content: `{"retCode":10006,"retMsg":"Too many visits","result":{},"time":1000}`}
+		})
+
+		res := requestRetryWithSleep[map[string]interface{}](
+			&Bybit{Exchange: &banexg.Exchange{}},
+			MethodPublicGetV5MarketTime,
+			map[string]interface{}{},
+			1,
+			sleep,
+		)
+		if res.Error == nil || res.Error.Code != errs.CodeSystemBusy || res.Error.BizCode != 10006 {
+			t.Fatalf("expected final 10006 error, got %v", res.Error)
+		}
+		if calls != 2 || waits != 1 {
+			t.Fatalf("unexpected exhausted retry counts: calls=%d waits=%d", calls, waits)
+		}
+	})
+
+	t.Run("nonRateLimit", func(t *testing.T) {
+		calls := 0
+		waits := 0
+		sleep := func(time.Duration) {
+			waits++
+		}
+		setBybitTestRequest(t, func(_ context.Context, _ string, _ map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
+			calls++
+			return &banexg.HttpRes{Content: `{"retCode":10001,"retMsg":"invalid","result":{},"time":1000}`}
+		})
+
+		res := requestRetryWithSleep[map[string]interface{}](
+			&Bybit{Exchange: &banexg.Exchange{}},
+			MethodPublicGetV5MarketTime,
+			map[string]interface{}{},
+			2,
+			sleep,
+		)
+		if res.Error == nil || res.Error.Code != errs.CodeParamInvalid {
+			t.Fatalf("expected parameter error, got %v", res.Error)
+		}
+		if calls != 1 || waits != 0 {
+			t.Fatalf("non-rate-limit error was retried: calls=%d waits=%d", calls, waits)
+		}
+	})
 }
 
 func TestFetchV5ListAll(t *testing.T) {
