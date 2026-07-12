@@ -1140,7 +1140,7 @@ func TestCreateOrderExplicitPositionIdxDoesNotFallback(t *testing.T) {
 	_, err := exg.CreateOrder("XRP/USDT:USDT", banexg.OdTypeMarket, banexg.OdSideBuy, 10, 0, map[string]interface{}{
 		"positionIdx": 1,
 	})
-	if err == nil || err.BizCode != 10001 {
+	if err == nil || err.Code != errs.CodePositionModeConflict {
 		t.Fatalf("expected Bybit position mode error, got %v", err)
 	}
 	if calls != 1 {
@@ -1883,7 +1883,7 @@ func bybitCancelOrderBestEffort(t *testing.T, exg *Bybit, symbol, orderID string
 		if err == nil {
 			return
 		}
-		if err.BizCode == 170213 || err.BizCode == 110001 {
+		if err.Code == errs.CodeOrderNotFound {
 			return
 		}
 		lastErr = err
@@ -2574,8 +2574,8 @@ func bybitCreateSpotLimitWithAttachedTpSl(t *testing.T, exg *Bybit, useLimitTpSl
 		bybitSkipOnTradePermission(t, err)
 		// Spot TP/SL attachment support depends on account/product settings; treat as environment-specific.
 		// See docs/bybit_v5/order/create-order.md.
-		if err.BizCode == 176009 || err.BizCode == 170033 || err.BizCode == 110044 {
-			t.Skipf("skip due to bybit limitations (bizCode=%d): %v", err.BizCode, err)
+		if err.Code == errs.CodeAccountRestricted || err.Code == errs.CodeInsufficientFunds {
+			t.Skipf("skip due to account limitations: %v", err)
 		}
 		t.Fatalf("CreateOrder spot limit with attached TP/SL failed: %v", err)
 	}
@@ -2645,8 +2645,8 @@ func TestApi_CreateOrder_Spot_Limit_MarginMode_IsLeverage(t *testing.T) {
 	if err != nil {
 		bybitSkipOnTradePermission(t, err)
 		// Spot margin may not be enabled for the account/testnet; skip on known Bybit errors.
-		if err.BizCode == 176009 || err.BizCode == 182021 || err.BizCode == 170033 || err.BizCode == 110044 {
-			t.Skipf("skip spot margin order (bizCode=%d): %v", err.BizCode, err)
+		if err.Code == errs.CodeAccountRestricted || err.Code == errs.CodeInsufficientFunds {
+			t.Skipf("skip spot margin order due to account limitations: %v", err)
 		}
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "margin") && strings.Contains(msg, "enable") {
@@ -2999,7 +2999,7 @@ func TestApi_EditOrder_Option_OrderIvOnly(t *testing.T) {
 	if err != nil {
 		bybitSkipOnTradePermission(t, err)
 		msg := strings.ToLower(err.Error())
-		if err.BizCode == 110044 || strings.Contains(msg, "insufficient") {
+		if err.Code == errs.CodeInsufficientFunds || err.Code == errs.CodeInsufficientMargin || strings.Contains(msg, "insufficient") {
 			t.Skipf("skip option orderIv test due to insufficient margin: %v", err)
 		}
 		t.Fatalf("CreateOrder option limit failed: %v", err)
@@ -3034,13 +3034,13 @@ func TestApi_EditOrder_Option_OrderIvOnly(t *testing.T) {
 	}); err != nil {
 		bybitSkipOnTradePermission(t, err)
 		msg := strings.ToLower(err.Error())
-		if err.BizCode == 10001 {
+		if err.Code == errs.CodeParamInvalid {
 			t.Skipf("skip option orderIv test due to ParamInvalid: %v", err)
 		}
-		if err.BizCode == 110001 {
+		if err.Code == errs.CodeOrderNotFound {
 			t.Skipf("skip option orderIv test due to DataNotFound: %v", err)
 		}
-		if err.BizCode == 110044 || strings.Contains(msg, "insufficient") {
+		if err.Code == errs.CodeInsufficientFunds || err.Code == errs.CodeInsufficientMargin || strings.Contains(msg, "insufficient") {
 			t.Skipf("skip option orderIv amend due to insufficient margin: %v", err)
 		}
 		t.Fatalf("EditOrder option orderIv-only failed: %v", err)

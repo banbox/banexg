@@ -2,6 +2,7 @@ package binance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strconv"
@@ -18,10 +19,22 @@ import (
 
 func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 	return func(client *banexg.WsClient, item *banexg.WsMsg) {
+		if item.Event == "" && client.MarketType == banexg.MarketMargin {
+			nested, err := unwrapUserDataEvent(item.Text)
+			if err != nil {
+				log.Warn("decode margin user data event fail", zap.Error(err))
+				return
+			}
+			if nested != nil {
+				item = nested
+			}
+		}
 		if item.Event == "" {
 			if item.ID != "" {
 				// 任务结果返回
-				err := banexg.CheckWsError(item.Object)
+				err := banexg.CheckWsErrorWith(item.Object, func(status int, content string) *errs.Error {
+					return mapBinanceError(nil, status, content)
+				})
 				if err != nil {
 					log.Error("ws job fail", zap.String("job", item.ID), zap.Error(err))
 				} else {
@@ -88,6 +101,16 @@ func makeHandleWsMsg(e *Binance) banexg.FuncOnWsMsg {
 
 func makeHandleWsReCon(e *Binance) banexg.FuncOnWsReCon {
 	return func(client *banexg.WsClient, connID int) *errs.Error {
+		if client.MarketType == banexg.MarketMargin {
+			acc, err := e.GetAccount(client.AccName)
+			if err != nil {
+				return err
+			}
+			acc.LockData.Lock()
+			listenToken := utils.GetMapVal(acc.Data, banexg.MarketMargin+banexg.MidListenKey, "")
+			acc.LockData.Unlock()
+			return e.subscribeMarginUserData(client, connID, listenToken)
+		}
 		subParams := client.GetSubKeys(connID)
 		if len(subParams) == 0 {
 			return nil
@@ -105,7 +128,37 @@ func makeHandleWsReCon(e *Binance) banexg.FuncOnWsReCon {
 }
 
 type AuthRes struct {
-	ListenKey string `json:"listenKey"`
+	ListenKey   string `json:"listenKey"`
+	ListenToken string `json:"listenToken"`
+}
+
+const marginUserDataSubKey = "userDataStream.subscribe.listenToken"
+
+type userDataEventEnvelope struct {
+	Event json.RawMessage `json:"event"`
+}
+
+func unwrapUserDataEvent(content string) (*banexg.WsMsg, error) {
+	var envelope userDataEventEnvelope
+	if err := utils.UnmarshalString(content, &envelope, utils.JsonNumDefault); err != nil {
+		return nil, err
+	}
+	if len(envelope.Event) == 0 || string(envelope.Event) == "null" {
+		return nil, nil
+	}
+	msg, wsErr := banexg.NewWsMsg(string(envelope.Event))
+	if wsErr != nil {
+		return nil, wsErr
+	}
+	return msg, nil
+}
+
+func marginUserDataRequest(id int, listenToken string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":     id,
+		"method": marginUserDataSubKey,
+		"params": map[string]interface{}{"listenToken": listenToken},
+	}
 }
 
 func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface{}) *errs.Error {
@@ -121,21 +174,13 @@ func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface
 	if curTime-lastAuthTime <= refreshDuration {
 		return nil
 	}
-	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := MethodPublicPostUserDataStream
 	if marketType == banexg.MarketLinear {
 		method = MethodFapiPrivatePostListenKey
 	} else if marketType == banexg.MarketInverse {
 		method = MethodDapiPrivatePostListenKey
-	} else if marginMode == banexg.MarginIsolated {
-		method = MethodSapiPostUserDataStreamIsolated
-		marketId, err := e.GetMarketIDByArgs(args, true)
-		if err != nil {
-			return err
-		}
-		args["symbol"] = marketId
 	} else if marketType == banexg.MarketMargin {
-		method = MethodSapiPostUserDataStream
+		method = MethodSapiPostUserListenToken
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
@@ -146,20 +191,32 @@ func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface
 	if err2 != nil {
 		return errs.New(errs.CodeUnmarshalFail, err2)
 	}
+	listenKey := res.ListenKey
+	if marketType == banexg.MarketMargin {
+		listenKey = res.ListenToken
+	}
+	if listenKey == "" {
+		return errs.NewMsg(errs.CodeUnmarshalFail, "listen token missing in response")
+	}
 	acc.LockData.Lock()
 	acc.Data[lastTimeKey] = curTime
-	acc.Data[authField] = res.ListenKey
+	acc.Data[authField] = listenKey
 	acc.LockData.Unlock()
-	refreshAfter := time.Duration(authRefreshSecs) * time.Second
-	time.AfterFunc(refreshAfter, func() {
-		e.keepAliveListenKey(acc, params)
-	})
+	if marketType != banexg.MarketMargin {
+		refreshAfter := time.Duration(authRefreshSecs) * time.Second
+		time.AfterFunc(refreshAfter, func() {
+			e.keepAliveListenKey(acc, params)
+		})
+	}
 	return nil
 }
 
 func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]interface{}) {
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
+	if marketType == banexg.MarketMargin {
+		return
+	}
 	lastTimeKey := marketType + "lastAuthTime"
 	authField := marketType + banexg.MidListenKey
 	acc.LockData.Lock()
@@ -195,22 +252,10 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 		method = MethodDapiPrivatePutListenKey
 	} else {
 		args[banexg.MidListenKey] = listenKey
-		if marketType == banexg.MarketMargin {
-			method = MethodSapiPutUserDataStream
-			marketId, err := e.GetMarketIDByArgs(args, true)
-			if err != nil {
-				log.Error("keepAliveListenKey fail", zap.Error(err))
-				return
-			}
-			args["symbol"] = marketId
-		}
 	}
 	rsp := e.RequestApiRetry(context.Background(), method, args, 1)
 	if rsp.Error != nil {
-		bizErr := rsp.Error.BizCode
-		if bizErr == -1125 || bizErr == -1000 {
-			// {\"code\":-1125,\"msg\":\"This listenKey does not exist.\"}
-			// {\"code\":-1000,\"msg\":\"An unknown error occurred while processing the request.\"}
+		if rsp.Error.Code == errs.CodeStreamExpired || rsp.Error.Code == errs.CodeExchangeError {
 			err := e.postListenKey(acc, params)
 			if err != nil {
 				log.Error("post new listenKey fail", zap.Error(err))
@@ -252,8 +297,28 @@ func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.
 	listenKey := utils.GetMapVal(acc.Data, marketType+banexg.MidListenKey, "")
 	acc.LockData.Unlock()
 	wsUrl := e.GetHost(marketType) + "/" + listenKey
+	if marketType == banexg.MarketLinear {
+		wsUrl = linearPrivateWsHost(e.GetHost(marketType)) + "/" + listenKey
+	} else if marketType == banexg.MarketMargin {
+		wsUrl = e.GetHost(WssApi)
+	}
 	client, err := e.GetClient(wsUrl, marketType, acc.Name)
+	if err == nil && marketType == banexg.MarketMargin && !client.HasSubKeyPrefix(marginUserDataSubKey) {
+		err = e.subscribeMarginUserData(client, 0, listenKey)
+	}
 	return listenKey, client, err
+}
+
+func (e *Binance) subscribeMarginUserData(client *banexg.WsClient, connID int, listenToken string) *errs.Error {
+	if listenToken == "" {
+		return errs.NewMsg(errs.CodeParamRequired, "margin listen token is required")
+	}
+	_, conn := client.UpdateSubs(connID, true, []string{marginUserDataSubKey})
+	if conn == nil {
+		return errs.NewMsg(errs.CodeRunTime, "get margin user data ws conn fail")
+	}
+	id := e.nextId(client)
+	return client.Write(conn, marginUserDataRequest(id, listenToken), nil)
 }
 
 func (e *Binance) WatchBalance(params map[string]interface{}) (chan *banexg.Balances, *errs.Error) {

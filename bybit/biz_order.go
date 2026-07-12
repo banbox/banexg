@@ -82,7 +82,7 @@ func bybitPositionModeMismatch(err *errs.Error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Message())
-	return err.BizCode == 10001 && strings.Contains(msg, "position idx") && strings.Contains(msg, "position mode")
+	return err.Code == errs.CodePositionModeConflict && strings.Contains(msg, "position")
 }
 
 func normalizeBybitTimeInForce(tif string) string {

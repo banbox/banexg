@@ -47,7 +47,10 @@ func (e *OKX) FetchAccountAccess(params map[string]interface{}) (*banexg.Account
 		if res.HasAny() {
 			return res, nil
 		}
-		return res, errs.NewMsg(errs.CodeUnmarshalFail, "account config returned code=%s", out.Code)
+		if out.Code != "0" {
+			return res, newOKXError(out.Code, "account config request failed")
+		}
+		return res, errs.NewMsg(errs.CodeInvalidResponse, "account config returned no data")
 	}
 	cfg := out.Data[0]
 	res.AcctLv = cfg.AcctLv

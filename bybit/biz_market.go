@@ -37,6 +37,7 @@ func (e *Bybit) Init() *errs.Error {
 	e.WsAuthDone = map[string]chan *errs.Error{}
 	e.WsPendingRecons = map[string]*WsPendingRecon{}
 	e.regReplayHandles()
+	e.MapApiError = mapBybitHTTPError
 	markRiskyApis(e)
 	return nil
 }

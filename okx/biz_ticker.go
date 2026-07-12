@@ -46,6 +46,8 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 	}
 	if limit <= 0 {
 		limit = 100
+	} else if limit > 300 {
+		limit = 300
 	}
 	args[FldInstId] = market.ID
 	args[FldBar] = e.GetTimeFrame(timeframe)

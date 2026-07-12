@@ -425,7 +425,7 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 	}
 	item := res.Result[0]
 	if scode := mapStr(item, "sCode"); scode != "" && scode != "0" {
-		return nil, errs.NewMsg(errs.CodeRunTime, "[%s] %s", scode, mapStr(item, "sMsg"))
+		return nil, newOKXError(scode, mapStr(item, "sMsg"))
 	}
 	algoId := mapStr(item, FldAlgoId)
 	if algoId == "" {
@@ -480,7 +480,7 @@ func (e *OKX) cancelAlgoOrder(id string, market *banexg.Market, args map[string]
 	}
 	item := res.Result[0]
 	if scode := mapStr(item, "sCode"); scode != "" && scode != "0" {
-		return nil, errs.NewMsg(errs.CodeRunTime, "[%s] %s", scode, mapStr(item, "sMsg"))
+		return nil, newOKXError(scode, mapStr(item, "sMsg"))
 	}
 	algoId := mapStr(item, FldAlgoId)
 	if algoId == "" {

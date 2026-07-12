@@ -567,16 +567,17 @@ OptionOrder 期权订单
 */
 type OptionOrder struct {
 	FutBase
-	PostOnly      bool    `json:"postOnly"`      // 仅做maker
-	PriceScale    int     `json:"priceScale"`    // 价格精度
-	OptionSide    string  `json:"optionSide"`    // 期权类型
-	QuoteAsset    string  `json:"quoteAsset"`    // 报价资产
-	Quantity      float64 `json:"quantity"`      // 订单数量
-	QuantityScale int     `json:"quantityScale"` // 数量精度
-	Fee           float64 `json:"fee"`           // 手续费
-	CreateTime    int64   `json:"createTime"`    // 订单创建时间
-	Source        string  `json:"source"`        // 订单来源
-	Mmp           bool    `json:"mmp"`           // 是否为MMP订单
+	PostOnly                bool    `json:"postOnly"`                // 仅做maker
+	SelfTradePreventionMode string  `json:"selfTradePreventionMode"` // 自成交保护模式
+	PriceScale              int     `json:"priceScale"`              // 价格精度
+	OptionSide              string  `json:"optionSide"`              // 期权类型
+	QuoteAsset              string  `json:"quoteAsset"`              // 报价资产
+	Quantity                float64 `json:"quantity"`                // 订单数量
+	QuantityScale           int     `json:"quantityScale"`           // 数量精度
+	Fee                     float64 `json:"fee"`                     // 手续费
+	CreateTime              int64   `json:"createTime"`              // 订单创建时间
+	Source                  string  `json:"source"`                  // 订单来源
+	Mmp                     bool    `json:"mmp"`                     // 是否为MMP订单
 }
 
 type DeleteAlgoOrderRsp struct {

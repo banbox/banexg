@@ -53,6 +53,7 @@ func (e *Binance) Init() *errs.Error {
 	e.ExgInfo.FullDay = true
 	e.regReplayHandles()
 	e.CalcRateLimiterCost = makeCalcRateLimiterCost(e)
+	e.MapApiError = mapBinanceError
 	markRiskyApis(e)
 	return nil
 }
@@ -106,7 +107,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			isPrivate = true
-		} else if path == "userDataStream" || path == "listenKey" {
+		} else if path == "userDataStream" || path == "listenKey" || path == "userListenToken" {
 			//v1 special case for userDataStream
 			accID, creds, err = e.GetAccountCreds(accID)
 			if err != nil {
@@ -1090,7 +1091,7 @@ func (e *Binance) FetchFundingRate(symbol string, params map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	args["symbol"] = market.Symbol
+	args["symbol"] = market.ID
 	var method string
 	if market.Linear {
 		method = MethodFapiPublicGetPremiumIndex

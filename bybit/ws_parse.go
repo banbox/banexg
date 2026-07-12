@@ -39,6 +39,10 @@ func bybitWsOpSuccess(base *wsBaseMsg) (bool, *errs.Error) {
 	if base == nil {
 		return false, errs.NewMsg(errs.CodeParamInvalid, "ws msg required")
 	}
+	retCode := base.RetCode
+	if retCode == 0 && base.RetCodeAlt != 0 {
+		retCode = base.RetCodeAlt
+	}
 	if base.Success != nil {
 		if *base.Success {
 			return true, nil
@@ -50,11 +54,10 @@ func bybitWsOpSuccess(base *wsBaseMsg) (bool, *errs.Error) {
 		if msg == "" {
 			msg = "ws op failed"
 		}
-		return false, errs.NewMsg(errs.CodeRunTime, msg)
-	}
-	retCode := base.RetCode
-	if retCode == 0 && base.RetCodeAlt != 0 {
-		retCode = base.RetCodeAlt
+		if retCode != 0 {
+			return false, mapBybitRetCode(retCode, msg)
+		}
+		return false, errs.NewMsg(errs.CodeExchangeError, msg)
 	}
 	if retCode == 0 || retCode == 20001 {
 		return true, nil

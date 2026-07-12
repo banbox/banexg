@@ -17,6 +17,12 @@ var (
 	contOdBookLimits = []int{5, 10, 20, 50, 100, 500, 1000}
 )
 
+const (
+	linearWsRoutePublic  = "public"
+	linearWsRouteMarket  = "market"
+	linearWsRoutePrivate = "private"
+)
+
 func (e *Binance) Stream(marType, subHash string) string {
 	if stream, ok := e.streamBySubHash[subHash]; ok {
 		return stream
@@ -38,12 +44,37 @@ func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.
 	if host == "" {
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
 	}
-	wsUrl := host + "/" + e.Stream(marType, msgHash)
+	streamHash := msgHash
+	if marType == banexg.MarketLinear {
+		route := linearWsRoute(msgHash)
+		host = linearWsHost(host, route)
+		streamHash = route + "@" + msgHash
+	}
+	wsUrl := host + "/" + e.Stream(marType, streamHash)
 	client, err := e.GetClient(wsUrl, marType, "")
 	if err != nil {
 		return nil, err
 	}
 	return client, nil
+}
+
+func linearWsHost(host, route string) string {
+	return strings.TrimSuffix(host, "/ws") + "/" + route + "/ws"
+}
+
+func linearWsRoute(msgHash string) string {
+	name := msgHash
+	if idx := strings.LastIndexByte(name, '@'); idx >= 0 {
+		name = name[idx+1:]
+	}
+	if name == "depth" || name == "bookTicker" {
+		return linearWsRoutePublic
+	}
+	return linearWsRouteMarket
+}
+
+func linearPrivateWsHost(host string) string {
+	return linearWsHost(host, linearWsRoutePrivate)
 }
 
 /*
@@ -261,7 +292,7 @@ func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[st
 	if err != nil {
 		return "", nil, err
 	}
-	name := utils.PopMapVal(args, banexg.ParamName, "trade")
+	name := utils.PopMapVal(args, banexg.ParamName, defaultTradeStream(market))
 	msgHash := market.Type + "@" + name
 	client, err := e.GetWsClient(market.Type, msgHash)
 	if err != nil {
@@ -276,6 +307,16 @@ func (e *Binance) prepareWatchTrades(isSub bool, symbols []string, params map[st
 	}
 	chanKey := client.Prefix(msgHash)
 	return chanKey, args, nil
+}
+
+func defaultTradeStream(market *banexg.Market) string {
+	if market.Option {
+		return "optionTrade"
+	}
+	if market.Contract {
+		return "aggTrade"
+	}
+	return "trade"
 }
 
 /*

@@ -1,6 +1,7 @@
 package bybit
 
 import (
+	"sort"
 	"strconv"
 
 	"github.com/banbox/banexg"
@@ -13,14 +14,19 @@ func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 	if err != nil {
 		return nil, err
 	}
-	if market.Option {
-		return nil, errs.NewMsg(errs.CodeNotSupport, "option market not support kline")
+	price := utils.PopMapVal(args, "price", "")
+	if market.Option && price != "mark" {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "option market only supports mark price kline")
 	}
 	args["symbol"] = market.ID
+	maxLimit := 1000
+	if market.Option {
+		maxLimit = 500
+	}
 	if limit <= 0 {
 		limit = 200
-	} else if limit > 1000 {
-		limit = 1000
+	} else if limit > maxLimit {
+		limit = maxLimit
 	}
 	args["limit"] = limit
 	if since > 0 {
@@ -44,7 +50,6 @@ func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 	if market.Spot {
 		method = MethodPublicGetV5MarketKline
 	} else {
-		price := utils.PopMapVal(args, "price", "")
 		if price == "mark" {
 			method = MethodPublicGetV5MarketMarkPriceKline
 		} else if price == "index" {
@@ -95,7 +100,6 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 	if !market.Swap || (market.Type != banexg.MarketLinear && market.Type != banexg.MarketInverse) {
 		return nil, errs.NewMsg(errs.CodeNotSupport, "only linear/inverse swap support")
 	}
-	args["limit"] = min(limit, maxFundRateBatch)
 	args["symbol"] = market.ID
 	args["category"] = market.Type
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
@@ -112,28 +116,44 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 	if until > 0 {
 		args["endTime"] = until
 	}
-	items := make([]*banexg.FundingRate, 0)
+	itemsByTimestamp := make(map[int64]*banexg.FundingRate, limit)
 	for {
-		list, hasMore, usedInterval, err := e.getFundRateHis(market.Type, until, interval, args)
+		remaining := limit - len(itemsByTimestamp)
+		if remaining <= 0 {
+			break
+		}
+		batchLimit := min(remaining, maxFundRateBatch)
+		args["limit"] = batchLimit
+		list, hasMore, _, err := e.getFundRateHis(market.Type, until, interval, args)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, list...)
-		if !hasMore {
+		oldest := int64(0)
+		for _, item := range list {
+			if item.Timestamp < since || (until > 0 && item.Timestamp > until) {
+				continue
+			}
+			itemsByTimestamp[item.Timestamp] = item
+			if oldest == 0 || item.Timestamp < oldest {
+				oldest = item.Timestamp
+			}
+		}
+		if !hasMore || oldest == 0 || (since > 0 && oldest <= since) {
 			break
 		}
-		if len(list) == 0 {
+		nextEnd := oldest - 1
+		if currentEnd, ok := args["endTime"].(int64); ok && nextEnd >= currentEnd {
 			break
 		}
-		intv := usedInterval
-		if intv <= 0 {
-			intv = interval
-		}
-		if intv <= 0 {
-			intv = int64(60 * 60 * 8 * 1000)
-		}
-		since = list[len(list)-1].Timestamp + intv
-		args["startTime"] = since
+		args["endTime"] = nextEnd
+	}
+	items := make([]*banexg.FundingRate, 0, len(itemsByTimestamp))
+	for _, item := range itemsByTimestamp {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Timestamp < items[j].Timestamp })
+	if len(items) > limit {
+		items = items[len(items)-limit:]
 	}
 	return items, nil
 }
@@ -153,14 +173,10 @@ func (e *Bybit) getFundRateHis(marketType string, until int64, interval int64, a
 	if err != nil {
 		return nil, false, 0, err
 	}
-	var lastMS int64
 	var list = make([]*banexg.FundingRate, 0, len(rsp.Result.List))
 	for i, it := range items {
 		code := bybitSafeSymbol(e, it.Symbol, marketType)
 		stamp, _ := strconv.ParseInt(it.FundingRateTimestamp, 10, 64)
-		if stamp > lastMS {
-			lastMS = stamp
-		}
 		if code == "" {
 			continue
 		}
@@ -182,7 +198,8 @@ func (e *Bybit) getFundRateHis(marketType string, until int64, interval int64, a
 	if usedInterval <= 0 {
 		usedInterval = int64(60 * 60 * 8 * 1000)
 	}
-	hasMore := until > 0 && len(rsp.Result.List) == maxFundRateBatch && lastMS+usedInterval < until
+	requestLimit := utils.GetMapVal(args, "limit", maxFundRateBatch)
+	hasMore := len(rsp.Result.List) == requestLimit
 	return list, hasMore, usedInterval, nil
 }
 
@@ -234,10 +251,8 @@ func bybitOrderBookLimit(category string, limit int) int {
 	if limit <= 0 {
 		return 0
 	}
-	maxLimit := 200
+	maxLimit := 1000
 	switch category {
-	case banexg.MarketLinear, banexg.MarketInverse:
-		maxLimit = 500
 	case banexg.MarketOption:
 		maxLimit = 25
 	}

@@ -234,12 +234,7 @@ func parseBybitPosition(e *Bybit, item *PositionInfo, info map[string]interface{
 			notional = math.Abs(size) * entry
 		}
 	}
-	marginMode := ""
-	if item.TradeMode == 1 {
-		marginMode = banexg.MarginIsolated
-	} else if item.TradeMode == 0 {
-		marginMode = banexg.MarginCross
-	}
+	marginMode := bybitPositionMarginMode(info)
 	pos := &banexg.Position{
 		ID:               item.Symbol,
 		Symbol:           symbol,
@@ -282,4 +277,16 @@ func parseBybitPosition(e *Bybit, item *PositionInfo, info map[string]interface{
 		pos.MaintMarginPct = maintMargin / notional
 	}
 	return pos
+}
+
+func bybitPositionMarginMode(info map[string]interface{}) string {
+	mode := strings.ToUpper(strings.TrimSpace(utils.GetMapVal(info, "marginMode", "")))
+	switch mode {
+	case "ISOLATED_MARGIN", "ISOLATED":
+		return banexg.MarginIsolated
+	case "REGULAR_MARGIN", "CROSS":
+		return banexg.MarginCross
+	default:
+		return ""
+	}
 }

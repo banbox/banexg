@@ -67,7 +67,7 @@ func TestParseBybitBalance(t *testing.T) {
 
 func TestParseBybitPosition(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
-	info := map[string]interface{}{"raw": true}
+	info := map[string]interface{}{"raw": true, "marginMode": "ISOLATED_MARGIN"}
 
 	pos := parseBybitPosition(exg, &PositionInfo{
 		PositionIdx:   0,
@@ -82,7 +82,7 @@ func TestParseBybitPosition(t *testing.T) {
 		PositionMM:    "5",
 		UnrealisedPnl: "10",
 		LiqPrice:      "80",
-		TradeMode:     1,
+		TradeMode:     0,
 		UpdatedTime:   "1700000000000",
 	}, info, banexg.MarketLinear)
 
@@ -114,7 +114,7 @@ func TestParseBybitPosition(t *testing.T) {
 		Side:        "",
 		Size:        "1",
 		TradeMode:   0,
-	}, info, banexg.MarketLinear)
+	}, map[string]interface{}{"marginMode": "REGULAR_MARGIN"}, banexg.MarketLinear)
 	if pos2 == nil {
 		t.Fatal("expected position for positionIdx mapping")
 	}
@@ -126,6 +126,13 @@ func TestParseBybitPosition(t *testing.T) {
 	}
 	if pos2.Isolated || pos2.MarginMode != banexg.MarginCross {
 		t.Fatalf("expected cross margin mode, got isolated=%v mode=%s", pos2.Isolated, pos2.MarginMode)
+	}
+
+	unknown := parseBybitPosition(exg, &PositionInfo{
+		Symbol: "BTCUSDT", Side: "Buy", Size: "1", TradeMode: 1,
+	}, map[string]interface{}{"raw": true}, banexg.MarketLinear)
+	if unknown == nil || unknown.Isolated || unknown.MarginMode != "" {
+		t.Fatalf("deprecated tradeMode must not determine margin mode: %#v", unknown)
 	}
 
 	if got := parseBybitPosition(exg, &PositionInfo{Symbol: "BTCUSDT"}, info, banexg.MarketLinear); got != nil {

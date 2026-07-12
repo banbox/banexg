@@ -1,12 +1,18 @@
 package okx
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+)
+
+var (
+	okxAlgoOrderTypes    = []string{"conditional", "oco", "trigger", "move_order_stop", "twap", "chase"}
+	okxAlgoHistoryStates = []string{"effective", "canceled", "order_failed"}
 )
 
 func setOrderID(args map[string]interface{}, orderId string) *errs.Error {
@@ -172,7 +178,7 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 	}
 	ord := res.Result[0]
 	if ord.SCode != "0" {
-		return nil, errs.NewMsg(errs.CodeRunTime, "[%s] %s", ord.SCode, ord.SMsg)
+		return nil, newOKXError(ord.SCode, ord.SMsg)
 	}
 	return &banexg.Order{
 		ID:            ord.OrdId,
@@ -224,7 +230,7 @@ func (e *OKX) EditOrder(symbol, orderId, side string, amount, price float64, par
 	}
 	item := res.Result[0]
 	if item.SCode != "0" {
-		return nil, errs.NewMsg(errs.CodeRunTime, "[%s] %s", item.SCode, item.SMsg)
+		return nil, newOKXError(item.SCode, item.SMsg)
 	}
 	return &banexg.Order{
 		ID:            item.OrdId,
@@ -260,7 +266,7 @@ func (e *OKX) CancelOrder(id string, symbol string, params map[string]interface{
 	}
 	item := res.Result[0]
 	if item.SCode != "0" {
-		return nil, errs.NewMsg(errs.CodeRunTime, "[%s] %s", item.SCode, item.SMsg)
+		return nil, newOKXError(item.SCode, item.SMsg)
 	}
 	return &banexg.Order{
 		ID:            item.OrdId,
@@ -341,16 +347,14 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 			}
 			return parseAlgoOrders(e, res.Result, marketType, symbol)
 		}
-		// Query multiple order types: conditional+oco can be queried together, others need separate calls
-		ordTypes := []string{"conditional,oco", "move_order_stop", "trigger"}
 		allOrders := make([]*banexg.Order, 0)
 		method = MethodTradeGetOrdersAlgoPending
-		for _, ordType := range ordTypes {
+		for _, ordType := range okxAlgoOrderTypes {
 			argsClone := utils.SafeParams(args)
 			argsClone[FldOrdType] = ordType
 			res := requestRetry[[]map[string]interface{}](e, method, argsClone, tryNum)
 			if res.Error != nil {
-				continue // Skip failed types instead of returning error
+				continue
 			}
 			orders, err := parseAlgoOrders(e, res.Result, marketType, symbol)
 			if err == nil && orders != nil {
@@ -402,25 +406,80 @@ func (e *OKX) FetchOrders(symbol string, since int64, limit int, params map[stri
 		args[FldLimit] = strconv.Itoa(limit)
 	}
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	method := pickOrdersHistoryMethod(args, since, until)
+	tryNum := e.GetRetryNum("FetchOrders", 1)
+	if algoOrder {
+		delete(args, FldBegin)
+		delete(args, FldEnd)
+		return e.fetchAlgoOrderHistory(args, marketType, symbol, since, until, limit, tryNum)
+	}
 	if since > 0 {
 		args[FldBegin] = strconv.FormatInt(since, 10)
 	}
 	if until > 0 {
 		args[FldEnd] = strconv.FormatInt(until, 10)
 	}
-	method := pickOrdersHistoryMethod(args, since, until)
-	if algoOrder {
-		method = MethodTradeGetOrdersAlgoHistory
-	}
-	tryNum := e.GetRetryNum("FetchOrders", 1)
 	res := requestRetry[[]map[string]interface{}](e, method, args, tryNum)
 	if res.Error != nil {
 		return nil, res.Error
 	}
-	if algoOrder {
-		return parseAlgoOrders(e, res.Result, marketType, symbol)
-	}
 	return parseOrders(e, res.Result, marketType, symbol)
+}
+
+func (e *OKX) fetchAlgoOrderHistory(args map[string]interface{}, marketType, symbol string, since, until int64, limit, tryNum int) ([]*banexg.Order, *errs.Error) {
+	ordTypes := okxAlgoOrderTypes
+	if ordType := utils.GetMapVal(args, FldOrdType, ""); ordType != "" {
+		ordTypes = []string{ordType}
+	}
+	states := okxAlgoHistoryStates
+	if state := utils.GetMapVal(args, "state", ""); state != "" {
+		states = []string{state}
+	} else if utils.GetMapVal(args, FldAlgoId, "") != "" {
+		states = []string{""}
+	}
+
+	allOrders := make([]*banexg.Order, 0)
+	for _, ordType := range ordTypes {
+		for _, state := range states {
+			query := utils.SafeParams(args)
+			query[FldOrdType] = ordType
+			if state != "" {
+				query["state"] = state
+			}
+			res := requestRetry[[]map[string]interface{}](e, MethodTradeGetOrdersAlgoHistory, query, tryNum)
+			if res.Error != nil {
+				return nil, res.Error
+			}
+			orders, err := parseAlgoOrders(e, res.Result, marketType, symbol)
+			if err != nil {
+				return nil, err
+			}
+			allOrders = append(allOrders, orders...)
+		}
+	}
+	return mergeAlgoOrders(allOrders, since, until, limit), nil
+}
+
+func mergeAlgoOrders(orders []*banexg.Order, since, until int64, limit int) []*banexg.Order {
+	seen := make(map[string]struct{}, len(orders))
+	result := make([]*banexg.Order, 0, len(orders))
+	for _, order := range orders {
+		if order == nil || (since > 0 && order.Timestamp < since) || (until > 0 && order.Timestamp >= until) {
+			continue
+		}
+		if _, exists := seen[order.ID]; exists {
+			continue
+		}
+		seen[order.ID] = struct{}{}
+		result = append(result, order)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Timestamp > result[j].Timestamp
+	})
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+	return result
 }
 
 func parseOrder(e *OKX, item *Order, info map[string]interface{}, marketType string) *banexg.Order {

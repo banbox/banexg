@@ -1,12 +1,47 @@
 package banexg
 
 import (
+	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/banbox/banexg/errs"
 )
+
+func TestMapHTTPError(t *testing.T) {
+	tests := []struct {
+		status int
+		code   int
+	}{
+		{http.StatusUnauthorized, errs.CodeUnauthorized},
+		{http.StatusForbidden, errs.CodeForbidden},
+		{http.StatusTeapot, errs.CodeTemporarilyBanned},
+		{http.StatusTooManyRequests, errs.CodeRateLimit},
+		{http.StatusBadGateway, errs.CodeServerError},
+	}
+	for _, test := range tests {
+		err := mapHTTPError(nil, test.status)
+		if err.Code != test.code || err.BizCode != 0 {
+			t.Fatalf("status %d: expected code %d without biz code, got %#v", test.status, test.code, err)
+		}
+	}
+	if err := mapHTTPError(&Entry{Risky: true}, http.StatusBadGateway); err.Code != errs.CodeExecutionUnknown {
+		t.Fatalf("risky HTTP failure must have unknown execution status, got %v", err)
+	}
+}
+
+func TestDeprecatedBizCodeIsNotExposed(t *testing.T) {
+	err := errs.NewMsg(errs.CodeOrderNotFound, "order missing")
+	err.BizCode = -2013
+	if strings.Contains(err.Short(), "2013") || strings.Contains(err.Error(), "2013") {
+		t.Fatalf("deprecated native biz code leaked: %s", err.Short())
+	}
+}
 
 func TestSetOptions(t *testing.T) {
 	FakeApiKey := "123"
 	e := Exchange{
+		ExgInfo: &ExgInfo{},
 		Options: map[string]interface{}{
 			OptMarketType: MarketMargin,
 			OptApiKey:     FakeApiKey,

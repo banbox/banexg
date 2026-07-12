@@ -2,6 +2,7 @@ package bybit
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/banbox/banexg"
@@ -60,14 +61,26 @@ func TestBybitFundingIntervalMS(t *testing.T) {
 	}
 }
 
-func TestFetchOHLCV_OptionNotSupported(t *testing.T) {
+func TestFetchOHLCV_OptionPriceSupport(t *testing.T) {
 	market := &banexg.Market{Symbol: "BTC/USDT:USDT-30DEC22-18000-C", ID: "BTC-30DEC22-18000-C", Option: true}
 	exg := &Bybit{Exchange: &banexg.Exchange{ExgInfo: &banexg.ExgInfo{
 		Markets: banexg.MarketMap{market.Symbol: market},
 	}}}
-	_, err := exg.FetchOHLCV(market.Symbol, "1m", 0, 10, nil)
-	if err == nil {
-		t.Fatal("expected error for option kline")
+	for _, price := range []string{"", "index", "premiumIndex"} {
+		_, err := exg.FetchOHLCV(market.Symbol, "1m", 0, 10, map[string]interface{}{"price": price})
+		if err == nil {
+			t.Fatalf("expected option %q kline to be rejected", price)
+		}
+	}
+	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
+		requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketMarkPriceKline, banexg.MarketOption, market.ID)
+		if params["limit"] != 500 {
+			t.Fatalf("expected option limit capped at 500, got %v", params["limit"])
+		}
+		return &banexg.HttpRes{Status: 200, Content: `{"retCode":0,"retMsg":"OK","result":{"category":"option","list":[]}}`}
+	})
+	if _, err := exg.FetchOHLCV(market.Symbol, "1m", 0, 999, map[string]interface{}{"price": "mark"}); err != nil {
+		t.Fatalf("expected option mark kline support: %v", err)
 	}
 }
 
@@ -244,6 +257,74 @@ func TestFetchFundingRateHistoryParams(t *testing.T) {
 	})
 }
 
+func TestFetchFundingRateHistoryPaginatesBackward(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	exg.Markets["BTC/USDT:USDT"].Swap = true
+	exg.Markets["BTC/USDT:USDT"].Info = map[string]interface{}{"fundingInterval": 480}
+
+	const (
+		since    = int64(1_000_000)
+		interval = int64(8 * 60 * 60 * 1000)
+		limit    = 250
+	)
+	initialEnd := since + limit*interval
+	calls := 0
+	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
+		requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketFundingHistory, banexg.MarketLinear, "BTCUSDT")
+		calls++
+		pageLimit, ok := params["limit"].(int)
+		if !ok {
+			t.Fatalf("unexpected limit type/value: %#v", params["limit"])
+		}
+		endTime, ok := params["endTime"].(int64)
+		if !ok {
+			t.Fatalf("unexpected endTime type/value: %#v", params["endTime"])
+		}
+		if calls == 1 && (pageLimit != 200 || endTime != initialEnd) {
+			t.Fatalf("unexpected first page params: limit=%d end=%d", pageLimit, endTime)
+		}
+		if calls == 2 && (pageLimit != 52 || endTime != since+52*interval-1) {
+			t.Fatalf("pagination did not move backward: limit=%d end=%d", pageLimit, endTime)
+		}
+
+		list := make([]map[string]interface{}, 0, pageLimit)
+		for i := 0; i < pageLimit; i++ {
+			stamp := endTime - int64(i)*interval
+			if calls == 1 && i == 0 {
+				stamp = initialEnd + interval // filtered as newer than the requested range
+			}
+			if calls == 1 && i == pageLimit-1 {
+				stamp = endTime - int64(i-1)*interval // duplicate the preceding record
+			}
+			list = append(list, map[string]interface{}{
+				"symbol": "BTCUSDT", "fundingRate": "0.0001",
+				"fundingRateTimestamp": fmt.Sprintf("%d", stamp),
+			})
+		}
+		body := mustMarshal(t, map[string]interface{}{
+			"retCode": 0, "retMsg": "OK",
+			"result": map[string]interface{}{"category": "linear", "list": list},
+		})
+		return &banexg.HttpRes{Status: 200, Content: body}
+	})
+
+	items, err := exg.FetchFundingRateHistory("BTC/USDT:USDT", since, limit, nil)
+	if err != nil {
+		t.Fatalf("FetchFundingRateHistory failed: %v", err)
+	}
+	if calls != 2 || len(items) != limit {
+		t.Fatalf("expected two pages and %d unique items, got calls=%d items=%d", limit, calls, len(items))
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i-1].Timestamp >= items[i].Timestamp {
+			t.Fatalf("funding rates not strictly ascending at %d", i)
+		}
+	}
+	if items[0].Timestamp < since || items[len(items)-1].Timestamp > initialEnd {
+		t.Fatalf("funding rates escaped requested range: %d..%d", items[0].Timestamp, items[len(items)-1].Timestamp)
+	}
+}
+
 func TestFetchOHLCVPriceEndpoints(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
 	cases := []struct {
@@ -283,7 +364,7 @@ func TestFetchOrderBookParams(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT", banexg.MarketSpot)
 	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
 		requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketOrderbook, banexg.MarketSpot, "BTCUSDT")
-		if params["limit"] != 200 {
+		if params["limit"] != 999 {
 			t.Fatalf("unexpected limit: %v", params["limit"])
 		}
 		body := `{"retCode":0,"retMsg":"OK","result":{"s":"BTCUSDT","a":[["101","1"]],"b":[["100","2"]],"ts":1700000000000,"u":123},"retExtInfo":{},"time":1700000000000}`
@@ -294,7 +375,7 @@ func TestFetchOrderBookParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchOrderBook failed: %v", err)
 	}
-	if book == nil || book.Limit != 200 {
+	if book == nil || book.Limit != 999 {
 		t.Fatalf("unexpected orderbook limit: %+v", book)
 	}
 	if len(book.Asks.Price) == 0 || len(book.Bids.Price) == 0 {

@@ -109,10 +109,10 @@ func TestMapBybitRetCode(t *testing.T) {
 		{10003, errs.CodeAccKeyError},
 		{10004, errs.CodeSignFail},
 		{10005, errs.CodeUnauthorized},
-		{10006, errs.CodeSystemBusy},
+		{10006, errs.CodeRateLimit},
 		{10028, errs.CodeForbidden},
-		{110001, errs.CodeDataNotFound},
-		{110004, errs.CodeNoTrade},
+		{110001, errs.CodeOrderNotFound},
+		{110004, errs.CodeInsufficientFunds},
 		{3100326, errs.CodeParamRequired},
 	}
 	for _, tc := range cases {
@@ -123,8 +123,8 @@ func TestMapBybitRetCode(t *testing.T) {
 		if err.Code != tc.wantCode {
 			t.Fatalf("retCode %d expected code %d, got %d", tc.retCode, tc.wantCode, err.Code)
 		}
-		if err.BizCode != tc.retCode {
-			t.Fatalf("retCode %d expected bizCode %d, got %d", tc.retCode, tc.retCode, err.BizCode)
+		if err.BizCode != 0 {
+			t.Fatalf("retCode %d leaked as bizCode %d", tc.retCode, err.BizCode)
 		}
 	}
 
@@ -132,11 +132,19 @@ func TestMapBybitRetCode(t *testing.T) {
 	if unknown == nil {
 		t.Fatal("expected error for unknown retCode")
 	}
-	if unknown.Code != errs.CodeRunTime {
-		t.Fatalf("expected runtime code for unknown retCode, got %d", unknown.Code)
+	if unknown.Code != errs.CodeExchangeError {
+		t.Fatalf("expected exchange error code for unknown retCode, got %d", unknown.Code)
 	}
-	if unknown.BizCode != 999999 {
-		t.Fatalf("expected bizCode 999999, got %d", unknown.BizCode)
+	if unknown.BizCode != 0 {
+		t.Fatalf("unknown native code leaked as bizCode %d", unknown.BizCode)
+	}
+}
+
+func TestMapBybitHTTPErrorPreservesUnknownExecution(t *testing.T) {
+	err := mapBybitHTTPError(&banexg.Entry{Risky: true}, 503,
+		`{"retCode":10016,"retMsg":"Server error","result":{}}`)
+	if err == nil || err.Code != errs.CodeExecutionUnknown || err.BizCode != 0 {
+		t.Fatalf("expected neutral unknown-execution error, got %v", err)
 	}
 }
 
@@ -255,8 +263,8 @@ func TestRequestRetryErrors(t *testing.T) {
 	if res.Error.Code != errs.CodeParamInvalid {
 		t.Fatalf("expected param invalid code, got %d", res.Error.Code)
 	}
-	if res.Error.BizCode != 10001 {
-		t.Fatalf("expected bizCode 10001, got %d", res.Error.BizCode)
+	if res.Error.BizCode != 0 {
+		t.Fatalf("native code leaked as bizCode %d", res.Error.BizCode)
 	}
 
 	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
@@ -328,7 +336,7 @@ func TestRequestRetryBybitRateLimit(t *testing.T) {
 			1,
 			sleep,
 		)
-		if res.Error == nil || res.Error.Code != errs.CodeSystemBusy || res.Error.BizCode != 10006 {
+		if res.Error == nil || res.Error.Code != errs.CodeRateLimit || res.Error.BizCode != 0 {
 			t.Fatalf("expected final 10006 error, got %v", res.Error)
 		}
 		if calls != 2 || waits != 1 {

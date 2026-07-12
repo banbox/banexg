@@ -45,6 +45,27 @@ const (
 	CodeDataNotFound
 	CodeServerError
 	CodeNoTrade
+	CodeRateLimit
+	CodeTemporarilyBanned
+	CodeExecutionUnknown
+	CodeExchangeError
+	CodeSymbolInvalid
+	CodeMarketUnavailable
+	CodeOrderNotFound
+	CodeOrderRejected
+	CodeInsufficientFunds
+	CodeInsufficientMargin
+	CodeRiskLimit
+	CodePositionModeConflict
+	CodeReduceOnlyRejected
+	CodeDuplicateRequest
+	CodeNoChange
+	CodeAccountRestricted
+	CodeStreamExpired
+	CodeOrderWouldTrigger
+	CodeOrderNotCancelable
+	CodeLeverageInvalid
+	CodePrecisionViolation
 )
 
 var (
@@ -93,4 +114,25 @@ var errCodeNames = map[int]string{
 	CodeDataNotFound:         "DataNotFound",
 	CodeServerError:          "ServerError",
 	CodeNoTrade:              "NoTrade",
+	CodeRateLimit:            "RateLimit",
+	CodeTemporarilyBanned:    "TemporarilyBanned",
+	CodeExecutionUnknown:     "ExecutionUnknown",
+	CodeExchangeError:        "ExchangeError",
+	CodeSymbolInvalid:        "SymbolInvalid",
+	CodeMarketUnavailable:    "MarketUnavailable",
+	CodeOrderNotFound:        "OrderNotFound",
+	CodeOrderRejected:        "OrderRejected",
+	CodeInsufficientFunds:    "InsufficientFunds",
+	CodeInsufficientMargin:   "InsufficientMargin",
+	CodeRiskLimit:            "RiskLimit",
+	CodePositionModeConflict: "PositionModeConflict",
+	CodeReduceOnlyRejected:   "ReduceOnlyRejected",
+	CodeDuplicateRequest:     "DuplicateRequest",
+	CodeNoChange:             "NoChange",
+	CodeAccountRestricted:    "AccountRestricted",
+	CodeStreamExpired:        "StreamExpired",
+	CodeOrderWouldTrigger:    "OrderWouldTrigger",
+	CodeOrderNotCancelable:   "OrderNotCancelable",
+	CodeLeverageInvalid:      "LeverageInvalid",
+	CodePrecisionViolation:   "PrecisionViolation",
 }

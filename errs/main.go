@@ -34,9 +34,6 @@ func (e *Error) Short() string {
 	if e == nil {
 		return ""
 	}
-	if e.BizCode != 0 {
-		return fmt.Sprintf("[%s(%d)] %s", e.CodeName(), e.BizCode, e.Message())
-	}
 	return fmt.Sprintf("[%s] %s", e.CodeName(), e.Message())
 }
 
@@ -53,9 +50,6 @@ func (e *Error) CodeName() string {
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
-	}
-	if e.BizCode != 0 {
-		return fmt.Sprintf("[%s(%d)] %s\n%s", e.CodeName(), e.BizCode, e.Message(), e.Stack)
 	}
 	return fmt.Sprintf("[%s] %s\n%s", e.CodeName(), e.Message(), e.Stack)
 }

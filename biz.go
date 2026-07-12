@@ -1260,22 +1260,11 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 			zap.Int("len", len(result.Content)), bodyShort)
 	}
 	if result.Status >= 400 {
-		msg := fmt.Sprintf("%s: %s  %v", sign.AccName, req.URL, result.Content)
-		result.Error = errs.NewMsg(result.Status, msg)
-		var resData = make(map[string]interface{})
-		err = utils.UnmarshalString(result.Content, &resData, utils.JsonNumAuto)
-		if err == nil {
-			// Handle both string (OKX) and int64 (Binance) code values
-			if codeVal, ok := resData["code"]; ok && codeVal != nil {
-				switch v := codeVal.(type) {
-				case int64:
-					result.Error.BizCode = int(v)
-				case string:
-					if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
-						result.Error.BizCode = int(parsed)
-					}
-				}
-			}
+		if e.MapApiError != nil {
+			result.Error = e.MapApiError(api, result.Status, result.Content)
+		}
+		if result.Error == nil {
+			result.Error = mapHTTPError(api, result.Status)
 		}
 		if result.Status == 429 || result.Status == 418 {
 			waitStr := rsp.Header.Get("Retry-After")
@@ -1297,6 +1286,29 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 		e.cacheApiRes(api, &result)
 	}
 	return &result
+}
+
+func mapHTTPError(api *Entry, status int) *errs.Error {
+	code := errs.CodeInvalidRequest
+	switch {
+	case status == http.StatusUnauthorized:
+		code = errs.CodeUnauthorized
+	case status == http.StatusForbidden:
+		code = errs.CodeForbidden
+	case status == http.StatusNotFound:
+		code = errs.CodeDataNotFound
+	case status == http.StatusRequestTimeout || status == http.StatusGatewayTimeout:
+		code = errs.CodeTimeout
+	case status == http.StatusTeapot:
+		code = errs.CodeTemporarilyBanned
+	case status == http.StatusTooManyRequests:
+		code = errs.CodeRateLimit
+	case status >= http.StatusInternalServerError && api != nil && api.Risky:
+		code = errs.CodeExecutionUnknown
+	case status >= http.StatusInternalServerError:
+		code = errs.CodeServerError
+	}
+	return errs.NewMsg(code, "exchange request failed with HTTP status %d", status)
 }
 
 func (e *Exchange) RequestApiRetry(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int) *HttpRes {

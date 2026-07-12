@@ -241,7 +241,6 @@ type FundingRate struct {
 	InstId          string `json:"instId"`
 	FundingRate     string `json:"fundingRate"`
 	FundingTime     string `json:"fundingTime"`
-	NextFundingRate string `json:"nextFundingRate"`
 	NextFundingTime string `json:"nextFundingTime"`
 	InterestRate    string `json:"interestRate"`
 	Ts              string `json:"ts"`

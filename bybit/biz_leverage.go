@@ -44,7 +44,7 @@ func (e *Bybit) SetLeverage(leverage float64, symbol string, params map[string]i
 		// 110038: not allowed to change leverage due to portfolio margin mode
 		// 110043: leverage not modified (already set to this value)
 		// In PM mode, leverage is managed at portfolio level, treat as success
-		if res.Error.BizCode == 110077 || res.Error.BizCode == 110038 || res.Error.BizCode == 110043 {
+		if res.Error.Code == errs.CodeLeverageInvalid || res.Error.Code == errs.CodeNoChange {
 			return map[string]interface{}{}, nil
 		}
 		return nil, res.Error

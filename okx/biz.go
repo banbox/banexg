@@ -22,6 +22,7 @@ func (e *OKX) Init() *errs.Error {
 	}
 	e.ExgInfo.NoHoliday = true
 	e.ExgInfo.FullDay = true
+	e.MapApiError = mapOKXHTTPError
 	markRiskyApis(e)
 	return nil
 }
@@ -112,12 +113,12 @@ func requestRetry[T any](e *OKX, api string, params map[string]interface{}, tryN
 		return res
 	}
 	if rsp.Code != "0" {
-		// Extract detailed error from data[0].sCode/sMsg if available
+		errCode := rsp.Code
 		errMsg := rsp.Msg
-		if detail := extractDetailError(res.Content); detail != "" {
-			errMsg = detail
+		if detailCode, detailMsg := extractDetailError(res.Content); detailMsg != "" {
+			errCode, errMsg = detailCode, detailMsg
 		}
-		res.Error = errs.NewMsg(errs.CodeRunTime, "[%s] %s", rsp.Code, errMsg)
+		res.Error = newOKXError(errCode, errMsg)
 	} else {
 		res.Result = rsp.Data
 		e.CacheApiRes(api, res_)
@@ -126,7 +127,7 @@ func requestRetry[T any](e *OKX, api string, params map[string]interface{}, tryN
 }
 
 // extractDetailError extracts detailed error from OKX response's data[0].sCode/sMsg
-func extractDetailError(content string) string {
+func extractDetailError(content string) (string, string) {
 	var resp struct {
 		Data []struct {
 			SCode string `json:"sCode"`
@@ -135,10 +136,10 @@ func extractDetailError(content string) string {
 	}
 	if utils.UnmarshalString(content, &resp, utils.JsonNumDefault) == nil {
 		if len(resp.Data) > 0 && resp.Data[0].SMsg != "" {
-			return "[" + resp.Data[0].SCode + "] " + resp.Data[0].SMsg
+			return resp.Data[0].SCode, resp.Data[0].SMsg
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func makeFetchMarkets(e *OKX) banexg.FuncFetchMarkets {

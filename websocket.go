@@ -475,11 +475,18 @@ CheckWsError
 从websocket返回的消息结果中，检查是否有错误信息
 */
 func CheckWsError(msg map[string]string) *errs.Error {
+	return CheckWsErrorWith(msg, nil)
+}
+
+func CheckWsErrorWith(msg map[string]string, mapper func(status int, content string) *errs.Error) *errs.Error {
 	errRaw, ok := msg["error"]
 	if ok {
-		var err = &errs.Error{}
-		_ = utils.UnmarshalString(errRaw, err, utils.JsonNumDefault)
-		return err
+		if mapper != nil {
+			if err := mapper(http.StatusBadRequest, errRaw); err != nil {
+				return err
+			}
+		}
+		return errs.NewMsg(errs.CodeExchangeError, "websocket request failed")
 	}
 	status, ok := msg["status"]
 	if ok && status != "200" {
@@ -487,8 +494,13 @@ func CheckWsError(msg map[string]string) *errs.Error {
 		if e != nil {
 			return nil
 		}
-		msgStr, _ := utils.MarshalString(msg)
-		return errs.NewMsg(statusVal, msgStr)
+		if mapper != nil {
+			msgStr, _ := utils.MarshalString(msg)
+			if err := mapper(statusVal, msgStr); err != nil {
+				return err
+			}
+		}
+		return mapHTTPError(nil, statusVal)
 	}
 	return nil
 }

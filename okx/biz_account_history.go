@@ -149,12 +149,10 @@ func (e *OKX) FetchFundingRates(symbols []string, params map[string]interface{})
 		if err != nil {
 			return nil, err
 		}
-		if contractType == banexg.MarketFuture || marketType == banexg.MarketFuture {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "funding rates only supports swap")
+		if marketType != "" && marketType != banexg.MarketLinear && marketType != banexg.MarketInverse && marketType != banexg.MarketFuture {
+			return nil, errs.NewMsg(errs.CodeParamInvalid, "funding rates only supports perpetual contracts")
 		}
-		if marketType != "" && marketType != banexg.MarketLinear && marketType != banexg.MarketInverse {
-			return nil, errs.NewMsg(errs.CodeParamInvalid, "funding rates only supports swap")
-		}
+		delete(args, banexg.ParamContract)
 		args[FldInstId] = InstIdAny
 		tryNum := e.GetRetryNum("FetchFundingRates", 1)
 		res := requestRetry[[]map[string]interface{}](e, MethodPublicGetFundingRate, args, tryNum)
@@ -167,6 +165,9 @@ func (e *OKX) FetchFundingRates(symbols []string, params map[string]interface{})
 		}
 		result := make([]*banexg.FundingRateCur, 0, len(arr))
 		for i, item := range arr {
+			if (marketType == banexg.MarketFuture || contractType == banexg.MarketFuture) && item.InstType != InstTypeFutures {
+				continue
+			}
 			cur := parseFundingRate(e, &item, res.Result[i])
 			if cur != nil {
 				result = append(result, cur)
@@ -336,7 +337,6 @@ func parseFundingRate(e *OKX, item *FundingRate, info map[string]interface{}) *b
 		Timestamp:            parseInt(item.Ts),
 		Info:                 info,
 		FundingTimestamp:     parseInt(item.FundingTime),
-		NextFundingRate:      parseFloat(item.NextFundingRate),
 		NextFundingTimestamp: parseInt(item.NextFundingTime),
 		InterestRate:         parseFloat(item.InterestRate),
 	}

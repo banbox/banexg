@@ -78,7 +78,6 @@ func TestParseFundingRate(t *testing.T) {
 		InstId:          "BTC-USDT-SWAP",
 		FundingRate:     "0.0001",
 		FundingTime:     "1743609600000",
-		NextFundingRate: "0.0002",
 		NextFundingTime: "1743638400000",
 		InterestRate:    "0.0003",
 		Ts:              "1743588686291",
@@ -87,7 +86,7 @@ func TestParseFundingRate(t *testing.T) {
 	if res == nil {
 		t.Fatalf("unexpected nil funding rate")
 	}
-	if res.FundingRate != 0.0001 || res.NextFundingRate != 0.0002 {
+	if res.FundingRate != 0.0001 || res.NextFundingRate != 0 {
 		t.Fatalf("unexpected rates: %+v", res)
 	}
 	if res.FundingTimestamp != 1743609600000 || res.NextFundingTimestamp != 1743638400000 {

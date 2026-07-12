@@ -100,8 +100,9 @@ func TestBybitOrderBookLimit(t *testing.T) {
 		{name: "spotNeg", marketType: banexg.MarketSpot, limit: -1, expect: 0},
 		{name: "spotZero", marketType: banexg.MarketSpot, limit: 0, expect: 0},
 		{name: "spot1", marketType: banexg.MarketSpot, limit: 1, expect: 1},
-		{name: "spotCap", marketType: banexg.MarketSpot, limit: 999, expect: 200},
-		{name: "linearCap", marketType: banexg.MarketLinear, limit: 999, expect: 500},
+		{name: "spotCap", marketType: banexg.MarketSpot, limit: 1001, expect: 1000},
+		{name: "linearCap", marketType: banexg.MarketLinear, limit: 1001, expect: 1000},
+		{name: "inverseCap", marketType: banexg.MarketInverse, limit: 1001, expect: 1000},
 		{name: "optionCap", marketType: banexg.MarketOption, limit: 999, expect: 25},
 	}
 	for _, tc := range cases {
@@ -2104,9 +2105,9 @@ func TestApi_FetchOrderBook_Spot_DefaultLimit(t *testing.T) {
 }
 
 func TestApi_FetchOrderBook_Spot_LimitClamp(t *testing.T) {
-	_, book := bybitFetchOrderBookByType(t, banexg.MarketSpot, 999)
+	_, book := bybitFetchOrderBookByType(t, banexg.MarketSpot, 1001)
 	requireBybitOrderBookNonEmpty(t, book)
-	requireBybitOrderBookLimit(t, book, 200)
+	requireBybitOrderBookLimit(t, book, 1000)
 }
 
 func TestApi_FetchOrderBook_Linear_DefaultLimit(t *testing.T) {
@@ -2116,9 +2117,9 @@ func TestApi_FetchOrderBook_Linear_DefaultLimit(t *testing.T) {
 }
 
 func TestApi_FetchOrderBook_Linear_LimitClamp(t *testing.T) {
-	_, book := bybitFetchOrderBookByType(t, banexg.MarketLinear, 999)
+	_, book := bybitFetchOrderBookByType(t, banexg.MarketLinear, 1001)
 	requireBybitOrderBookNonEmpty(t, book)
-	requireBybitOrderBookLimit(t, book, 500)
+	requireBybitOrderBookLimit(t, book, 1000)
 }
 
 func TestApi_FetchOrderBook_Inverse_DefaultLimit(t *testing.T) {
@@ -2128,9 +2129,9 @@ func TestApi_FetchOrderBook_Inverse_DefaultLimit(t *testing.T) {
 }
 
 func TestApi_FetchOrderBook_Inverse_LimitClamp(t *testing.T) {
-	_, book := bybitFetchOrderBookByType(t, banexg.MarketInverse, 999)
+	_, book := bybitFetchOrderBookByType(t, banexg.MarketInverse, 1001)
 	requireBybitOrderBookNonEmpty(t, book)
-	requireBybitOrderBookLimit(t, book, 500)
+	requireBybitOrderBookLimit(t, book, 1000)
 }
 
 func TestApi_FetchOrderBook_Option_DefaultLimit(t *testing.T) {

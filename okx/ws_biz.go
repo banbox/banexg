@@ -52,7 +52,7 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 						ch <- nil
 					} else {
 						errMsg := getMapString(msg, "msg")
-						ch <- errs.NewMsg(errs.CodeUnauthorized, "ws login failed: %s - %s", code, errMsg)
+						ch <- errs.NewMsg(errs.CodeUnauthorized, "ws login failed: %s", errMsg)
 					}
 					delete(e.WsAuthDone, client.Key)
 				}
@@ -72,7 +72,7 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 					e.WsAuthLock.Lock()
 					if ch, ok := e.WsAuthDone[client.Key]; ok {
 						errMsg := getMapString(msg, "msg")
-						ch <- errs.NewMsg(errs.CodeUnauthorized, "ws auth error: %s - %s", code, errMsg)
+						ch <- errs.NewMsg(errs.CodeUnauthorized, "ws auth error: %s", errMsg)
 						delete(e.WsAuthDone, client.Key)
 					}
 					e.WsAuthLock.Unlock()

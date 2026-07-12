@@ -81,7 +81,7 @@ func TestParseOHLCV(t *testing.T) {
 	if k.Time != 1597026383085 || k.Open != 3.721 || k.Close != 3.708 {
 		t.Fatalf("unexpected kline: %+v", k)
 	}
-	if k.Volume != 8422410 || k.Info != 12698348.04828491 {
+	if k.Volume != 8422410 || k.Quote != 12698348.04828491 {
 		t.Fatalf("unexpected volume/info: %+v", k)
 	}
 }

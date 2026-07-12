@@ -27,6 +27,7 @@ type FuncOnWsReCon = func(client *WsClient, connID int) *errs.Error
 type FuncGetWsJob = func(client *WsClient) (*WsJobInfo, *errs.Error)
 
 type FuncCalcRateLimiterCost = func(api *Entry, params map[string]interface{}) float64
+type FuncMapApiError = func(api *Entry, status int, content string) *errs.Error
 
 // key: acc@url#marketType@method
 type FuncOnWsChan = func(key string, out interface{})
@@ -50,6 +51,7 @@ type Exchange struct {
 	lastRequestMS       int64          // 上次请求的13位时间戳
 	rateM               deadlock.Mutex // 同步锁
 	CalcRateLimiterCost FuncCalcRateLimiterCost
+	MapApiError         FuncMapApiError
 	WsTimeout           int64 // websocket msg timeout in milliseconds
 	WsChecking          bool
 

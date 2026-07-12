@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 )
 
@@ -242,6 +243,10 @@ func TestBybitWsOpSuccess(t *testing.T) {
 	success, err = bybitWsOpSuccess(&wsBaseMsg{Success: &fail, RetMsgAlt: "alt-fail"})
 	if success || err == nil || err.Message() != "alt-fail" {
 		t.Fatalf("expected failure with alt message, got %v %v", success, err)
+	}
+	success, err = bybitWsOpSuccess(&wsBaseMsg{Success: &fail, RetCode: 10006, RetMsg: "rate limited"})
+	if success || err == nil || err.Code != errs.CodeRateLimit || err.BizCode != 0 {
+		t.Fatalf("expected neutral rate-limit error, got %v %v", success, err)
 	}
 	success, err = bybitWsOpSuccess(&wsBaseMsg{RetCode: 0})
 	if !success || err != nil {
