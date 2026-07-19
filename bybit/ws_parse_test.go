@@ -99,6 +99,7 @@ func TestParseBybitWsMyTrade(t *testing.T) {
 		"execValue":   "9.95",
 		"execFee":     "0.01",
 		"feeCurrency": "USDT",
+		"execType":    "Trade",
 		"execTime":    "1700000000000",
 		"isMaker":     true,
 	}
@@ -114,6 +115,27 @@ func TestParseBybitWsMyTrade(t *testing.T) {
 	}
 	if trade.Fee == nil || trade.Fee.Currency != "USDT" {
 		t.Fatalf("unexpected fee: %+v", trade.Fee)
+	}
+}
+
+func TestParseBybitWsMyTradeIgnoresNonTradeExecutions(t *testing.T) {
+	exg := mustNewBybit(t, "Bybit")
+	seedMarket(exg, "BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+
+	for _, execType := range []string{"Funding", "SessionSettlePnL"} {
+		item := map[string]interface{}{
+			"symbol":     "BTCUSDT",
+			"orderId":    "exchange-order",
+			"side":       "Sell",
+			"execType":   execType,
+			"execQty":    "0.1",
+			"execPrice":  "100",
+			"closedSize": "0",
+			"execTime":   "1700000000000",
+		}
+		if trade := parseBybitWsMyTrade(exg, item, banexg.MarketLinear); trade != nil {
+			t.Fatalf("%s execution must not produce MyTrade: %+v", execType, trade)
+		}
 	}
 }
 
