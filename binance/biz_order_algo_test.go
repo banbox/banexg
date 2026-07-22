@@ -27,6 +27,21 @@ func getPosition(t *testing.T) (*Binance, *banexg.Position) {
 	return exg, pos[0]
 }
 
+func TestNormalizeContractTriggerOrderType(t *testing.T) {
+	market := &banexg.Market{Contract: true}
+	tests := map[string]string{
+		banexg.OdTypeStopLoss:         banexg.OdTypeStopMarket,
+		banexg.OdTypeStopLossLimit:    banexg.OdTypeStop,
+		banexg.OdTypeTakeProfitLimit:  banexg.OdTypeTakeProfit,
+		banexg.OdTypeTakeProfitMarket: banexg.OdTypeTakeProfitMarket,
+	}
+	for input, want := range tests {
+		if got := normalizeContractTriggerOrderType(market, input); got != want {
+			t.Fatalf("normalize %s = %s, want %s", input, got, want)
+		}
+	}
+}
+
 // TestCreateAlgoOrder 测试创建策略单
 // 对应接口: POST /fapi/v1/algoOrder
 func TestCreateAlgoOrder(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -101,6 +102,75 @@ func TestFetchOpenOrdersAlgoFansOutAllCreatableTypes(t *testing.T) {
 	sort.Strings(want)
 	if fmt.Sprint(seen) != fmt.Sprint(want) {
 		t.Fatalf("unexpected algo types: got %v want %v", seen, want)
+	}
+}
+
+func TestFetchOpenOrdersFullSnapshotIncludesRegularAndAlgo(t *testing.T) {
+	var mu sync.Mutex
+	seen := make([]string, 0, len(okxAlgoOrderTypes)+1)
+	exg, _ := newMockOKX(t, func(w http.ResponseWriter, r *http.Request) {
+		ordType := r.URL.Query().Get(FldOrdType)
+		mu.Lock()
+		seen = append(seen, ordType)
+		mu.Unlock()
+		data := `[{"ordId":"regular","instId":"BTC-USDT","state":"live","ordType":"limit"}]`
+		if ordType != "" {
+			data = fmt.Sprintf(`[{"algoId":"%s","instId":"BTC-USDT","state":"live","ordType":"%s"}]`, ordType, ordType)
+		}
+		_, _ = fmt.Fprintf(w, `{"code":"0","msg":"","data":%s}`, data)
+	}, MethodTradeGetOrdersPending, MethodTradeGetOrdersAlgoPending)
+	seedMarket(exg, "BTC-USDT", "BTC/USDT", banexg.MarketSpot)
+
+	orders, err := exg.FetchOpenOrders("BTC/USDT", 0, 1000, map[string]interface{}{
+		banexg.ParamFullSnapshot: true,
+		banexg.ParamNoCache:      true,
+	})
+	if err != nil {
+		t.Fatalf("fetch full snapshot: %v", err)
+	}
+	if len(orders) != len(okxAlgoOrderTypes)+1 {
+		t.Fatalf("orders = %d, want %d", len(orders), len(okxAlgoOrderTypes)+1)
+	}
+	if len(seen) != len(okxAlgoOrderTypes)+1 {
+		t.Fatalf("queries = %v", seen)
+	}
+}
+
+func TestFetchOpenOrdersFullSnapshotRejectsPartialAlgoResult(t *testing.T) {
+	exg, _ := newMockOKX(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get(FldOrdType) == "trigger" {
+			_, _ = w.Write([]byte(`{"code":"50000","msg":"failed","data":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":"0","msg":"","data":[]}`))
+	}, MethodTradeGetOrdersPending, MethodTradeGetOrdersAlgoPending)
+	seedMarket(exg, "BTC-USDT", "BTC/USDT", banexg.MarketSpot)
+
+	_, err := exg.FetchOpenOrders("BTC/USDT", 0, 1000, map[string]interface{}{
+		banexg.ParamFullSnapshot: true,
+		banexg.ParamNoCache:      true,
+	})
+	if err == nil {
+		t.Fatal("partial algo snapshot was accepted")
+	}
+}
+
+func TestFetchOpenOrdersFullSnapshotRejectsFullPage(t *testing.T) {
+	exg, _ := newMockOKX(t, func(w http.ResponseWriter, _ *http.Request) {
+		items := make([]string, 100)
+		for i := range items {
+			items[i] = fmt.Sprintf(`{"ordId":"%d","instId":"BTC-USDT","state":"live","ordType":"limit"}`, i)
+		}
+		_, _ = fmt.Fprintf(w, `{"code":"0","msg":"","data":[%s]}`, strings.Join(items, ","))
+	}, MethodTradeGetOrdersPending, MethodTradeGetOrdersAlgoPending)
+	seedMarket(exg, "BTC-USDT", "BTC/USDT", banexg.MarketSpot)
+
+	_, err := exg.FetchOpenOrders("BTC/USDT", 0, 1000, map[string]interface{}{
+		banexg.ParamFullSnapshot: true,
+		banexg.ParamNoCache:      true,
+	})
+	if err == nil {
+		t.Fatal("full OKX page was accepted as complete")
 	}
 }
 

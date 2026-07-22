@@ -15,6 +15,22 @@ func isBnbOrderType(market *banexg.Market, odType string) bool {
 	return utils.ArrContains(allows, odType)
 }
 
+func normalizeContractTriggerOrderType(market *banexg.Market, odType string) string {
+	if market == nil || !market.Contract {
+		return odType
+	}
+	switch odType {
+	case banexg.OdTypeStopLoss:
+		return banexg.OdTypeStopMarket
+	case banexg.OdTypeStopLossLimit:
+		return banexg.OdTypeStop
+	case banexg.OdTypeTakeProfitLimit:
+		return banexg.OdTypeTakeProfit
+	default:
+		return odType
+	}
+}
+
 /*
 CreateOrder 提交订单到交易所
 
@@ -42,6 +58,7 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 	if err != nil {
 		return nil, err
 	}
+	odType = normalizeContractTriggerOrderType(market, odType)
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	sor := utils.PopMapVal(args, banexg.ParamSor, false)
 	clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")

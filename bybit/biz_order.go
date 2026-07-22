@@ -1131,6 +1131,7 @@ func (e *Bybit) FetchOrder(symbol, id string, params map[string]interface{}) (*b
 	if market == nil {
 		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required")
 	}
+	utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	if err := setBybitOrderID(args, id); err != nil {
 		return nil, err
 	}
@@ -1169,15 +1170,20 @@ func (e *Bybit) FetchOpenOrders(symbol string, since int64, limit int, params ma
 	if err := rejectBybitBefore(args); err != nil {
 		return nil, err
 	}
+	fullSnapshot := utils.PopMapVal(args, banexg.ParamFullSnapshot, false)
+	utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	applyBybitClientOrderID(args)
 	settleCoins := utils.PopMapVal(args, banexg.ParamSettleCoins, []string(nil))
+	if category == banexg.MarketSpot {
+		settleCoins = nil
+	}
 	if len(settleCoins) > 1 {
 		result := make([]*banexg.Order, 0)
 		seen := make(map[string]struct{})
 		for _, coin := range settleCoins {
 			reqArgs := utils.SafeParams(args)
 			reqArgs["settleCoin"] = coin
-			orders, err := e.fetchOpenOrdersOnce(symbol, marketType, limit, reqArgs)
+			orders, err := e.fetchOpenOrdersOnce(symbol, marketType, limit, reqArgs, fullSnapshot)
 			if err != nil {
 				return nil, err
 			}
@@ -1198,6 +1204,9 @@ func (e *Bybit) FetchOpenOrders(symbol string, since int64, limit int, params ma
 				result = append(result, od)
 			}
 		}
+		if fullSnapshot && limit > 0 && len(result) > limit {
+			return nil, errs.NewMsg(errs.CodeRunTime, "open order snapshot exceeds limit: %d", limit)
+		}
 		return result, nil
 	}
 	if len(settleCoins) == 1 {
@@ -1214,16 +1223,41 @@ func (e *Bybit) FetchOpenOrders(symbol string, since int64, limit int, params ma
 			}
 		}
 	}
-	return e.fetchOpenOrdersOnce(symbol, marketType, limit, args)
+	return e.fetchOpenOrdersOnce(symbol, marketType, limit, args, fullSnapshot)
 }
 
-func (e *Bybit) fetchOpenOrdersOnce(symbol, marketType string, limit int, args map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+func (e *Bybit) fetchOpenOrdersOnce(symbol, marketType string, limit int, args map[string]interface{}, fullSnapshot bool) ([]*banexg.Order, *errs.Error) {
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
-	items, err := fetchV5List(e, MethodPrivateGetV5OrderRealtime, args, tryNum, limit, 50)
+	var items []map[string]interface{}
+	var err *errs.Error
+	if fullSnapshot {
+		items, err = fetchV5ListComplete(e, MethodPrivateGetV5OrderRealtime, args, tryNum, limit, 50)
+	} else {
+		items, err = fetchV5List(e, MethodPrivateGetV5OrderRealtime, args, tryNum, limit, 50)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return parseBybitOrders(e, items, marketType, symbol)
+	orders, err := parseBybitOrders(e, items, marketType, symbol)
+	if err != nil {
+		return nil, err
+	}
+	if fullSnapshot {
+		if len(orders) != len(items) {
+			return nil, errs.NewMsg(errs.CodeUnmarshalFail, "incomplete open order parse: got %d of %d", len(orders), len(items))
+		}
+		seen := make(map[string]struct{}, len(orders))
+		for _, order := range orders {
+			if order == nil || order.ID == "" {
+				return nil, errs.NewMsg(errs.CodeUnmarshalFail, "open order has no order ID")
+			}
+			if _, ok := seen[order.ID]; ok {
+				return nil, errs.NewMsg(errs.CodeRunTime, "duplicate open order in snapshot: %s", order.ID)
+			}
+			seen[order.ID] = struct{}{}
+		}
+	}
+	return orders, nil
 }
 
 func (e *Bybit) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {

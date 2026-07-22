@@ -1504,6 +1504,27 @@ func TestFetchOpenOrdersLinearWithSettleCoin(t *testing.T) {
 	}
 }
 
+func TestFetchOpenOrdersFullSnapshotRejectsDuplicatePages(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	call := 0
+	setBybitTestRequestWithEndpoint(t, MethodPrivateGetV5OrderRealtime, func(params map[string]interface{}) *banexg.HttpRes {
+		call++
+		next := "next"
+		if call > 1 {
+			next = ""
+		}
+		body := fmt.Sprintf(`{"retCode":0,"retMsg":"OK","result":{"list":[{"orderId":"same","symbol":"BTCUSDT","side":"Sell","orderType":"Market","orderStatus":"New","qty":"1","leavesQty":"1"}],"nextPageCursor":"%s"}}`, next)
+		return &banexg.HttpRes{Status: 200, Content: body}
+	})
+
+	_, err := exg.FetchOpenOrders("BTC/USDT:USDT", 0, 50, map[string]interface{}{
+		banexg.ParamFullSnapshot: true,
+	})
+	if err == nil {
+		t.Fatal("duplicate orders across snapshot pages were accepted")
+	}
+}
+
 func TestFetchOpenOrdersParams(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
 	setBybitTestRequestWithEndpoint(t, MethodPrivateGetV5OrderRealtime, func(params map[string]interface{}) *banexg.HttpRes {

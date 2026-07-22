@@ -305,7 +305,11 @@ func (e *OKX) FetchOrder(symbol, id string, params map[string]interface{}) (*ban
 }
 
 func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+	if utils.GetMapVal(params, banexg.ParamFullSnapshot, false) {
+		return e.fetchOpenOrderSnapshot(symbol, since, limit, params)
+	}
 	args := utils.SafeParams(params)
+	utils.PopMapVal(args, banexg.ParamFullSnapshot, false)
 	algoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	marketType := ""
 	contractType := ""
@@ -354,12 +358,13 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 			argsClone[FldOrdType] = ordType
 			res := requestRetry[[]map[string]interface{}](e, method, argsClone, tryNum)
 			if res.Error != nil {
-				continue
+				return nil, res.Error
 			}
 			orders, err := parseAlgoOrders(e, res.Result, marketType, symbol)
-			if err == nil && orders != nil {
-				allOrders = append(allOrders, orders...)
+			if err != nil {
+				return nil, err
 			}
+			allOrders = append(allOrders, orders...)
 		}
 		return allOrders, nil
 	}
@@ -368,6 +373,43 @@ func (e *OKX) FetchOpenOrders(symbol string, since int64, limit int, params map[
 		return nil, res.Error
 	}
 	return parseOrders(e, res.Result, marketType, symbol)
+}
+
+func (e *OKX) fetchOpenOrderSnapshot(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+	args := utils.SafeParams(params)
+	delete(args, banexg.ParamFullSnapshot)
+	delete(args, banexg.ParamAlgoOrder)
+	delete(args, FldOrdType)
+	pageLimit := 100
+	if limit > 0 {
+		pageLimit = min(limit, pageLimit)
+	}
+
+	result, err := e.FetchOpenOrders(symbol, since, limit, args)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) >= pageLimit {
+		return nil, errs.NewMsg(errs.CodeRunTime, "open order snapshot reached OKX page limit: %d", pageLimit)
+	}
+	for _, ordType := range okxAlgoOrderTypes {
+		algoArgs := utils.SafeParams(args)
+		algoArgs[banexg.ParamAlgoOrder] = true
+		algoArgs[FldOrdType] = ordType
+		orders, err := e.FetchOpenOrders(symbol, since, limit, algoArgs)
+		if err != nil {
+			return nil, err
+		}
+		if len(orders) >= pageLimit {
+			return nil, errs.NewMsg(errs.CodeRunTime,
+				"open OKX algo order snapshot reached page limit: type=%s limit=%d", ordType, pageLimit)
+		}
+		result = append(result, orders...)
+	}
+	if limit > 0 && len(result) >= limit {
+		return nil, errs.NewMsg(errs.CodeRunTime, "open order snapshot reached caller limit: %d", limit)
+	}
+	return result, nil
 }
 
 func (e *OKX) FetchOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {

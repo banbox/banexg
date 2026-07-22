@@ -46,7 +46,9 @@ type BanExchange interface {
 	FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error)
 	// FetchPositions Get position risks (default) or account positions on all symbols
 	FetchPositions(symbols []string, params map[string]interface{}) ([]*Position, *errs.Error)
-	// FetchOpenOrders Get all open orders on a symbol or all symbol.
+	// FetchOpenOrders gets open orders for one or all symbols. ParamFullSnapshot
+	// includes exchange-native conditional order classes and fails unless the
+	// adapter can prove the result is complete within limit.
 	FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*Order, *errs.Error)
 	FetchIncomeHistory(inType string, symbol string, since int64, limit int, params map[string]interface{}) ([]*Income, *errs.Error)
 

@@ -202,6 +202,14 @@ func setV5Cursor(args map[string]interface{}, cursor string) {
 }
 
 func fetchV5List(e *Bybit, method string, args map[string]interface{}, tryNum int, limit int, maxLimit int) ([]map[string]interface{}, *errs.Error) {
+	return fetchV5ListMode(e, method, args, tryNum, limit, maxLimit, false)
+}
+
+func fetchV5ListComplete(e *Bybit, method string, args map[string]interface{}, tryNum int, limit int, maxLimit int) ([]map[string]interface{}, *errs.Error) {
+	return fetchV5ListMode(e, method, args, tryNum, limit, maxLimit, true)
+}
+
+func fetchV5ListMode(e *Bybit, method string, args map[string]interface{}, tryNum int, limit int, maxLimit int, complete bool) ([]map[string]interface{}, *errs.Error) {
 	pageLimit := limit
 	if pageLimit <= 0 {
 		pageLimit = maxLimit
@@ -212,6 +220,7 @@ func fetchV5List(e *Bybit, method string, args map[string]interface{}, tryNum in
 		args["limit"] = pageLimit
 	}
 	cursor := popV5Cursor(args)
+	seenCursors := map[string]struct{}{cursor: {}}
 	items := make([]map[string]interface{}, 0)
 	for {
 		setV5Cursor(args, cursor)
@@ -222,13 +231,21 @@ func fetchV5List(e *Bybit, method string, args map[string]interface{}, tryNum in
 		if len(res.Result.List) > 0 {
 			items = append(items, res.Result.List...)
 		}
+		nextCursor := res.Result.NextPageCursor
 		if limit > 0 && len(items) >= limit {
+			if complete && nextCursor != "" {
+				return nil, errs.NewMsg(errs.CodeRunTime, "result exceeds complete snapshot limit: %d", limit)
+			}
 			return items[:limit], nil
 		}
-		if res.Result.NextPageCursor == "" || (pageLimit > 0 && len(res.Result.List) < pageLimit) {
+		if nextCursor == "" {
 			break
 		}
-		cursor = res.Result.NextPageCursor
+		if _, ok := seenCursors[nextCursor]; ok {
+			return nil, errs.NewMsg(errs.CodeRunTime, "repeated pagination cursor: %s", nextCursor)
+		}
+		seenCursors[nextCursor] = struct{}{}
+		cursor = nextCursor
 	}
 	return items, nil
 }

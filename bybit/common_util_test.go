@@ -406,6 +406,41 @@ func TestFetchV5ListAll(t *testing.T) {
 	}
 }
 
+func TestFetchV5ListFollowsCursorAfterShortPage(t *testing.T) {
+	exg := &Bybit{Exchange: &banexg.Exchange{}}
+	call := 0
+	setBybitTestRequest(t, func(_ context.Context, _ string, params map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
+		call++
+		if call == 1 {
+			return &banexg.HttpRes{Content: `{"retCode":0,"retMsg":"OK","result":{"list":[{"orderId":"first"}],"nextPageCursor":"next"}}`}
+		}
+		if params["cursor"] != "next" {
+			t.Fatalf("cursor = %v, want next", params["cursor"])
+		}
+		return &banexg.HttpRes{Content: `{"retCode":0,"retMsg":"OK","result":{"list":[{"orderId":"second"}],"nextPageCursor":""}}`}
+	})
+
+	items, err := fetchV5List(exg, MethodPrivateGetV5OrderRealtime, map[string]interface{}{}, 1, 50, 50)
+	if err != nil {
+		t.Fatalf("fetch short pages: %v", err)
+	}
+	if len(items) != 2 || items[0]["orderId"] != "first" || items[1]["orderId"] != "second" {
+		t.Fatalf("unexpected items: %#v", items)
+	}
+}
+
+func TestFetchV5ListRejectsRepeatedCursor(t *testing.T) {
+	exg := &Bybit{Exchange: &banexg.Exchange{}}
+	setBybitTestRequest(t, func(_ context.Context, _ string, _ map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
+		return &banexg.HttpRes{Content: `{"retCode":0,"retMsg":"OK","result":{"list":[],"nextPageCursor":"repeat"}}`}
+	})
+
+	_, err := fetchV5List(exg, MethodPrivateGetV5OrderRealtime, map[string]interface{}{}, 1, 0, 50)
+	if err == nil {
+		t.Fatal("repeated cursor was accepted")
+	}
+}
+
 func TestFetchV5ListAllError(t *testing.T) {
 	exg := &Bybit{Exchange: &banexg.Exchange{}}
 	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {

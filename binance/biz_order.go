@@ -207,6 +207,9 @@ fetch all unfilled currently open orders
 :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
 */
 func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+	if utils.GetMapVal(params, banexg.ParamFullSnapshot, false) {
+		return e.fetchOpenOrderSnapshot(symbol, since, limit, params)
+	}
 	var args map[string]interface{}
 	var marketType string
 	var market *banexg.Market
@@ -278,6 +281,40 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
 	}
+}
+
+func (e *Binance) fetchOpenOrderSnapshot(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
+	args := utils.SafeParams(params)
+	delete(args, banexg.ParamFullSnapshot)
+	delete(args, banexg.ParamAlgoOrder)
+	orders, err := e.FetchOpenOrders(symbol, since, limit, args)
+	if err != nil {
+		return nil, err
+	}
+
+	marketType := ""
+	if symbol != "" {
+		market, marketErr := e.GetMarket(symbol)
+		if marketErr != nil {
+			return nil, marketErr
+		}
+		marketType = market.Type
+	} else {
+		marketType, _ = e.GetArgsMarketType(utils.SafeParams(args), "")
+	}
+	if marketType == banexg.MarketLinear {
+		algoArgs := utils.SafeParams(args)
+		algoArgs[banexg.ParamAlgoOrder] = true
+		algoOrders, algoErr := e.FetchOpenOrders(symbol, since, limit, algoArgs)
+		if algoErr != nil {
+			return nil, algoErr
+		}
+		orders = append(orders, algoOrders...)
+	}
+	if limit > 0 && len(orders) >= limit {
+		return nil, errs.NewMsg(errs.CodeRunTime, "open order snapshot reached caller limit: %d", limit)
+	}
+	return orders, nil
 }
 
 func (e *Binance) EditOrder(symbol, orderId, side string, amount, price float64, params map[string]interface{}) (*banexg.Order, *errs.Error) {

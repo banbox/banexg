@@ -54,14 +54,15 @@ const (
 	ParamDirection               = "direction"
 	// ParamAutoClip allows an exchange adapter to automatically clip/split parameters (e.g. time range)
 	// to satisfy exchange-specific constraints instead of returning an error.
-	ParamAutoClip    = "autoClip"
-	ParamDebug       = "debug"
-	ParamNoCache     = "noCache"
-	ParamAfter       = "after"       // Pagination cursor - records after this ID
-	ParamBefore      = "before"      // Pagination cursor - records before this ID
-	ParamCurrency    = "currency"    // Currency code
-	ParamArchive     = "archive"     // Whether to use archive endpoint
-	ParamSettleCoins = "settleCoins" // Settlement coins for position queries
+	ParamAutoClip     = "autoClip"
+	ParamDebug        = "debug"
+	ParamNoCache      = "noCache"
+	ParamAfter        = "after"        // Pagination cursor - records after this ID
+	ParamBefore       = "before"       // Pagination cursor - records before this ID
+	ParamCurrency     = "currency"     // Currency code
+	ParamArchive      = "archive"      // Whether to use archive endpoint
+	ParamSettleCoins  = "settleCoins"  // Settlement coins for account-scoped queries
+	ParamFullSnapshot = "fullSnapshot" // Require a complete result or return an error
 )
 
 var (
