@@ -1178,6 +1178,24 @@ func (e *Exchange) setReqHeaders(head *http.Header) {
 	}
 }
 
+func waitRequestContext(ctx context.Context, duration time.Duration) error {
+	if duration <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func requestContextError(ctx context.Context) *HttpRes {
+	return &HttpRes{Error: errs.New(errs.CodeTimeout, ctx.Err())}
+}
+
 /*
 RequestApi
 Request exchange API without checking cache
@@ -1194,7 +1212,11 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 	// Traffic control, block if concurrency is full
 	// 流量控制，如果并发已满则阻塞
 	sem := GetHostFlowChan(api.RawHost)
-	sem <- struct{}{}
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return requestContextError(ctx)
+	}
 	defer func() {
 		<-sem
 	}()
@@ -1202,7 +1224,9 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 	// 检查是否出现429或418需要等待
 	waitMS := GetHostRetryWait(api.RawHost, true)
 	if waitMS > 0 {
-		time.Sleep(time.Millisecond * time.Duration(waitMS))
+		if err := waitRequestContext(ctx, time.Millisecond*time.Duration(waitMS)); err != nil {
+			return requestContextError(ctx)
+		}
 	}
 	if e.EnableRateLimit == BoolTrue {
 		e.rateM.Lock()
@@ -1210,7 +1234,10 @@ func (e *Exchange) RequestApi(ctx context.Context, cacheKey string, api *Entry, 
 		cost := e.CalcRateLimiterCost(api, params)
 		sleepMS := int64(math.Round(float64(e.RateLimit) * cost))
 		if elapsed < sleepMS {
-			time.Sleep(time.Duration(sleepMS-elapsed) * time.Millisecond)
+			if err := waitRequestContext(ctx, time.Duration(sleepMS-elapsed)*time.Millisecond); err != nil {
+				e.rateM.Unlock()
+				return requestContextError(ctx)
+			}
 		}
 		e.lastRequestMS = e.MilliSeconds()
 		e.rateM.Unlock()
@@ -1389,7 +1416,10 @@ func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, para
 	var sleep = 0
 	for i := 0; i < tryNum; i++ {
 		if sleep > 0 {
-			time.Sleep(time.Second * time.Duration(sleep))
+			if err := waitRequestContext(ctx, time.Second*time.Duration(sleep)); err != nil {
+				rsp = requestContextError(ctx)
+				break
+			}
 			sleep = 0
 		}
 		rsp = e.RequestApi(ctx, cacheKey, api, params, writeCache, debug)
