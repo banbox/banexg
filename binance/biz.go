@@ -17,6 +17,12 @@ import (
 	"go.uber.org/zap"
 )
 
+var fetchOHLCVTimeout = 30 * time.Second
+
+func fetchOHLCVContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), fetchOHLCVTimeout)
+}
+
 var secretApis = map[string]bool{
 	"private":         true,
 	"eapiPrivate":     true,
@@ -637,7 +643,9 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 		method = MethodDapiPublicGetKlines
 	}
 	tryNum := e.GetRetryNum("FetchOHLCV", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	ctx, cancel := fetchOHLCVContext()
+	defer cancel()
+	rsp := e.RequestApiRetry(ctx, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
