@@ -100,6 +100,7 @@ func NewHttpClient() *http.Client {
 
 func (e *Exchange) Init() *errs.Error {
 	e.HttpClient = &http.Client{}
+	e.wsCheckStop = make(chan struct{})
 	// 代理解析：优先传入Proxy(no表示禁用)，其次全局代理(含env/system自动检测)
 	proxyUrl := utils.GetMapVal(e.Options, OptProxy, "")
 	if proxyUrl == "no" {
@@ -1776,6 +1777,7 @@ func (e *Exchange) GetExg() *Exchange {
 }
 
 func (e *Exchange) Close() *errs.Error {
+	e.stopWsChecker()
 	if e.MarketsWait != nil {
 		close(e.MarketsWait)
 		e.MarketsWait = nil

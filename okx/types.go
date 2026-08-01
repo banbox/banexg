@@ -8,9 +8,10 @@ import (
 
 // WsPendingRecon stores info needed to restore subscriptions after reconnection login.
 type WsPendingRecon struct {
-	Client *banexg.WsClient
-	ConnID int
-	Keys   []string
+	Client     *banexg.WsClient
+	ConnID     int
+	Generation uint64
+	Keys       []string
 }
 
 type OKX struct {

@@ -57,8 +57,21 @@ type WsClient struct {
 
 type AsyncConn struct {
 	WsConn
-	send    chan []byte
+	send    chan *wsWrite
 	control chan int // Used for internal synchronization control commands 用于内部同步控制命令
+}
+
+type wsWrite struct {
+	data       []byte
+	recovery   bool
+	generation uint64
+}
+
+func (c *AsyncConn) isConnected() bool {
+	if ws, ok := c.WsConn.(*WebSocket); ok {
+		return ws.isConnected()
+	}
+	return c.IsOK()
 }
 
 type WebSocket struct {
@@ -70,6 +83,9 @@ type WebSocket struct {
 	onReConnect   func() *errs.Error
 	id            int
 	closed        bool
+	ready         bool
+	readyDeferred bool
+	generation    uint64
 	stop          chan struct{}
 	reconnectLock deadlock.Mutex
 	dial          func() (*websocket.Conn, error)
@@ -79,7 +95,15 @@ type WebSocket struct {
 type permanentWsDialError struct{ error }
 
 func (ws *WebSocket) Close() error {
+	return ws.closeGeneration(0)
+}
+
+func (ws *WebSocket) closeGeneration(generation uint64) error {
 	ws.lock.Lock()
+	if generation != 0 && ws.generation != generation {
+		ws.lock.Unlock()
+		return nil
+	}
 	if !ws.closed {
 		ws.closed = true
 		if ws.stop != nil {
@@ -88,6 +112,8 @@ func (ws *WebSocket) Close() error {
 	}
 	conn := ws.conn
 	ws.conn = nil
+	ws.ready = false
+	ws.readyDeferred = false
 	ws.lock.Unlock()
 	if conn != nil {
 		return conn.Close()
@@ -104,6 +130,9 @@ func (ws *WebSocket) WriteClose() error {
 		}
 	}
 	conn := ws.conn
+	ws.conn = nil
+	ws.ready = false
+	ws.readyDeferred = false
 	ws.lock.Unlock()
 	if conn != nil {
 		exitData := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
@@ -122,31 +151,67 @@ func (ws *WebSocket) reConnect() error {
 }
 
 func (ws *WebSocket) ReConnect() error {
-	ws.lock.Lock()
-	conn := ws.conn
-	ws.conn = nil
-	ws.lock.Unlock()
-	var err error
-	if conn != nil {
-		err = conn.Close()
-	}
+	err := ws.disconnect()
 	if err != nil {
 		log.Warn("close ws conn fail", zap.String("url", ws.logURL), zap.Int("id", ws.id), zap.Error(err))
 	}
 	return ws.reConnect()
 }
 
+func (ws *WebSocket) disconnect() error {
+	ws.lock.Lock()
+	conn := ws.conn
+	ws.conn = nil
+	ws.ready = false
+	ws.readyDeferred = false
+	ws.lock.Unlock()
+	if conn != nil {
+		return conn.Close()
+	}
+	return nil
+}
+
+func (ws *WebSocket) disconnectIfCurrent(expected *websocket.Conn) error {
+	return ws.disconnectGeneration(expected, 0)
+}
+
+func (ws *WebSocket) disconnectGeneration(expected *websocket.Conn, generation uint64) error {
+	ws.lock.Lock()
+	if ws.conn != expected || generation != 0 && ws.generation != generation {
+		ws.lock.Unlock()
+		return nil
+	}
+	ws.conn = nil
+	ws.ready = false
+	ws.readyDeferred = false
+	ws.lock.Unlock()
+	if expected != nil {
+		return expected.Close()
+	}
+	return nil
+}
+
 func (ws *WebSocket) NextWriter() (io.WriteCloser, error) {
+	writer, _, err := ws.nextWriter(false, 0)
+	return writer, err
+}
+
+func (ws *WebSocket) nextWriter(recovery bool, generation uint64) (io.WriteCloser, *websocket.Conn, error) {
 	conn, lock := ws.readConn()
+	ready := ws.ready
 	var writer io.WriteCloser
 	var err error
-	if conn != nil {
+	attempted := conn != nil && (ready || recovery) && (generation == 0 || ws.generation == generation)
+	if attempted {
 		writer, err = conn.NextWriter(websocket.TextMessage)
 	} else {
 		err = fmt.Errorf("ws conn [%d] %s closed, NextWriter fail", ws.id, ws.logURL)
 	}
 	lock.RUnlock()
-	return writer, err
+	if err != nil && attempted {
+		_ = ws.disconnectGeneration(conn, generation)
+	}
+	return writer, conn, err
 }
 
 func (ws *WebSocket) ReadMsg() ([]byte, error) {
@@ -168,6 +233,8 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 			ws.lock.Lock()
 			if ws.conn == conn {
 				ws.conn = nil
+				ws.ready = false
+				ws.readyDeferred = false
 			}
 			closed = ws.closed
 			ws.lock.Unlock()
@@ -190,6 +257,13 @@ func (ws *WebSocket) ReadMsg() ([]byte, error) {
 
 func (ws *WebSocket) IsOK() bool {
 	conn, lock := ws.readConn()
+	ok := conn != nil && ws.ready
+	lock.RUnlock()
+	return ok
+}
+
+func (ws *WebSocket) isConnected() bool {
+	conn, lock := ws.readConn()
 	ok := conn != nil
 	lock.RUnlock()
 	return ok
@@ -210,8 +284,64 @@ func (ws *WebSocket) initConn() error {
 		return errors.New("websocket closed")
 	}
 	ws.conn = conn
+	ws.ready = false
+	ws.readyDeferred = false
+	ws.generation++
 	ws.lock.Unlock()
 	return nil
+}
+
+const wsRecoveryReadyTimeout = 10 * time.Second
+
+func (ws *WebSocket) deferReady(timeout time.Duration) uint64 {
+	ws.lock.Lock()
+	if ws.conn == nil || ws.closed {
+		ws.lock.Unlock()
+		return 0
+	}
+	ws.readyDeferred = true
+	generation := ws.generation
+	ws.lock.Unlock()
+	time.AfterFunc(timeout, func() {
+		if ws.disconnectIfUnready(generation) {
+			log.Warn("websocket recovery timed out", zap.String("url", ws.logURL), zap.Int("id", ws.id))
+		}
+	})
+	return generation
+}
+
+func (ws *WebSocket) disconnectIfUnready(generation uint64) bool {
+	ws.lock.Lock()
+	if ws.conn == nil || ws.closed || ws.ready || !ws.readyDeferred || ws.generation != generation {
+		ws.lock.Unlock()
+		return false
+	}
+	conn := ws.conn
+	ws.conn = nil
+	ws.readyDeferred = false
+	ws.lock.Unlock()
+	_ = conn.Close()
+	return true
+}
+
+func (ws *WebSocket) markReady(generation uint64) bool {
+	ws.lock.Lock()
+	if ws.conn != nil && !ws.closed && (generation == 0 || ws.generation == generation) {
+		ws.ready = true
+		ws.readyDeferred = false
+		ws.lock.Unlock()
+		return true
+	}
+	ws.lock.Unlock()
+	return false
+}
+
+func (ws *WebSocket) finishReconnect() {
+	ws.lock.Lock()
+	if ws.conn != nil && !ws.closed && !ws.readyDeferred {
+		ws.ready = true
+	}
+	ws.lock.Unlock()
 }
 
 var reconnectDelays = [...]time.Duration{3 * time.Second, 6 * time.Second, 12 * time.Second, 30 * time.Second}
@@ -235,24 +365,22 @@ func (ws *WebSocket) connectWithRetry(callHook bool) error {
 		}
 		err := ws.initConn()
 		if err == nil {
+			conn, lock := ws.readConn()
+			lock.RUnlock()
 			if callHook && ws.onReConnect != nil {
 				if hookErr := ws.onReConnect(); hookErr != nil {
 					permanent := isPermanentWsError(hookErr)
-					ws.lock.Lock()
-					conn := ws.conn
-					ws.conn = nil
-					ws.lock.Unlock()
-					if conn != nil {
-						_ = conn.Close()
-					}
+					_ = ws.disconnectIfCurrent(conn)
 					if permanent {
 						return hookErr
 					}
 				} else {
+					ws.finishReconnect()
 					log.Info("reconnect success", zap.String("url", ws.logURL), zap.Int("id", ws.id))
 					return nil
 				}
 			} else {
+				ws.finishReconnect()
 				return nil
 			}
 		} else {
@@ -268,13 +396,14 @@ func (ws *WebSocket) connectWithRetry(callHook bool) error {
 			}
 			continue
 		}
+		// Spread reconnects from clients that were disconnected at the same time.
+		jitter := time.Duration(rand.Int63n(int64(wait/5)+1)) - wait/10
+		wait += jitter
 		timer := time.NewTimer(wait)
 		select {
 		case <-timer.C:
 		case <-ws.stop:
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 			return errors.New("websocket closed")
 		}
 	}
@@ -306,13 +435,14 @@ func newWebSocket(id int, reqUrl, logURL string, args map[string]interface{}, on
 		}
 		return conn, err
 	}
-	err := res.connectWithRetry(false)
+	err := res.initConn()
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
 	}
+	res.markReady(0)
 	return &AsyncConn{
 		WsConn:  res,
-		send:    make(chan []byte, 10),
+		send:    make(chan *wsWrite, 10),
 		control: make(chan int, 2),
 	}, nil
 }
@@ -356,13 +486,16 @@ var (
 	}
 )
 
-func newWsClient(reqUrl, acc string, onMsg FuncOnWsMsg, onErr FuncOnWsErr, onClose FuncOnWsClose, onReCon FuncOnWsReCon,
-	params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
+func newWsClient(exg *Exchange, reqUrl, marketType, acc string, onMsg FuncOnWsMsg, onErr FuncOnWsErr,
+	onClose FuncOnWsClose, onReCon FuncOnWsReCon, params map[string]interface{}, debug bool) (*WsClient, *errs.Error) {
 	args := utils.SafeParams(params)
 	var result = &WsClient{
+		Exg:           exg,
 		AccName:       acc,
 		URL:           reqUrl,
 		LogURL:        safeWebSocketURL(reqUrl, acc != ""),
+		MarketType:    marketType,
+		Key:           acc + "@" + reqUrl,
 		Debug:         debug,
 		conns:         make(map[int]*AsyncConn),
 		JobInfos:      make(map[string]*WsJobInfo),
@@ -424,13 +557,11 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 		num := e.handleWsClientClosed(client)
 		log.Info("closed out chan for ws client", zap.Int("num", num))
 	}
-	client, err := newWsClient(wsUrl, accName, e.OnWsMsg, e.OnWsErr, onClosed, e.OnWsReCon, params, e.DebugWS)
+	client, err := newWsClient(e, wsUrl, marketType, accName, e.OnWsMsg, e.OnWsErr, onClosed,
+		e.OnWsReCon, params, e.DebugWS)
 	if err != nil {
 		return nil, err
 	}
-	client.Exg = e
-	client.MarketType = marketType
-	client.Key = clientKey
 	e.lockWSClient.Lock()
 	if current := e.WSClients[clientKey]; current != nil {
 		conns, lock := current.LockConns()
@@ -444,10 +575,38 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 	}
 	e.WSClients[clientKey] = client
 	e.lockWSClient.Unlock()
-	if e.CheckWsTimeout != nil && !e.WsChecking {
-		go e.CheckWsTimeout()
-	}
+	e.startWsChecker()
 	return client, nil
+}
+
+func (e *Exchange) startWsChecker() {
+	if e.CheckWsTimeout == nil {
+		return
+	}
+	e.wsCheckOnce.Do(func() {
+		e.WsChecking = true
+		go func() {
+			defer func() { e.WsChecking = false }()
+			e.CheckWsTimeout()
+		}()
+	})
+}
+
+func (e *Exchange) stopWsChecker() {
+	if e.wsCheckStop != nil {
+		e.wsStopOnce.Do(func() { close(e.wsCheckStop) })
+	}
+}
+
+func (e *Exchange) WaitWsCheck(delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-e.wsCheckStop:
+		return false
+	}
 }
 
 func (e *Exchange) findWSClient(key string) (*WsClient, bool) {
@@ -724,9 +883,35 @@ jobID: The task ID of this message uniquely identifies this request 此次消息
 jobInfo: The main information of this task will be used when receiving the task results 此次任务的主要信息，在收到任务结果时使用
 */
 func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *errs.Error {
-	if conn == nil || c.Exg.WsDecoder != nil {
+	return c.queueWrite(conn, msg, info, false, 0)
+}
+
+func (c *WsClient) WriteRecovery(conn *AsyncConn, msg interface{}, info *WsJobInfo) *errs.Error {
+	return c.queueWrite(conn, msg, info, true, 0)
+}
+
+func (c *WsClient) WriteRecoveryFor(conn *AsyncConn, generation uint64, msg interface{}, info *WsJobInfo) *errs.Error {
+	return c.queueWrite(conn, msg, info, true, generation)
+}
+
+func (c *WsClient) queueWrite(conn *AsyncConn, msg interface{}, info *WsJobInfo, recovery bool,
+	generation uint64) *errs.Error {
+	if conn == nil || c.Exg != nil && c.Exg.WsDecoder != nil {
 		// skip write ws msg in replay mode
 		return nil
+	}
+	if ws, ok := conn.WsConn.(*WebSocket); ok {
+		ws.lock.RLock()
+		if generation == 0 {
+			generation = ws.generation
+		}
+		available := ws.conn != nil && ws.generation == generation && (ws.ready || recovery)
+		ws.lock.RUnlock()
+		if !available {
+			return errs.NewMsg(errs.CodeConnectFail, "websocket disconnected")
+		}
+	} else if !conn.IsOK() {
+		return errs.NewMsg(errs.CodeConnectFail, "websocket disconnected")
 	}
 	data, err2 := utils.Marshal(msg)
 	if err2 != nil {
@@ -744,21 +929,74 @@ func (c *WsClient) Write(conn *AsyncConn, msg interface{}, info *WsJobInfo) *err
 		log.Debug("write ws msg", zap.String("url", c.LogURL), zap.Int("id", conn.GetID()),
 			zap.ByteString("msg", redactJSONSecrets(data)))
 	}
-	conn.send <- data
+	conn.send <- &wsWrite{data: data, recovery: recovery, generation: generation}
 	return nil
 }
 
 // WriteRaw sends raw bytes without JSON marshaling (e.g., for OKX ping/pong)
 func (c *WsClient) WriteRaw(conn *AsyncConn, data []byte) *errs.Error {
-	if conn == nil || c.Exg.WsDecoder != nil {
+	if conn == nil || c.Exg != nil && c.Exg.WsDecoder != nil {
 		return nil
+	}
+	generation := uint64(0)
+	if ws, ok := conn.WsConn.(*WebSocket); ok {
+		ws.lock.RLock()
+		generation = ws.generation
+		available := ws.conn != nil && ws.ready
+		ws.lock.RUnlock()
+		if !available {
+			return errs.NewMsg(errs.CodeConnectFail, "websocket disconnected")
+		}
+	} else if !conn.IsOK() {
+		return errs.NewMsg(errs.CodeConnectFail, "websocket disconnected")
 	}
 	if c.Debug {
 		log.Debug("write ws raw", zap.String("url", c.LogURL), zap.Int("id", conn.GetID()),
 			zap.ByteString("msg", redactJSONSecrets(data)))
 	}
-	conn.send <- data
+	conn.send <- &wsWrite{data: data, generation: generation}
 	return nil
+}
+
+func (c *WsClient) connWebSocket(connID int) *WebSocket {
+	c.connLock.Lock()
+	conn := c.conns[connID]
+	c.connLock.Unlock()
+	if conn == nil {
+		return nil
+	}
+	ws, _ := conn.WsConn.(*WebSocket)
+	return ws
+}
+
+func (c *WsClient) DeferConnReady(connID int) uint64 {
+	if ws := c.connWebSocket(connID); ws != nil {
+		return ws.deferReady(wsRecoveryReadyTimeout)
+	}
+	return 0
+}
+
+func (c *WsClient) MarkConnReady(connID int, generation uint64) bool {
+	if ws := c.connWebSocket(connID); ws != nil {
+		return ws.markReady(generation)
+	}
+	return false
+}
+
+func (c *WsClient) FailConn(connID int, generation uint64, permanent bool) {
+	if ws := c.connWebSocket(connID); ws != nil {
+		if permanent {
+			_ = ws.closeGeneration(generation)
+		} else {
+			conn, lock := ws.readConn()
+			lock.RUnlock()
+			_ = ws.disconnectGeneration(conn, generation)
+		}
+	}
+}
+
+func IsPermanentWsError(err *errs.Error) bool {
+	return isPermanentWsError(err)
 }
 
 func (c *WsClient) Close() {
@@ -787,7 +1025,9 @@ func (c *WsClient) write(conn *AsyncConn) {
 		lastConn := len(c.conns) == 0
 		c.connLock.Unlock()
 		if lastConn {
-			c.Exg.removeWSClient(c)
+			if c.Exg != nil {
+				c.Exg.removeWSClient(c)
+			}
 		}
 	}()
 	for {
@@ -820,19 +1060,31 @@ func (c *WsClient) write(conn *AsyncConn) {
 				log.Info("WsClient.Send closed", zapFields...)
 				return
 			}
-			w, err := conn.NextWriter()
+			var w io.WriteCloser
+			var err error
+			var target *websocket.Conn
+			var ws *WebSocket
+			if typed, ok := conn.WsConn.(*WebSocket); ok {
+				ws = typed
+				w, target, err = ws.nextWriter(msg.recovery, msg.generation)
+			} else {
+				w, err = conn.NextWriter()
+			}
 			if err != nil {
 				log.Error("failed to create Ws.Writer", append(zapFields, zap.Error(err))...)
-				return
+				continue
 			}
 			// 一次只能写入一条消息
-			_, err = w.Write(msg)
-			if err != nil {
-				log.Error("write ws fail", append(zapFields, zap.Error(err))...)
+			writeErr := error(nil)
+			if _, writeErr = w.Write(msg.data); writeErr != nil {
+				log.Error("write ws fail", append(zapFields, zap.Error(writeErr))...)
 			}
-			if err = w.Close(); err != nil {
-				log.Error("close WriteCloser fail", append(zapFields, zap.Error(err))...)
-				return
+			closeErr := w.Close()
+			if closeErr != nil {
+				log.Error("close WriteCloser fail", append(zapFields, zap.Error(closeErr))...)
+			}
+			if ws != nil && (writeErr != nil || closeErr != nil) {
+				_ = ws.disconnectGeneration(target, msg.generation)
 			}
 		}
 	}
@@ -930,6 +1182,7 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 			connDups = maps.Clone(connMap)
 		}
 		lock.Unlock()
+		reconnecting := false
 		if len(connDups) > 0 {
 			// IsOk would require new lock, we should release LockConns first
 			for cid, con := range connDups {
@@ -938,7 +1191,13 @@ func (c *WsClient) UpdateSubs(connID int, isSub bool, keys []string) (string, *A
 					conn = con
 					break
 				}
+				if con.isConnected() {
+					reconnecting = true
+				}
 			}
+		}
+		if conn == nil && reconnecting {
+			return method, nil
 		}
 		// Attempt to create a new connection
 		// 尝试创建新连接

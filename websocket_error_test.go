@@ -52,6 +52,23 @@ func TestWebSocketReconnectBackoff(t *testing.T) {
 	}
 }
 
+func TestWebSocketInitialDialFailsFast(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		http.Error(w, "offline", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	if _, err := newWebSocket(1, wsURL, wsURL, nil, nil); err == nil {
+		t.Fatal("initial dial unexpectedly succeeded")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("initial dial attempts = %d, want 1", got)
+	}
+}
+
 func TestWebSocketCloseStopsReconnectWait(t *testing.T) {
 	ws := &WebSocket{
 		lock: &deadlock.RWMutex{},
@@ -165,6 +182,249 @@ func TestWebSocketReconnectsAfterDisconnect(t *testing.T) {
 	}
 	if reconnects.Load() != 1 {
 		t.Fatalf("reconnect hook calls = %d, want 1", reconnects.Load())
+	}
+}
+
+func TestWsClientWriteDoesNotStopReconnect(t *testing.T) {
+	waiting := make(chan struct{}, 1)
+	release := make(chan struct{})
+	ws := &WebSocket{
+		lock: &deadlock.RWMutex{},
+		stop: make(chan struct{}),
+		dial: func() (*websocket.Conn, error) {
+			return nil, errors.New("offline")
+		},
+		waitReconnect: func(time.Duration) bool {
+			waiting <- struct{}{}
+			<-release
+			return false
+		},
+	}
+	conn := &AsyncConn{WsConn: ws, send: make(chan *wsWrite, 2), control: make(chan int, 2)}
+	e := &Exchange{WSClients: make(map[string]*WsClient)}
+	client := &WsClient{Exg: e, Key: "test", LogURL: "ws://test", conns: map[int]*AsyncConn{0: conn}}
+	e.WSClients[client.Key] = client
+
+	go client.write(conn)
+	reconnectDone := make(chan error, 1)
+	go func() { reconnectDone <- ws.connectWithRetry(false) }()
+	<-waiting
+
+	if err := client.WriteRaw(conn, []byte("ping")); err == nil {
+		t.Fatal("write during reconnect should report disconnected")
+	}
+	// A message accepted just before the disconnect may already be queued.
+	conn.send <- &wsWrite{data: []byte("stale")}
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for len(conn.send) != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(10 * time.Millisecond)
+	ws.lock.RLock()
+	closed := ws.closed
+	ws.lock.RUnlock()
+	if closed {
+		t.Fatal("transient write failure permanently closed websocket")
+	}
+
+	close(release)
+	if err := <-reconnectDone; err == nil {
+		t.Fatal("controlled reconnect stop returned no error")
+	}
+	conn.control <- ctrlClosed
+	deadline = time.Now().Add(250 * time.Millisecond)
+	for {
+		if _, ok := e.findWSClient(client.Key); !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("websocket writer did not stop")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestDisconnectOldConnKeepsReplacement(t *testing.T) {
+	oldConn := &websocket.Conn{}
+	replacement := &websocket.Conn{}
+	ws := &WebSocket{lock: &deadlock.RWMutex{}, conn: replacement, ready: true, generation: 2}
+	if err := ws.disconnectIfCurrent(oldConn); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.closeGeneration(1); err != nil {
+		t.Fatal(err)
+	}
+	ws.lock.RLock()
+	got, ready, closed := ws.conn, ws.ready, ws.closed
+	ws.lock.RUnlock()
+	if got != replacement || !ready || closed {
+		t.Fatal("stale connection failure removed replacement")
+	}
+}
+
+func TestWebSocketRecoveryReadiness(t *testing.T) {
+	ws := &WebSocket{lock: &deadlock.RWMutex{}, conn: &websocket.Conn{}, generation: 1}
+	conn := &AsyncConn{WsConn: ws, send: make(chan *wsWrite, 2)}
+	client := &WsClient{}
+	if err := client.WriteRaw(conn, []byte("business")); err == nil {
+		t.Fatal("business write should wait for reconnect recovery")
+	}
+	if err := client.WriteRecovery(conn, map[string]string{"op": "login"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	queued := <-conn.send
+	if !queued.recovery {
+		t.Fatal("recovery write was not marked")
+	}
+	if queued.generation != 1 {
+		t.Fatalf("recovery generation = %d, want 1", queued.generation)
+	}
+	generation := ws.deferReady(time.Hour)
+	ws.finishReconnect()
+	if ws.IsOK() {
+		t.Fatal("deferred reconnect became ready before authentication")
+	}
+	ws.markReady(generation)
+	if !ws.IsOK() {
+		t.Fatal("authenticated reconnect did not become ready")
+	}
+}
+
+func TestStaleRecoveryWriteDoesNotUseReplacement(t *testing.T) {
+	oldConn := &websocket.Conn{}
+	replacement := &websocket.Conn{}
+	ws := &WebSocket{lock: &deadlock.RWMutex{}, conn: oldConn, generation: 1}
+	conn := &AsyncConn{WsConn: ws, send: make(chan *wsWrite, 1)}
+	client := &WsClient{}
+	if err := client.WriteRecovery(conn, map[string]string{"op": "login"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	queued := <-conn.send
+	ws.lock.Lock()
+	ws.conn = replacement
+	ws.generation = 2
+	ws.lock.Unlock()
+
+	if _, _, err := ws.nextWriter(true, queued.generation); err == nil {
+		t.Fatal("stale recovery write used replacement connection")
+	}
+	ws.lock.RLock()
+	got := ws.conn
+	ws.lock.RUnlock()
+	if got != replacement {
+		t.Fatal("stale recovery write disconnected replacement")
+	}
+}
+
+func TestWebSocketRecoveryTimeoutDisconnectsGeneration(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	serverConn := make(chan *websocket.Conn, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		serverConn <- conn
+		<-release
+		_ = conn.Close()
+	}))
+	defer server.Close()
+	defer close(release)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-serverConn
+	ws := &WebSocket{lock: &deadlock.RWMutex{}, conn: clientConn, generation: 1}
+	ws.deferReady(time.Millisecond)
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for ws.isConnected() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if ws.isConnected() {
+		t.Fatal("unready recovery generation remained connected after timeout")
+	}
+}
+
+func TestWebSocketWriteFailureDisconnectsGeneration(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	serverConn := make(chan *websocket.Conn, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		serverConn <- conn
+		<-release
+		_ = conn.Close()
+	}))
+	defer server.Close()
+	defer close(release)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-serverConn
+	ws := &WebSocket{lock: &deadlock.RWMutex{}, conn: clientConn, ready: true, generation: 1,
+		stop: make(chan struct{})}
+	conn := &AsyncConn{WsConn: ws, send: make(chan *wsWrite, 1), control: make(chan int, 1)}
+	client := &WsClient{LogURL: wsURL, conns: map[int]*AsyncConn{0: conn}}
+	go client.write(conn)
+	if err := clientConn.UnderlyingConn().Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.WriteRaw(conn, []byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for ws.isConnected() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if ws.isConnected() {
+		t.Fatal("failed write left poisoned websocket connected")
+	}
+	conn.control <- ctrlClosed
+}
+
+func TestPermanentWebSocketErrorClassification(t *testing.T) {
+	if IsPermanentWsError(errs.NewMsg(errs.CodeRateLimit, "retry")) {
+		t.Fatal("rate limit error should reconnect")
+	}
+	if !IsPermanentWsError(errs.NewMsg(errs.CodeUnauthorized, "bad credentials")) {
+		t.Fatal("credential error should stop reconnecting")
+	}
+}
+
+func TestWsCheckerStartsOnceAndStops(t *testing.T) {
+	e := &Exchange{wsCheckStop: make(chan struct{})}
+	var calls atomic.Int32
+	done := make(chan struct{})
+	e.CheckWsTimeout = func() {
+		calls.Add(1)
+		e.WaitWsCheck(time.Hour)
+		close(done)
+	}
+	for range 10 {
+		go e.startWsChecker()
+	}
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for calls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	e.stopWsChecker()
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("websocket checker did not stop")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("websocket checker calls = %d, want 1", got)
 	}
 }
 

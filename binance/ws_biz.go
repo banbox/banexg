@@ -111,7 +111,7 @@ func makeHandleWsReCon(e *Binance) banexg.FuncOnWsReCon {
 			acc.LockData.Lock()
 			listenToken := utils.GetMapVal(acc.Data, banexg.MarketMargin+banexg.MidListenKey, "")
 			acc.LockData.Unlock()
-			return e.subscribeMarginUserData(client, connID, listenToken)
+			return e.writeMarginUserDataSub(client, connID, listenToken, true)
 		}
 		subParams := client.GetSubKeys(connID)
 		if len(subParams) == 0 {
@@ -120,7 +120,7 @@ func makeHandleWsReCon(e *Binance) banexg.FuncOnWsReCon {
 		zapFields := []zap.Field{zap.String("url", client.LogURL), zap.Int("id", connID),
 			zap.Int("job", len(subParams))}
 		log.Info("re-subscribe ws", zapFields...)
-		err := e.WriteWSMsg(client, connID, true, subParams, nil, nil)
+		err := e.writeWSMsg(client, connID, true, subParams, nil, nil, true)
 		if err != nil {
 			return err
 		}
@@ -340,6 +340,10 @@ func (e *Binance) userDataWsURL(marketType, listenKey string) string {
 }
 
 func (e *Binance) subscribeMarginUserData(client *banexg.WsClient, connID int, listenToken string) *errs.Error {
+	return e.writeMarginUserDataSub(client, connID, listenToken, false)
+}
+
+func (e *Binance) writeMarginUserDataSub(client *banexg.WsClient, connID int, listenToken string, recovery bool) *errs.Error {
 	if listenToken == "" {
 		return errs.NewMsg(errs.CodeParamRequired, "margin listen token is required")
 	}
@@ -348,6 +352,9 @@ func (e *Binance) subscribeMarginUserData(client *banexg.WsClient, connID int, l
 		return errs.NewMsg(errs.CodeRunTime, "get margin user data ws conn fail")
 	}
 	id := e.nextId(client)
+	if recovery {
+		return client.WriteRecovery(conn, marginUserDataRequest(id, listenToken), nil)
+	}
 	return client.Write(conn, marginUserDataRequest(id, listenToken), nil)
 }
 

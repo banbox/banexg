@@ -18,9 +18,10 @@ const (
 )
 
 type WsPendingRecon struct {
-	Client *banexg.WsClient
-	ConnID int
-	Keys   []string
+	Client     *banexg.WsClient
+	ConnID     int
+	Generation uint64
+	Keys       []string
 }
 
 func makeHandleWsMsg(e *Bybit) banexg.FuncOnWsMsg {
@@ -67,25 +68,27 @@ func makeHandleWsReCon(e *Bybit) banexg.FuncOnWsReCon {
 			return nil
 		}
 		keys := client.GetSubKeys(connID)
-		if len(keys) == 0 {
-			return nil
-		}
 		if client.MarketType == wsPrivate {
+			generation := client.DeferConnReady(connID)
 			e.WsAuthLock.Lock()
 			delete(e.WsAuthed, client.Key)
 			e.WsPendingRecons[client.Key] = &WsPendingRecon{
-				Client: client,
-				ConnID: connID,
-				Keys:   keys,
+				Client:     client,
+				ConnID:     connID,
+				Generation: generation,
+				Keys:       keys,
 			}
 			e.WsAuthLock.Unlock()
 			acc, err := e.GetAccount(client.AccName)
 			if err != nil {
 				return err
 			}
-			return e.wsLoginAsync(client, acc, connID)
+			return e.writeWsLogin(client, acc, connID, true, generation)
 		}
-		return e.writeWsTopics(client, connID, true, keys)
+		if len(keys) == 0 {
+			return nil
+		}
+		return e.writeWsTopicsMode(client, connID, true, keys, true, 0)
 	}
 }
 
@@ -108,8 +111,15 @@ func (e *Bybit) handleWsOp(client *banexg.WsClient, base *wsBaseMsg) {
 			delete(e.WsAuthDone, client.Key)
 		}
 		e.WsAuthLock.Unlock()
-		if success && pending != nil {
-			go e.restorePendingSubscriptions(pending)
+		if pending != nil {
+			if !success {
+				pending.Client.FailConn(pending.ConnID, pending.Generation, banexg.IsPermanentWsError(err))
+			} else if restoreErr := e.restorePendingSubscriptions(pending); restoreErr != nil {
+				log.Error("restore bybit ws subscriptions failed", zap.Error(restoreErr))
+				pending.Client.FailConn(pending.ConnID, pending.Generation, false)
+			} else {
+				pending.Client.MarkConnReady(pending.ConnID, pending.Generation)
+			}
 		}
 		return
 	case "subscribe", "unsubscribe":
@@ -208,6 +218,11 @@ func (e *Bybit) getAuthClient(params map[string]interface{}) (*banexg.WsClient, 
 }
 
 func (e *Bybit) wsLoginAsync(client *banexg.WsClient, acc *banexg.Account, connID int) *errs.Error {
+	return e.writeWsLogin(client, acc, connID, false, 0)
+}
+
+func (e *Bybit) writeWsLogin(client *banexg.WsClient, acc *banexg.Account, connID int, recovery bool,
+	generation uint64) *errs.Error {
 	if client == nil || acc == nil {
 		return errs.NewMsg(errs.CodeParamInvalid, "invalid ws login args")
 	}
@@ -228,6 +243,9 @@ func (e *Bybit) wsLoginAsync(client *banexg.WsClient, acc *banexg.Account, connI
 	_, conn := client.UpdateSubs(connID, true, []string{})
 	if conn == nil {
 		return errs.NewMsg(errs.CodeRunTime, "get ws conn fail")
+	}
+	if recovery {
+		return client.WriteRecoveryFor(conn, generation, req, nil)
 	}
 	return client.Write(conn, req, nil)
 }
@@ -279,16 +297,19 @@ func (e *Bybit) wsLogin(client *banexg.WsClient, acc *banexg.Account, connID int
 	}
 }
 
-func (e *Bybit) restorePendingSubscriptions(recon *WsPendingRecon) {
+func (e *Bybit) restorePendingSubscriptions(recon *WsPendingRecon) *errs.Error {
 	if recon == nil || recon.Client == nil || len(recon.Keys) == 0 {
-		return
+		return nil
 	}
-	if err := e.writeWsTopics(recon.Client, recon.ConnID, true, recon.Keys); err != nil {
-		log.Error("restore bybit ws subscriptions failed", zap.Error(err))
-	}
+	return e.writeWsTopicsMode(recon.Client, recon.ConnID, true, recon.Keys, true, recon.Generation)
 }
 
 func (e *Bybit) writeWsTopics(client *banexg.WsClient, connID int, isSub bool, keys []string) *errs.Error {
+	return e.writeWsTopicsMode(client, connID, isSub, keys, false, 0)
+}
+
+func (e *Bybit) writeWsTopicsMode(client *banexg.WsClient, connID int, isSub bool, keys []string,
+	recovery bool, generation uint64) *errs.Error {
 	if client == nil {
 		return errs.NewMsg(errs.CodeParamInvalid, "ws client required")
 	}
@@ -313,7 +334,13 @@ func (e *Bybit) writeWsTopics(client *banexg.WsClient, connID int, isSub bool, k
 			"op":   "subscribe",
 			"args": batch,
 		}
-		if err := client.Write(conn, req, nil); err != nil {
+		var err *errs.Error
+		if recovery {
+			err = client.WriteRecoveryFor(conn, generation, req, nil)
+		} else {
+			err = client.Write(conn, req, nil)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -510,13 +537,8 @@ makeCheckWsTimeout creates a goroutine that:
 */
 func makeCheckWsTimeout(e *Bybit) func() {
 	return func() {
-		e.WsChecking = true
-		defer func() {
-			e.WsChecking = false
-		}()
 		pingInterval := time.Second * 20
-		for {
-			time.Sleep(pingInterval)
+		for e.WaitWsCheck(pingInterval) {
 			for _, client := range e.WSClientSnapshot() {
 				conns, lock := client.LockConns()
 				for _, conn := range conns {

@@ -897,6 +897,11 @@ cvt 不为空时，尝试对symbols进行标准化
 getJobInfo 添加对返回结果的回调。会更新ID、symbols
 */
 func (e *Binance) WriteWSMsg(client *banexg.WsClient, connID int, isSub bool, symbols []string, cvt func(m *banexg.Market, i int) string, getJobInfo banexg.FuncGetWsJob) *errs.Error {
+	return e.writeWSMsg(client, connID, isSub, symbols, cvt, getJobInfo, false)
+}
+
+func (e *Binance) writeWSMsg(client *banexg.WsClient, connID int, isSub bool, symbols []string,
+	cvt func(m *banexg.Market, i int) string, getJobInfo banexg.FuncGetWsJob, recovery bool) *errs.Error {
 	leftSymbols := symbols
 	batchNum := 100
 	var err *errs.Error
@@ -945,7 +950,11 @@ func (e *Binance) WriteWSMsg(client *banexg.WsClient, connID int, isSub bool, sy
 				}
 			}
 		}
-		err = client.Write(conn, request, info)
+		if recovery {
+			err = client.WriteRecovery(conn, request, info)
+		} else {
+			err = client.Write(conn, request, info)
+		}
 		if err != nil {
 			return err
 		}
@@ -1316,18 +1325,13 @@ Regularly check whether the public ws data messages are timed out (each subscrip
 */
 func makeCheckWsTimeout(e *Binance) func() {
 	return func() {
-		e.WsChecking = true
-		defer func() {
-			e.WsChecking = false
-		}()
 		if e.WsTimeout < 3100 {
 			log.Warn("WsTimeout for binance must >= 3100")
 			e.WsTimeout = 3100
 		}
 		// 以超时时间的1/3作为轮询间隔
 		loopIntv := time.Duration(e.WsTimeout) * time.Millisecond / 3
-		for {
-			time.Sleep(loopIntv)
+		for e.WaitWsCheck(loopIntv) {
 			for _, client := range e.WSClientSnapshot() {
 				if client.AccName != "" {
 					// 跳过订阅账户数据推送（因不是定期稳定推送）

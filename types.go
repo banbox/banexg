@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 
 	"github.com/banbox/banexg/errs"
 	"github.com/sasha-s/go-deadlock"
@@ -88,6 +89,9 @@ type Exchange struct {
 	lockWSClient deadlock.RWMutex
 	lockWsRef    deadlock.Mutex
 	lockOutChan  deadlock.Mutex
+	wsCheckOnce  sync.Once
+	wsStopOnce   sync.Once
+	wsCheckStop  chan struct{}
 
 	KeyTimeStamps map[string]int64 // key: int64 更新的时间戳
 

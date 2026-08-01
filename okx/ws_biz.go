@@ -57,9 +57,15 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 					delete(e.WsAuthDone, client.Key)
 				}
 				e.WsAuthLock.Unlock()
-				// Restore subscriptions after successful reconnection login
-				if loginSuccess && pendingRecon != nil && len(pendingRecon.Keys) > 0 {
-					go e.restorePendingSubscriptions(pendingRecon)
+				if pendingRecon != nil {
+					if !loginSuccess {
+						pendingRecon.Client.FailConn(pendingRecon.ConnID, pendingRecon.Generation, true)
+					} else if restoreErr := e.restorePendingSubscriptions(pendingRecon); restoreErr != nil {
+						log.Error("restore subscriptions failed", zap.Error(restoreErr))
+						pendingRecon.Client.FailConn(pendingRecon.ConnID, pendingRecon.Generation, false)
+					} else {
+						pendingRecon.Client.MarkConnReady(pendingRecon.ConnID, pendingRecon.Generation)
+					}
 				}
 				return
 			}
@@ -70,12 +76,17 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 				if code == "60011" || code == "60009" || code == "60012" {
 					// Login required or login failed errors
 					e.WsAuthLock.Lock()
+					pendingRecon := e.WsPendingRecons[client.Key]
+					delete(e.WsPendingRecons, client.Key)
 					if ch, ok := e.WsAuthDone[client.Key]; ok {
 						errMsg := getMapString(msg, "msg")
 						ch <- errs.NewMsg(errs.CodeUnauthorized, "ws auth error: %s", errMsg)
 						delete(e.WsAuthDone, client.Key)
 					}
 					e.WsAuthLock.Unlock()
+					if pendingRecon != nil {
+						pendingRecon.Client.FailConn(pendingRecon.ConnID, pendingRecon.Generation, true)
+					}
 				}
 			}
 			return
@@ -114,14 +125,16 @@ func makeHandleWsReCon(e *OKX) banexg.FuncOnWsReCon {
 		}
 		keys := client.GetSubKeys(connID)
 		if client.MarketType == wsPrivate || client.MarketType == wsBusiness && client.AccName != "" {
+			generation := client.DeferConnReady(connID)
 			// Clear auth state on reconnect to force re-login
 			e.WsAuthLock.Lock()
 			delete(e.WsAuthed, client.Key)
 			// Store pending recon info for subscription restoration after login
 			e.WsPendingRecons[client.Key] = &WsPendingRecon{
-				Client: client,
-				ConnID: connID,
-				Keys:   keys,
+				Client:     client,
+				ConnID:     connID,
+				Generation: generation,
+				Keys:       keys,
 			}
 			e.WsAuthLock.Unlock()
 
@@ -131,7 +144,7 @@ func makeHandleWsReCon(e *OKX) banexg.FuncOnWsReCon {
 			}
 			// Send login request without waiting (non-blocking)
 			// Subscriptions will be restored in message handler after login succeeds
-			return e.wsLoginAsync(client, acc, connID)
+			return e.writeWsLogin(client, acc, connID, true, generation)
 		}
 		// For public WebSocket, restore subscriptions immediately
 		if len(keys) == 0 {
@@ -149,7 +162,7 @@ func makeHandleWsReCon(e *OKX) banexg.FuncOnWsReCon {
 			}
 			args = append(args, arg)
 		}
-		return e.writeWsArgs(client, connID, true, keys, args)
+		return e.writeWsArgsMode(client, connID, true, keys, args, true, 0)
 	}
 }
 
@@ -627,6 +640,11 @@ func (e *OKX) getAuthClient(params map[string]interface{}) (*banexg.WsClient, *e
 
 // wsLoginAsync sends login request without waiting for response (for reconnection).
 func (e *OKX) wsLoginAsync(client *banexg.WsClient, acc *banexg.Account, connID int) *errs.Error {
+	return e.writeWsLogin(client, acc, connID, false, 0)
+}
+
+func (e *OKX) writeWsLogin(client *banexg.WsClient, acc *banexg.Account, connID int, recovery bool,
+	generation uint64) *errs.Error {
 	if client == nil || acc == nil {
 		return errs.NewMsg(errs.CodeParamInvalid, "invalid ws login args")
 	}
@@ -655,6 +673,9 @@ func (e *OKX) wsLoginAsync(client *banexg.WsClient, acc *banexg.Account, connID 
 	_, conn := client.UpdateSubs(connID, true, []string{})
 	if conn == nil {
 		return errs.NewMsg(errs.CodeRunTime, "get ws conn fail")
+	}
+	if recovery {
+		return client.WriteRecoveryFor(conn, generation, req, nil)
 	}
 	return client.Write(conn, req, nil)
 }
@@ -759,9 +780,9 @@ func (e *OKX) wsLogin(client *banexg.WsClient, acc *banexg.Account, connID int) 
 }
 
 // restorePendingSubscriptions restores subscriptions after successful reconnection login.
-func (e *OKX) restorePendingSubscriptions(recon *WsPendingRecon) {
+func (e *OKX) restorePendingSubscriptions(recon *WsPendingRecon) *errs.Error {
 	if recon == nil || recon.Client == nil || len(recon.Keys) == 0 {
-		return
+		return nil
 	}
 	args := make([]map[string]interface{}, 0, len(recon.Keys))
 	for _, key := range recon.Keys {
@@ -775,12 +796,15 @@ func (e *OKX) restorePendingSubscriptions(recon *WsPendingRecon) {
 		}
 		args = append(args, arg)
 	}
-	if err := e.writeWsArgs(recon.Client, recon.ConnID, true, recon.Keys, args); err != nil {
-		log.Error("restore subscriptions failed", zap.Error(err))
-	}
+	return e.writeWsArgsMode(recon.Client, recon.ConnID, true, recon.Keys, args, true, recon.Generation)
 }
 
 func (e *OKX) writeWsArgs(client *banexg.WsClient, connID int, isSub bool, keys []string, args []map[string]interface{}) *errs.Error {
+	return e.writeWsArgsMode(client, connID, isSub, keys, args, false, 0)
+}
+
+func (e *OKX) writeWsArgsMode(client *banexg.WsClient, connID int, isSub bool, keys []string,
+	args []map[string]interface{}, recovery bool, generation uint64) *errs.Error {
 	if client == nil {
 		return errs.NewMsg(errs.CodeParamInvalid, "ws client required")
 	}
@@ -795,6 +819,9 @@ func (e *OKX) writeWsArgs(client *banexg.WsClient, connID int, isSub bool, keys 
 	req := map[string]interface{}{
 		"op":   op,
 		"args": args,
+	}
+	if recovery {
+		return client.WriteRecoveryFor(conn, generation, req, nil)
 	}
 	return client.Write(conn, req, nil)
 }
@@ -1654,14 +1681,9 @@ makeCheckWsTimeout creates a goroutine that:
 func makeCheckWsTimeout(e *OKX) func() {
 	pingData := []byte("ping")
 	return func() {
-		e.WsChecking = true
-		defer func() {
-			e.WsChecking = false
-		}()
 		// OKX requires ping every <30s, we use 20s interval
 		pingInterval := time.Second * 20
-		for {
-			time.Sleep(pingInterval)
+		for e.WaitWsCheck(pingInterval) {
 			for _, client := range e.WSClientSnapshot() {
 				conns, lock := client.LockConns()
 				for _, conn := range conns {
