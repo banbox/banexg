@@ -608,6 +608,34 @@ func TestParseBybitMyTrade(t *testing.T) {
 	}
 }
 
+func TestParseBybitMyTradeIgnoresNonTradeExecution(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	item := &ExecutionInfo{
+		Symbol:    "BTCUSDT",
+		ExecType:  "Funding",
+		ExecQty:   "0.1",
+		ExecPrice: "100",
+	}
+	if trade := parseBybitMyTrade(exg, item, nil, banexg.MarketLinear); trade != nil {
+		t.Fatalf("funding execution must not produce MyTrade: %+v", trade)
+	}
+}
+
+func TestParseBybitMyTradeKeepsForcedExecution(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	item := &ExecutionInfo{
+		Symbol:    "BTCUSDT",
+		ExecType:  "BustTrade",
+		ExecId:    "forced-exec",
+		ExecQty:   "0.1",
+		ExecPrice: "100",
+	}
+	trade := parseBybitMyTrade(exg, item, nil, banexg.MarketLinear)
+	if trade == nil || trade.ID != "forced-exec" {
+		t.Fatalf("forced execution must produce MyTrade: %+v", trade)
+	}
+}
+
 func TestParseBybitMyTradeUsesExecValue(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
 	item := &ExecutionInfo{

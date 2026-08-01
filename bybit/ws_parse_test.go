@@ -99,6 +99,7 @@ func TestParseBybitWsMyTrade(t *testing.T) {
 		"execValue":   "9.95",
 		"execFee":     "0.01",
 		"feeCurrency": "USDT",
+		"execType":    "Trade",
 		"execTime":    "1700000000000",
 		"isMaker":     true,
 	}
@@ -114,6 +115,58 @@ func TestParseBybitWsMyTrade(t *testing.T) {
 	}
 	if trade.Fee == nil || trade.Fee.Currency != "USDT" {
 		t.Fatalf("unexpected fee: %+v", trade.Fee)
+	}
+}
+
+func TestParseBybitWsMyTradeIgnoresNonTradeExecutions(t *testing.T) {
+	exg := mustNewBybit(t, "Bybit")
+	seedMarket(exg, "BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+
+	for _, execType := range []string{"", "Funding", "SessionSettlePnL", "CorporateAction", "UNKNOWN"} {
+		item := map[string]interface{}{
+			"symbol":     "BTCUSDT",
+			"orderId":    "exchange-order",
+			"side":       "Sell",
+			"execType":   execType,
+			"execQty":    "0.1",
+			"execPrice":  "100",
+			"closedSize": "0",
+			"execTime":   "1700000000000",
+		}
+		if trade := parseBybitWsMyTrade(exg, item, banexg.MarketLinear); trade != nil {
+			t.Fatalf("%s execution must not produce MyTrade: %+v", execType, trade)
+		}
+	}
+}
+
+func TestParseBybitWsMyTradeKeepsForcedExecution(t *testing.T) {
+	exg := mustNewBybit(t, "Bybit")
+	seedMarket(exg, "BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	item := map[string]interface{}{
+		"symbol":    "BTCUSDT",
+		"execType":  "AdlTrade",
+		"execId":    "adl-exec",
+		"execQty":   "0.1",
+		"execPrice": "100",
+	}
+	trade := parseBybitWsMyTrade(exg, item, banexg.MarketLinear)
+	if trade == nil || trade.ID != "adl-exec" {
+		t.Fatalf("ADL execution must produce MyTrade: %+v", trade)
+	}
+}
+
+func TestBybitMyTradeExecTypes(t *testing.T) {
+	for _, execType := range []string{
+		"Trade", "AdlTrade", "BustTrade", "Delivery", "Settle", "BlockTrade", "MovePosition", "FutureSpread",
+	} {
+		if !isBybitMyTradeExecType(execType) {
+			t.Errorf("%s execution must produce MyTrade", execType)
+		}
+	}
+	for _, execType := range []string{"", "Funding", "SessionSettlePnL", "CorporateAction", "UNKNOWN"} {
+		if isBybitMyTradeExecType(execType) {
+			t.Errorf("%s execution must not produce MyTrade", execType)
+		}
 	}
 }
 

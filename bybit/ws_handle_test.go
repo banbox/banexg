@@ -236,6 +236,7 @@ func TestHandleWsExecutions(t *testing.T) {
 			"execValue":   "10",
 			"execFee":     "0.01",
 			"feeCurrency": "USDT",
+			"execType":    "Trade",
 			"execTime":    "1700000000000",
 			"isMaker":     true,
 		},

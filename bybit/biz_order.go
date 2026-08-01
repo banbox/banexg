@@ -618,8 +618,17 @@ func parseBybitOrders(e *Bybit, items []map[string]interface{}, marketType strin
 	return result, nil
 }
 
+func isBybitMyTradeExecType(execType string) bool {
+	switch execType {
+	case "Trade", "AdlTrade", "BustTrade", "Delivery", "Settle", "BlockTrade", "MovePosition", "FutureSpread":
+		return true
+	default:
+		return false
+	}
+}
+
 func parseBybitMyTrade(e *Bybit, item *ExecutionInfo, info map[string]interface{}, marketType string) *banexg.MyTrade {
-	if item == nil {
+	if item == nil || !isBybitMyTradeExecType(item.ExecType) {
 		return nil
 	}
 	symbol := bybitSafeSymbol(e, item.Symbol, marketType)

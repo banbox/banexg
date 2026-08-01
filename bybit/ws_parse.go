@@ -385,7 +385,7 @@ func parseBybitWsKlineItem(item map[string]interface{}) *banexg.Kline {
 }
 
 func parseBybitWsMyTrade(e *Bybit, item map[string]interface{}, marketType string) *banexg.MyTrade {
-	if item == nil {
+	if item == nil || !isBybitMyTradeExecType(bybitWsString(item["execType"])) {
 		return nil
 	}
 	marketID := bybitWsString(item["symbol"])
