@@ -34,6 +34,8 @@ banexg/
     └── */local.json         # 本地配置文件
 ```
 
+* docs/github.md: PR合并原则
+
 ### 1.2 架构分层设计
 
 **四层架构模式：**
