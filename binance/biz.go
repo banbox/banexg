@@ -17,7 +17,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var fetchOHLCVTimeout = 30 * time.Second
+// Binance may return a Retry-After of nearly an hour for a temporary IP ban.
+// Keep the retry budget comfortably longer than that server-controlled wait.
+var fetchOHLCVTimeout = 2 * time.Hour
 
 func fetchOHLCVContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), fetchOHLCVTimeout)
@@ -642,7 +644,7 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	} else if market.Inverse {
 		method = MethodDapiPublicGetKlines
 	}
-	tryNum := e.GetRetryNum("FetchOHLCV", 1)
+	tryNum := e.GetRetryNum("FetchOHLCV", 8)
 	ctx, cancel := fetchOHLCVContext()
 	defer cancel()
 	rsp := e.RequestApiRetry(ctx, method, args, tryNum)

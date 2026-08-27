@@ -1,10 +1,19 @@
 package banexg
 
 import (
+	"context"
 	"io"
 
 	"github.com/banbox/banexg/errs"
 )
+
+// OHLCVArchiveFetcher is an optional exchange capability for immutable
+// historical candlestick files. Callers can fall back to FetchOHLCV when
+// available is false; an error means the archive request itself failed.
+type OHLCVArchiveFetcher interface {
+	FetchOHLCVArchive(ctx context.Context, symbol, timeframe string, startMS, endMS int64) (
+		klines []*Kline, available bool, err *errs.Error)
+}
 
 /*
 Exchange interface

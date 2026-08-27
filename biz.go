@@ -1431,16 +1431,25 @@ func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, para
 				sleep = 3
 				log.Warn(fmt.Sprintf("net fail, retry after: %v", sleep))
 				continue
-			} else if rsp.Error.Code == 503 {
+			} else if rsp.Status == http.StatusServiceUnavailable {
 				// 交易所服务器过载
 				sleep = 3
 				log.Warn(fmt.Sprintf("exchange overload, retry after: %v", sleep))
 				continue
-			} else if rsp.Error.Code == 429 || rsp.Error.Code == 418 {
+			} else if rsp.Error.Code == errs.CodeExecutionUnknown &&
+				!api.Risky && api.Method == http.MethodGet {
+				// Read-only requests can be retried when the exchange reports an
+				// indeterminate backend timeout. Never retry risky requests here.
+				sleep = 3
+				log.Warn(fmt.Sprintf("read request status unknown, retry after: %v, %v", sleep, rsp.Url))
+				continue
+			} else if rsp.Error.Code == errs.CodeRateLimit || rsp.Error.Code == errs.CodeTemporarilyBanned {
 				// 请求过于频繁，随机休息
-				retryAfter, _ := rsp.Error.Data.(int64)
+				retryAfter, hasRetryAfter := rsp.Error.Data.(int64)
 				randWait := int(rand.Float32() * 10)
-				if retryAfter > 0 {
+				if hasRetryAfter && retryAfter == 0 {
+					sleep = 0
+				} else if hasRetryAfter && retryAfter > 0 {
 					sleep = int(retryAfter) + randWait
 				} else {
 					sleep = 30 + randWait

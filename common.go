@@ -443,7 +443,7 @@ func GetHostRetryWait(host string, randAdd bool) int64 {
 		waitMS = until - bntp.UTCStamp()
 		if waitMS < 0 {
 			delete(HostRetryWaits, host)
-		} else if randAdd {
+		} else if randAdd && waitMS > 0 {
 			// 随机增加10s内延迟，避免全部同一时间发起
 			randWait := int64(rand.Float32() * 10000)
 			waitMS += randWait
