@@ -430,8 +430,11 @@ func newWebSocket(id int, reqUrl, logURL string, args map[string]interface{}, on
 	res.lock = &deadlock.RWMutex{}
 	res.dial = func() (*websocket.Conn, error) {
 		conn, rsp, err := dialer.Dial(reqUrl, http.Header{})
-		if err != nil && isPermanentWsDialError(err, rsp) {
-			return nil, &permanentWsDialError{error: err}
+		if err != nil {
+			err = wrapWsDialError(logURL, err, rsp)
+			if isPermanentWsDialError(err, rsp) {
+				return nil, &permanentWsDialError{error: err}
+			}
 		}
 		return conn, err
 	}
@@ -445,6 +448,24 @@ func newWebSocket(id int, reqUrl, logURL string, args map[string]interface{}, on
 		send:    make(chan *wsWrite, 10),
 		control: make(chan int, 2),
 	}, nil
+}
+
+func wrapWsDialError(logURL string, err error, rsp *http.Response) error {
+	if rsp == nil {
+		return fmt.Errorf("websocket dial %s: %w", logURL, err)
+	}
+	var body string
+	if rsp.Body != nil {
+		content, readErr := io.ReadAll(io.LimitReader(rsp.Body, 512))
+		_ = rsp.Body.Close()
+		if readErr == nil {
+			body = strings.TrimSpace(redactRequestText(string(content)))
+		}
+	}
+	if body != "" {
+		return fmt.Errorf("websocket dial %s failed with HTTP %s body=%q: %w", logURL, rsp.Status, body, err)
+	}
+	return fmt.Errorf("websocket dial %s failed with HTTP %s: %w", logURL, rsp.Status, err)
 }
 
 func isPermanentWsDialError(err error, rsp *http.Response) bool {

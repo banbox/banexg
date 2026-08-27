@@ -47,6 +47,10 @@ func TestLinearUserDataWsURL(t *testing.T) {
 	if query.Get("events") != linearUserDataEvents {
 		t.Fatalf("events = %q, want %q", query.Get("events"), linearUserDataEvents)
 	}
+	wantRawQuery := "listenKey=listen-key&events=" + url.QueryEscape(linearUserDataEvents)
+	if parsed.RawQuery != wantRawQuery {
+		t.Fatalf("raw query = %q, want %q", parsed.RawQuery, wantRawQuery)
+	}
 }
 
 func TestListenKeyRetryDelay(t *testing.T) {

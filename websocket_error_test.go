@@ -63,6 +63,8 @@ func TestWebSocketInitialDialFailsFast(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 	if _, err := newWebSocket(1, wsURL, wsURL, nil, nil); err == nil {
 		t.Fatal("initial dial unexpectedly succeeded")
+	} else if !strings.Contains(err.Error(), "503 Service Unavailable") || !strings.Contains(err.Error(), wsURL) {
+		t.Fatalf("initial dial error lost response context: %v", err)
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("initial dial attempts = %d, want 1", got)

@@ -81,11 +81,8 @@ func linearPrivateWsHost(host string) string {
 }
 
 func linearUserDataWsURL(host, listenKey string) string {
-	query := url.Values{
-		"listenKey": {listenKey},
-		"events":    {linearUserDataEvents},
-	}
-	return linearPrivateWsHost(host) + "?" + query.Encode()
+	return linearPrivateWsHost(host) + "?listenKey=" + url.QueryEscape(listenKey) +
+		"&events=" + url.QueryEscape(linearUserDataEvents)
 }
 
 /*
