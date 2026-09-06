@@ -1,6 +1,8 @@
 package bybit
 
 import (
+	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -8,6 +10,7 @@ import (
 )
 
 var _ banexg.OrderEventCapability = (*Bybit)(nil)
+var _ banexg.ClientOrderCapability = (*Bybit)(nil)
 
 // ParseClientOrderID parses Bybit's {botName}_{orderID}_... format.
 func (*Bybit) ParseClientOrderID(botName, clientID string) int64 {
@@ -27,4 +30,13 @@ func (*Bybit) ParseClientOrderID(botName, clientID string) int64 {
 		return 0
 	}
 	return orderID
+}
+
+// BuildClientOrderID keeps Bybit's underscore-separated orderLinkId layout at
+// the adapter boundary. The client ID is an optional persisted suffix.
+func (*Bybit) BuildClientOrderID(namespace string, orderID int64, clientID string, randomize bool) string {
+	if randomize {
+		return fmt.Sprintf("%s_%d_%d_%s", namespace, orderID, rand.Intn(1000), clientID)
+	}
+	return fmt.Sprintf("%s_%d_%s", namespace, orderID, clientID)
 }

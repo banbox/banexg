@@ -1,6 +1,8 @@
 package okx
 
 import (
+	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -8,6 +10,7 @@ import (
 )
 
 var _ banexg.OrderEventCapability = (*OKX)(nil)
+var _ banexg.ClientOrderCapability = (*OKX)(nil)
 
 // ParseClientOrderID parses OKX's fixed layout:
 // {hash(botName)6}{orderID12}{suffix}.
@@ -71,6 +74,16 @@ func (*OKX) NormalizeOrderTimestamp(order *banexg.Order, fallback int64) int64 {
 		timestamp = order.LastUpdateTimestamp
 	}
 	return timestamp
+}
+
+// BuildClientOrderID keeps OKX's alphanumeric fixed-width clOrdId layout at
+// the adapter boundary. OKX does not accept the persisted client suffix.
+func (*OKX) BuildClientOrderID(namespace string, orderID int64, _ string, randomize bool) string {
+	randNum := 0
+	if randomize {
+		randNum = rand.Intn(10000)
+	}
+	return fmt.Sprintf("%s%012d%04d", okxClientOrderNamespace(namespace), orderID, randNum)
 }
 
 func okxClientOrderNamespace(namespace string) string {

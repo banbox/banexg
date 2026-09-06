@@ -1,6 +1,8 @@
 package binance
 
 import (
+	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -8,6 +10,7 @@ import (
 )
 
 var _ banexg.OrderEventCapability = (*Binance)(nil)
+var _ banexg.ClientOrderCapability = (*Binance)(nil)
 
 // ParseClientOrderID parses Binance's {botName}_{orderID}_... format.
 func (*Binance) ParseClientOrderID(botName, clientID string) int64 {
@@ -75,4 +78,13 @@ func (*Binance) NormalizeOrderTimestamp(order *banexg.Order, fallback int64) int
 		timestamp = order.LastUpdateTimestamp
 	}
 	return timestamp
+}
+
+// BuildClientOrderID keeps Binance's underscore-separated layout at the
+// adapter boundary. The client ID is an optional persisted suffix.
+func (*Binance) BuildClientOrderID(namespace string, orderID int64, clientID string, randomize bool) string {
+	if randomize {
+		return fmt.Sprintf("%s_%d_%d_%s", namespace, orderID, rand.Intn(1000), clientID)
+	}
+	return fmt.Sprintf("%s_%d_%s", namespace, orderID, clientID)
 }
