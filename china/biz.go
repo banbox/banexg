@@ -134,6 +134,12 @@ func (e *China) LoadMarkets(reload bool, params map[string]interface{}) (banexg.
 	return newMarkets, nil
 }
 
+// LoadMarketsForSymbols implements the optional banexg capability used by
+// callers that already own the canonical symbol catalog.
+func (e *China) LoadMarketsForSymbols(reload bool, symbols []string) (banexg.MarketMap, *errs.Error) {
+	return e.LoadMarkets(reload, map[string]interface{}{banexg.ParamSymbols: symbols})
+}
+
 func (e *China) MapMarket(exgSID string, year int) (*banexg.Market, *errs.Error) {
 	_, err := e.LoadMarkets(false, nil)
 	if err != nil {
