@@ -63,6 +63,7 @@ const (
 	ParamArchive      = "archive"      // Whether to use archive endpoint
 	ParamSettleCoins  = "settleCoins"  // Settlement coins for account-scoped queries
 	ParamFullSnapshot = "fullSnapshot" // Require a complete result or return an error
+	ParamSettledCash  = "settledCash"
 )
 
 var (

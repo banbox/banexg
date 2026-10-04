@@ -1,12 +1,14 @@
 package banexg
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -428,8 +430,30 @@ func newWebSocket(id int, reqUrl, logURL string, args map[string]interface{}, on
 	res := &WebSocket{id: id, dialer: dialer, url: reqUrl, logURL: logURL, onReConnect: onReConnect,
 		stop: make(chan struct{})}
 	res.lock = &deadlock.RWMutex{}
+	initialContext, _ := args[ParamContext].(context.Context)
+	if initialContext == nil {
+		initialContext = context.Background()
+	}
 	res.dial = func() (*websocket.Conn, error) {
-		conn, rsp, err := dialer.Dial(reqUrl, http.Header{})
+		// Gorilla bounds the handshake by deadlines, but cancellation after
+		// TCP connection establishment also needs to interrupt its reads.
+		requestDialer := *dialer
+		var stopCancel func() bool
+		requestDialer.NetDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+			if err == nil {
+				stopCancel = context.AfterFunc(initialContext, func() { _ = conn.Close() })
+			}
+			return conn, err
+		}
+		conn, rsp, err := requestDialer.DialContext(initialContext, reqUrl, http.Header{})
+		if stopCancel != nil {
+			stopCancel()
+		}
+		if initialContext.Err() != nil && err == nil {
+			_ = conn.Close()
+			return nil, initialContext.Err()
+		}
 		if err != nil {
 			err = wrapWsDialError(logURL, err, rsp)
 			if isPermanentWsDialError(err, rsp) {
@@ -442,6 +466,8 @@ func newWebSocket(id int, reqUrl, logURL string, args map[string]interface{}, on
 	if err != nil {
 		return nil, errs.New(errs.CodeConnectFail, err)
 	}
+	// Reconnects belong to the stream lifecycle, not the initialization request.
+	initialContext = context.Background()
 	res.markReady(0)
 	return &AsyncConn{
 		WsConn:  res,
@@ -546,11 +572,24 @@ func newWsClient(exg *Exchange, reqUrl, marketType, acc string, onMsg FuncOnWsMs
 			return nil, err
 		}
 	}
+	delete(args, ParamContext)
 	result.addConn(conn)
 	return result, nil
 }
 
 func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
+	return e.GetClientContext(context.Background(), wsUrl, marketType, accName)
+}
+
+// GetClientContext bounds only client initialization; an established stream
+// and its reconnects remain independent of the request deadline.
+func (e *Exchange) GetClientContext(ctx context.Context, wsUrl string, marketType, accName string) (*WsClient, *errs.Error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, errs.New(errs.CodeConnectFail, err)
+	}
 	clientKey := accName + "@" + wsUrl
 	client, ok := e.findWSClient(clientKey)
 	if ok {
@@ -561,7 +600,7 @@ func (e *Exchange) GetClient(wsUrl string, marketType, accName string) (*WsClien
 			return client, nil
 		}
 	}
-	params := map[string]interface{}{}
+	params := map[string]interface{}{ParamContext: ctx}
 	if e.Proxy != nil {
 		params[ParamProxy] = e.Proxy
 	}

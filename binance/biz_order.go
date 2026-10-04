@@ -10,14 +10,21 @@ import (
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
 	"github.com/banbox/bntp"
+	"github.com/shopspring/decimal"
 )
 
 func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface{}) (*banexg.Order, *errs.Error) {
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
 	}
 	isAlgo := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
+	complete := utils.PopMapVal(args, banexg.ParamCompleteOrder, false)
+	if complete && (!market.Linear || !market.Swap || isAlgo || strings.HasPrefix(orderId, "algo:")) {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "complete order snapshot requires a regular linear perpetual order")
+	}
 	if market.Linear && (isAlgo || strings.HasPrefix(orderId, "algo:")) {
 		clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
 		return e.fetchAlgoOrder(orderId, clientOrderId, args)
@@ -47,7 +54,7 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 		}
 	}
 	tryNum := e.GetRetryNum("FetchOrder", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	rsp := e.RequestApiRetry(ctx, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -60,7 +67,11 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 	case MethodEapiPrivateGetOrder:
 		return parseOrder[*OptionOrder](mapSymbol, rsp)
 	case MethodFapiPrivateGetOrder:
-		return parseOrder[*FutureOrder](mapSymbol, rsp)
+		order, err := parseOrder[*FutureOrder](mapSymbol, rsp)
+		if err != nil || !complete {
+			return order, err
+		}
+		return e.completeLinearOrder(ctx, market, order, args, tryNum)
 	case MethodDapiPrivateGetOrder:
 		return parseOrder[*InverseOrder](mapSymbol, rsp)
 	case MethodSapiGetMarginOrder:
@@ -68,6 +79,101 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 	default:
 		return nil, errs.NewMsg(errs.CodeNotSupport, "not support order method %s", method)
 	}
+}
+
+// completeLinearOrder joins the order snapshot with every individual execution.
+// A moving or incomplete execution history is rejected; callers can query again
+// without submitting another order.
+func (e *Binance) completeLinearOrder(ctx context.Context, market *banexg.Market, order *banexg.Order, orderArgs map[string]interface{}, retryNum int) (*banexg.Order, *errs.Error) {
+	status := utils.GetMapVal(order.Info, "status", "")
+	if _, ok := orderStateMap[status]; !ok {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "missing or unsupported complete order status: %s", order.ID)
+	}
+	filled, qtyErr := decimal.NewFromString(utils.GetMapVal(order.Info, "executedQty", ""))
+	cost, costErr := decimal.NewFromString(utils.GetMapVal(order.Info, "cumQuote", ""))
+	amount, amountErr := decimal.NewFromString(utils.GetMapVal(order.Info, "origQty", ""))
+	orderID, idErr := strconv.ParseInt(order.ID, 10, 64)
+	if qtyErr != nil || costErr != nil || amountErr != nil || idErr != nil || orderID <= 0 || filled.IsNegative() || cost.IsNegative() || !amount.IsPositive() || filled.GreaterThan(amount) || market.Settle == "" || order.LastUpdateTimestamp <= 0 {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "invalid complete order snapshot: %s", order.ID)
+	}
+	if status == OdStatusFilled && !filled.Equal(amount) || status == OdStatusNew && !filled.IsZero() || status == OdStatusPartiallyFilled && (!filled.IsPositive() || !filled.LessThan(amount)) {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "order status contradicts cumulative fill: %s", order.ID)
+	}
+	order.Fee = &banexg.Fee{Currency: market.Settle}
+	if filled.IsZero() {
+		if !cost.IsZero() {
+			return nil, errs.NewMsg(errs.CodeInvalidData, "zero-fill order has nonzero cost: %s", order.ID)
+		}
+		order.LastTradeTimestamp = 0
+		return order, nil
+	}
+	args := map[string]interface{}{"symbol": market.ID, "orderId": order.ID, "limit": 1000}
+	if account, ok := orderArgs[banexg.ParamAccount]; ok {
+		args[banexg.ParamAccount] = account
+	}
+	quantity, quote, fee := decimal.Zero, decimal.Zero, decimal.Zero
+	var cursor int64 = -1
+	seen := make(map[int64]bool)
+	order.Trades = nil
+	order.LastTradeTimestamp = 0
+	for {
+		rsp := e.RequestApiRetry(ctx, MethodFapiPrivateGetUserTrades, args, retryNum)
+		if rsp.Error != nil {
+			return nil, rsp.Error
+		}
+		var trades []struct {
+			ID              int64  `json:"id"`
+			OrderID         int64  `json:"orderId"`
+			Symbol          string `json:"symbol"`
+			Qty             string `json:"qty"`
+			Price           string `json:"price"`
+			QuoteQty        string `json:"quoteQty"`
+			Commission      string `json:"commission"`
+			CommissionAsset string `json:"commissionAsset"`
+			Time            int64  `json:"time"`
+			Side            string `json:"side"`
+			Maker           bool   `json:"maker"`
+		}
+		if err := utils.UnmarshalString(rsp.Content, &trades, utils.JsonNumDefault); err != nil {
+			return nil, errs.New(errs.CodeInvalidData, err)
+		}
+		lastID := cursor
+		for _, trade := range trades {
+			qty, qErr := decimal.NewFromString(trade.Qty)
+			quoteQty, cErr := decimal.NewFromString(trade.QuoteQty)
+			commission, fErr := decimal.NewFromString(trade.Commission)
+			price, pErr := decimal.NewFromString(trade.Price)
+			if qErr != nil || cErr != nil || fErr != nil || pErr != nil || !qty.IsPositive() || !price.IsPositive() || quoteQty.IsNegative() || trade.Time <= 0 || trade.Time > order.LastUpdateTimestamp || trade.Symbol != market.ID || strconv.FormatInt(trade.OrderID, 10) != order.ID || trade.CommissionAsset != market.Settle || trade.ID < 0 || trade.ID <= cursor || seen[trade.ID] {
+				return nil, errs.NewMsg(errs.CodeInvalidData, "incomplete or invalid execution history for order %s", order.ID)
+			}
+			seen[trade.ID] = true
+			lastID = max(lastID, trade.ID)
+			quantity = quantity.Add(qty)
+			quote = quote.Add(quoteQty)
+			fee = fee.Add(commission)
+			order.LastTradeTimestamp = max(order.LastTradeTimestamp, trade.Time)
+			order.Trades = append(order.Trades, &banexg.Trade{ID: strconv.FormatInt(trade.ID, 10), Order: order.ID, Symbol: market.Symbol, Amount: qty.InexactFloat64(), Price: price.InexactFloat64(), Cost: quoteQty.InexactFloat64(), Timestamp: trade.Time, Side: strings.ToLower(trade.Side), Maker: trade.Maker, Fee: &banexg.Fee{Currency: market.Settle, Cost: commission.InexactFloat64(), QuoteCost: commission.InexactFloat64()}})
+		}
+		if quantity.GreaterThan(filled) || quote.GreaterThan(cost) {
+			return nil, errs.NewMsg(errs.CodeInvalidData, "execution history exceeds order snapshot: %s", order.ID)
+		}
+		if len(trades) < 1000 {
+			break
+		}
+		if lastID <= cursor || lastID == int64(^uint64(0)>>1) {
+			return nil, errs.NewMsg(errs.CodeInvalidData, "invalid execution pagination: %s", order.ID)
+		}
+		cursor = lastID
+		args["fromId"] = cursor + 1
+	}
+	if !quantity.Equal(filled) || !quote.Equal(cost) {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "incomplete execution history for order %s", order.ID)
+	}
+	order.Fee.Cost = fee.InexactFloat64()
+	order.Fee.QuoteCost = order.Fee.Cost
+	order.Average = cost.Div(filled).InexactFloat64()
+	order.Remaining = amount.Sub(filled).InexactFloat64()
+	return order, nil
 }
 
 /*
@@ -210,6 +316,8 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 	if utils.GetMapVal(params, banexg.ParamFullSnapshot, false) {
 		return e.fetchOpenOrderSnapshot(symbol, since, limit, params)
 	}
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	var args map[string]interface{}
 	var marketType string
 	var market *banexg.Market
@@ -228,6 +336,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		marketType, _ = e.GetArgsMarketType(args, "")
 	}
 	if marketType == banexg.MarketLinear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+		args[banexg.ParamContext] = ctx
 		return e.fetchAlgoOpenOrders(args, market)
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
@@ -254,7 +363,7 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		}
 	}
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	rsp := e.RequestApiRetry(ctx, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -285,9 +394,12 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 
 func (e *Binance) fetchOpenOrderSnapshot(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.Order, *errs.Error) {
 	args := utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(args)
 	delete(args, banexg.ParamFullSnapshot)
 	delete(args, banexg.ParamAlgoOrder)
-	orders, err := e.FetchOpenOrders(symbol, since, limit, args)
+	regularArgs := utils.SafeParams(args)
+	regularArgs[banexg.ParamContext] = ctx
+	orders, err := e.FetchOpenOrders(symbol, since, limit, regularArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -304,6 +416,7 @@ func (e *Binance) fetchOpenOrderSnapshot(symbol string, since int64, limit int, 
 	}
 	if marketType == banexg.MarketLinear {
 		algoArgs := utils.SafeParams(args)
+		algoArgs[banexg.ParamContext] = ctx
 		algoArgs[banexg.ParamAlgoOrder] = true
 		algoOrders, algoErr := e.FetchOpenOrders(symbol, since, limit, algoArgs)
 		if algoErr != nil {
@@ -428,6 +541,9 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 }
 
 func parseOrders[T IBnbOrder](mapSymbol func(string) string, rsp *banexg.HttpRes) ([]*banexg.Order, *errs.Error) {
+	if strings.TrimSpace(rsp.Content) == "null" {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "null order inventory is not a complete snapshot")
+	}
 	var data = make([]T, 0)
 	rawList, err := utils.UnmarshalStringMapArr(rsp.Content, &data)
 	if err != nil {

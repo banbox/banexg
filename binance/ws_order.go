@@ -339,11 +339,21 @@ WatchMyTrades
 :returns dict[]: a list of [trade structures]{@link https://docs.ccxt.com/#/?id=trade-structure
 */
 func (e *Binance) WatchMyTrades(params map[string]interface{}) (chan *banexg.MyTrade, *errs.Error) {
-	_, client, err := e.getAuthClient(params)
+	clean := utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(clean)
+	if err := ctx.Err(); err != nil {
+		return nil, errs.New(errs.CodeRunTime, err)
+	}
+	authArgs := utils.SafeParams(clean)
+	authArgs[banexg.ParamContext] = ctx
+	_, client, err := e.getAuthClient(authArgs)
 	if err != nil {
 		return nil, err
 	}
-	args := utils.SafeParams(params)
+	if err := ctx.Err(); err != nil {
+		return nil, errs.New(errs.CodeRunTime, err)
+	}
+	args := utils.SafeParams(clean)
 	chanKey := client.Prefix("mytrades")
 	create := func(cap int) chan *banexg.MyTrade { return make(chan *banexg.MyTrade, cap) }
 	out := banexg.GetWsOutChan(e.Exchange, chanKey, create, args)

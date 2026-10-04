@@ -206,9 +206,11 @@ func (e *Binance) postListenKey(acc *banexg.Account, params map[string]interface
 	acc.Data[authField] = listenKey
 	acc.LockData.Unlock()
 	if marketType != banexg.MarketMargin {
+		refreshParams := utils.SafeParams(params)
+		delete(refreshParams, banexg.ParamContext)
 		refreshAfter := time.Duration(authRefreshSecs) * time.Second
 		time.AfterFunc(refreshAfter, func() {
-			e.keepAliveListenKey(acc, params)
+			e.keepAliveListenKey(acc, refreshParams)
 		})
 	}
 	return nil
@@ -219,6 +221,8 @@ func (e *Binance) keepAliveListenKey(acc *banexg.Account, params map[string]inte
 }
 
 func (e *Binance) keepAliveListenKeyRetry(acc *banexg.Account, params map[string]interface{}, attempt int) {
+	params = utils.SafeParams(params)
+	delete(params, banexg.ParamContext)
 	args := utils.SafeParams(params)
 	marketType, _ := e.GetArgsMarketType(args, "")
 	if marketType == banexg.MarketMargin {
@@ -303,7 +307,9 @@ func (e *Binance) closeUserDataClient(acc *banexg.Account, marketType, listenKey
 }
 
 func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.WsClient, *errs.Error) {
-	_, err := e.LoadMarkets(false, nil)
+	ctxParams := utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(ctxParams)
+	_, err := e.LoadMarkets(false, params)
 	if err != nil {
 		return "", nil, err
 	}
@@ -324,7 +330,7 @@ func (e *Binance) getAuthClient(params map[string]interface{}) (string, *banexg.
 	if marketType == banexg.MarketMargin {
 		wsUrl = e.GetHost(WssApi)
 	}
-	client, err := e.GetClient(wsUrl, marketType, acc.Name)
+	client, err := e.GetClientContext(ctx, wsUrl, marketType, acc.Name)
 	if err == nil && marketType == banexg.MarketMargin && !client.HasSubKeyPrefix(marginUserDataSubKey) {
 		err = e.subscribeMarginUserData(client, 0, listenKey)
 	}

@@ -14,6 +14,16 @@ func (e *Binance) FetchOrderBook(symbol string, limit int, params map[string]int
 		return nil, err
 	}
 	args["symbol"] = market.ID
+	if (market.Linear || market.Inverse) && limit > 0 {
+		// Contract depth endpoints accept a discrete set of depths. Preserve
+		// callers requesting only the best bid/ask by rounding up, not failing.
+		for _, depth := range []int{5, 10, 20, 50, 100, 500, 1000} {
+			if limit <= depth {
+				limit = depth
+				break
+			}
+		}
+	}
 	if limit > 0 {
 		args["limit"] = limit
 	}

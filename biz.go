@@ -1372,6 +1372,16 @@ func (e *Exchange) cacheApiRes(api *Entry, res *HttpRes) {
 }
 
 func (e *Exchange) RequestApiRetryAdv(ctx context.Context, endpoint string, params map[string]interface{}, retryNum int, readCache, writeCache bool) *HttpRes {
+	params = utils.SafeParams(params)
+	// ParamContext is an out-of-band transport control and must never be sent
+	// to a venue. It overrides the legacy caller context before any semaphore,
+	// cache, retry, or network work begins.
+	if params != nil {
+		if override, ok := params[ParamContext].(context.Context); ok && override != nil {
+			ctx = override
+		}
+		delete(params, ParamContext)
+	}
 	api, ok := e.Apis[endpoint]
 	if !ok {
 		log.Panic("invalid api", zap.String("endpoint", endpoint))

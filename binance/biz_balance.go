@@ -30,7 +30,11 @@ query for balance and get the amount of funds available for trading or funds loc
 :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
 */
 func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances, *errs.Error) {
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	args := utils.SafeParams(params)
+	delete(args, banexg.ParamFullSnapshot)
+	settledCash := utils.PopMapVal(args, banexg.ParamSettledCash, false)
 	marketType, _, err := e.LoadArgsMarketType(args)
 	if err != nil {
 		return nil, err
@@ -66,7 +70,7 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 		method = MethodSapiPostAssetGetFundingAsset
 	}
 	tryNum := e.GetRetryNum("FetchBalance", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
+	rsp := e.RequestApiRetry(ctx, method, args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -81,7 +85,7 @@ func (e *Binance) FetchBalance(params map[string]interface{}) (*banexg.Balances,
 	case MethodSapiGetMarginIsolatedAccount:
 		return parseMarginIsolatedBalances(e, rsp)
 	case MethodFapiPrivateV2GetAccount:
-		return parseLinearBalances(getCurrCode, rsp)
+		return parseLinearBalances(getCurrCode, rsp, settledCash)
 	case MethodDapiPrivateGetAccount:
 		return parseInverseBalances(getCurrCode, rsp)
 	case MethodSapiPostAssetGetFundingAsset:
@@ -108,6 +112,8 @@ func (e *Binance) FetchPositions(symbols []string, params map[string]interface{}
 }
 
 func (e *Binance) FetchPositionsRisk(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	args := utils.SafeParams(params)
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
 	if err != nil {
@@ -121,12 +127,14 @@ func (e *Binance) FetchPositionsRisk(symbols []string, params map[string]interfa
 	} else {
 		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchPositionsRisk support linear/inverse contracts only")
 	}
-	err = e.LoadLeverageBrackets(false, params)
+	bracketParams := utils.SafeParams(params)
+	bracketParams[banexg.ParamContext] = ctx
+	err = e.LoadLeverageBrackets(false, bracketParams)
 	if err != nil {
 		return nil, err
 	}
 	retryNum := e.GetRetryNum("FetchPositionsRisk", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, retryNum)
+	rsp := e.RequestApiRetry(ctx, method, args, retryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -147,6 +155,8 @@ FetchAccountPositions
 	:returns dict: data on account positions
 */
 func (e *Binance) FetchAccountPositions(symbols []string, params map[string]interface{}) ([]*banexg.Position, *errs.Error) {
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	args := utils.SafeParams(params)
 	delete(args, banexg.ParamSettleCoins) // not supported by binance
 	marketType, _, err := e.LoadArgsMarketType(args, symbols...)
@@ -161,12 +171,14 @@ func (e *Binance) FetchAccountPositions(symbols []string, params map[string]inte
 	} else {
 		return nil, errs.NewMsg(errs.CodeInvalidRequest, "FetchAccountPositions support linear/inverse contracts only")
 	}
-	err = e.LoadLeverageBrackets(false, params)
+	bracketParams := utils.SafeParams(params)
+	bracketParams[banexg.ParamContext] = ctx
+	err = e.LoadLeverageBrackets(false, bracketParams)
 	if err != nil {
 		return nil, err
 	}
 	retryNum := e.GetRetryNum("FetchAccountPositions", 1)
-	rsp := e.RequestApiRetry(context.Background(), method, args, retryNum)
+	rsp := e.RequestApiRetry(ctx, method, args, retryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -240,6 +252,14 @@ func (e *Binance) FetchIncomeHistory(inType string, symbol string, since int64, 
 }
 
 func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*banexg.Position, *errs.Error) {
+	var info = make(map[string]interface{})
+	err := utils.UnmarshalString(rsp.Content, &info, utils.JsonNumAuto)
+	if err != nil {
+		return nil, errs.New(errs.CodeUnmarshalFail, err)
+	}
+	if _, ok := info["positions"].([]interface{}); !ok {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "account snapshot requires an explicit positions array")
+	}
 	assets := make(map[string]*FutureAsset)
 	var posList = make([]IAccPosition, 0)
 	if marketType == banexg.MarketLinear {
@@ -267,18 +287,13 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 			posList = append(posList, p)
 		}
 	}
-	var info = make(map[string]interface{})
-	err := utils.UnmarshalString(rsp.Content, &info, utils.JsonNumAuto)
-	if err != nil {
-		return nil, errs.New(errs.CodeUnmarshalFail, err)
-	}
 	isLinear := marketType == banexg.MarketLinear
 	var result = make([]*banexg.Position, 0)
 	for _, p := range posList {
 		futPos := p.GetFutPosition()
 		market := e.GetMarketById(futPos.Symbol, marketType)
 		if market == nil {
-			continue
+			return nil, errs.NewMsg(errs.CodeInvalidData, "account position market absent: %s", futPos.Symbol)
 		}
 		code := market.Quote
 		if !isLinear {
@@ -286,7 +301,7 @@ func parseAccPosition(e *Binance, rsp *banexg.HttpRes, marketType string) ([]*ba
 		}
 		asset, ok := assets[code]
 		if !ok {
-			continue
+			return nil, errs.NewMsg(errs.CodeInvalidData, "account position asset absent: %s", code)
 		}
 		pos, err2 := parseAccountPosition(e, futPos, asset, market, p.GetNotional())
 		if err2 != nil {
@@ -395,6 +410,9 @@ func (p *InversePosition) GetNotional() string {
 }
 
 func parsePositionRisk[T IBnbPosRisk](e *Binance, rsp *banexg.HttpRes) ([]*banexg.Position, *errs.Error) {
+	if strings.TrimSpace(rsp.Content) == "null" {
+		return nil, errs.NewMsg(errs.CodeInvalidData, "null position inventory is not a complete snapshot")
+	}
 	var data = make([]T, 0)
 	// fmt.Println(rsp.Content)
 	infoList, err := utils.UnmarshalStringMapArr(rsp.Content, &data)
@@ -648,7 +666,7 @@ func parseMarginIsolatedBalances(e *Binance, rsp *banexg.HttpRes) (*banexg.Balan
 	return result.Init(), nil
 }
 
-func parseLinearBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (*banexg.Balances, *errs.Error) {
+func parseLinearBalances(getCurrCode func(string) string, rsp *banexg.HttpRes, settled ...bool) (*banexg.Balances, *errs.Error) {
 	var data = LinearBalances{}
 	result, err := unmarshalBalance(rsp.Content, &data)
 	if err != nil {
@@ -656,7 +674,14 @@ func parseLinearBalances(getCurrCode func(string) string, rsp *banexg.HttpRes) (
 	}
 	for _, item := range data.Assets {
 		asset := item.ToStdAsset(getCurrCode)
-		if asset.IsEmpty() {
+		if len(settled) > 0 && settled[0] {
+			wallet, er := strconv.ParseFloat(item.WalletBalance, 64)
+			if er != nil || math.IsNaN(wallet) || math.IsInf(wallet, 0) {
+				return nil, errs.NewMsg(errs.CodeInvalidData, "invalid settled wallet cash")
+			}
+			asset.Total = wallet
+			asset.Used = asset.Total - asset.Free
+		} else if asset.IsEmpty() {
 			continue
 		}
 		result.Assets[asset.Code] = asset

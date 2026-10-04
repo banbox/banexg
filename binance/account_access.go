@@ -7,6 +7,8 @@ import (
 )
 
 func (e *Binance) FetchAccountAccess(params map[string]interface{}) (*banexg.AccountAccess, *errs.Error) {
+	params = utils.SafeParams(params)
+	ctx := banexg.ContextFromParams(params)
 	args := utils.SafeParams(params)
 	res := &banexg.AccountAccess{}
 	if bal, ok := args[banexg.ParamBalance].(*banexg.Balances); ok && bal != nil {
@@ -14,7 +16,8 @@ func (e *Binance) FetchAccountAccess(params map[string]interface{}) (*banexg.Acc
 	}
 	// Remove internal params that should not be sent to API
 	delete(args, banexg.ParamBalance)
-	rsp, err := e.Call(MethodSapiGetAccountApiRestrictions, args)
+	rsp := e.RequestApiRetry(ctx, MethodSapiGetAccountApiRestrictions, args, e.GetRetryNum("FetchAccountAccess", 1))
+	err := rsp.Error
 	if err != nil {
 		if res.HasAny() {
 			return res, nil
@@ -61,8 +64,8 @@ func (e *Binance) FetchAccountAccess(params map[string]interface{}) (*banexg.Acc
 			method = MethodDapiPrivateGetPositionSideDual
 		}
 		if method != "" {
-			rsp, err := e.Call(method, args)
-			if err == nil {
+			rsp := e.RequestApiRetry(ctx, method, args, e.GetRetryNum("FetchAccountAccess", 1))
+			if rsp.Error == nil {
 				var raw map[string]interface{}
 				info, err := utils.UnmarshalStringMap(rsp.Content, &raw)
 				if err == nil {
