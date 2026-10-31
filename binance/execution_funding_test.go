@@ -35,6 +35,10 @@ func TestExecutionFundingCashExactAndFailClosed(t *testing.T) {
 					t.Errorf("internal controls leaked: %s %s", r.Method, r.URL)
 				}
 				if strings.HasSuffix(r.URL.Path, "/income") {
+					if r.URL.Query().Get("incomeType") == "SPECIAL_FUNDING_FEE" {
+						fmt.Fprint(w, `[]`)
+						return
+					}
 					if name == "null-page" {
 						fmt.Fprint(w, `null`)
 						return
@@ -93,31 +97,47 @@ func TestExecutionFundingCashExactAndFailClosed(t *testing.T) {
 }
 
 func TestExecutionFundingCashPagination(t *testing.T) {
-	pages := 0
+	calls := 0
 	e := fundingTestExchange(t, func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/fundingRate") {
 			fmt.Fprint(w, `[{"symbol":"BTCUSDT","fundingTime":1000,"markPrice":"100","fundingRate":"0.001"}]`)
 			return
 		}
-		pages++
-		if r.URL.Query().Get("page") != fmt.Sprint(pages) {
-			t.Error("nonadvancing income page")
+		if r.URL.Query().Has("page") {
+			t.Error("unsupported page parameter")
 		}
+		if r.URL.Query().Get("incomeType") == "SPECIAL_FUNDING_FEE" {
+			fmt.Fprint(w, `[]`)
+			return
+		}
+		calls++
 		var rows []map[string]interface{}
-		if pages == 1 {
+		switch calls {
+		case 1:
 			for i := 1; i <= 1000; i++ {
-				row := fundingIncome(i)
-				row["asset"] = "USDC"
-				rows = append(rows, row)
+				rows = append(rows, fundingIncome(i))
 			}
-		} else {
+		case 2:
+			if r.URL.Query().Get("startTime") != "900" || r.URL.Query().Get("endTime") != "1000" {
+				t.Error("wrong left window")
+			}
 			rows = append(rows, fundingIncome(1001))
+		case 3:
+			if r.URL.Query().Get("startTime") != "1001" || r.URL.Query().Get("endTime") != "1100" {
+				t.Error("wrong right window")
+			}
+		default:
+			t.Error("unexpected request")
 		}
-		json.NewEncoder(w).Encode(rows)
+		if rows == nil {
+			fmt.Fprint(w, `[]`)
+		} else {
+			json.NewEncoder(w).Encode(rows)
+		}
 	})
 	rows, err := e.FetchFundingCash(context.Background(), "shared", "USDT", 900, 1100)
-	if err != nil || pages != 2 || len(rows) != 1 || rows[0].ID != "funding/USDT/1001" {
-		t.Fatalf("pagination: pages=%d rows=%+v err=%v", pages, rows, err)
+	if err != nil || calls != 3 || len(rows) != 1 || rows[0].ID != "funding/USDT/1001" {
+		t.Fatalf("pagination: calls=%d rows=%+v err=%v", calls, rows, err)
 	}
 }
 
@@ -132,7 +152,7 @@ func TestExecutionFundingCashDeadline(t *testing.T) {
 	}
 }
 
-func TestExecutionFundingCashRejectsRepeatedFilteredPage(t *testing.T) {
+func TestExecutionFundingCashRejectsSaturatedTimestamp(t *testing.T) {
 	pages := 0
 	e := fundingTestExchange(t, func(w http.ResponseWriter, r *http.Request) {
 		pages++
@@ -145,8 +165,53 @@ func TestExecutionFundingCashRejectsRepeatedFilteredPage(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	rows, err := e.FetchFundingCash(ctx, "shared", "USDT", 900, 1100)
-	if err == nil || rows != nil || pages != 2 {
+	rows, err := e.FetchFundingCash(ctx, "shared", "USDT", 1000, 1000)
+	if err == nil || rows != nil || pages != 1 {
 		t.Fatalf("repeated filtered page was not rejected: pages=%d rows=%+v err=%v", pages, rows, err)
+	}
+}
+
+func TestExecutionFundingCashSpecialAndRegularSameTransaction(t *testing.T) {
+	e := fundingTestExchange(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/income") {
+			row := fundingIncome(42)
+			row["incomeType"] = r.URL.Query().Get("incomeType")
+			if row["incomeType"] == "SPECIAL_FUNDING_FEE" {
+				row["income"] = "0.25"
+			}
+			json.NewEncoder(w).Encode([]map[string]interface{}{row})
+			return
+		}
+		if r.URL.Query().Get("limit") == "1" {
+			t.Error("limit=1 can hide the matching rate type")
+		}
+		fmt.Fprint(w, `[{"symbol":"BTCUSDT","fundingTime":1000,"markPrice":"100","fundingRate":"0.001","rateType":"Regular"},{"symbol":"BTCUSDT","fundingTime":1000,"markPrice":"100","fundingRate":"-0.0025","rateType":"Special"}]`)
+	})
+	rows, err := e.FetchFundingCash(context.Background(), "shared", "USDT", 900, 1100)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("missing special funding: %+v %v", rows, err)
+	}
+	if rows[0].ID != "funding/USDT/42" || rows[1].ID != "funding/SPECIAL_FUNDING_FEE/USDT/42" || rows[1].Rate != "-0.0025" || rows[1].Amount != "0.25" {
+		t.Fatalf("funding identity or rate mismatch: %+v", rows)
+	}
+}
+
+func TestExecutionFundingCashSpecialMissingRateFailsClosed(t *testing.T) {
+	e := fundingTestExchange(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/income") {
+			if r.URL.Query().Get("incomeType") == "FUNDING_FEE" {
+				fmt.Fprint(w, `[]`)
+				return
+			}
+			row := fundingIncome(42)
+			row["incomeType"] = "SPECIAL_FUNDING_FEE"
+			json.NewEncoder(w).Encode([]map[string]interface{}{row})
+			return
+		}
+		fmt.Fprint(w, `[{"symbol":"BTCUSDT","fundingTime":1000,"markPrice":"100","fundingRate":"0.001"}]`)
+	})
+	rows, err := e.FetchFundingCash(context.Background(), "shared", "USDT", 900, 1100)
+	if err == nil || rows != nil {
+		t.Fatalf("special funding used a regular rate: %+v %v", rows, err)
 	}
 }

@@ -323,8 +323,11 @@ func (e *Binance) mapMarket(mar *BnbMarket, info map[string]interface{}) *banexg
 	var expiry = max(mar.DeliveryDate, mar.ExpiryDate)
 	var settleId = mar.MarginAsset
 	if mar.ContractType == "PERPETUAL" || expiry == 4133404800000 {
-		//some swap markets do not have contract type, eg: BTCST
-		expiry = 0
+		// Preserve announced perpetual delisting dates; only the venue's
+		// open-ended delivery sentinel means there is no expiry.
+		if expiry == 4133404800000 {
+			expiry = 0
+		}
 		isSwap = true
 	} else if mar.Underlying != "" {
 		isContract = true
