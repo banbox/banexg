@@ -23,6 +23,22 @@ type FundingRateArchiveFetcher interface {
 		rates []*FundingRate, available bool, err *errs.Error)
 }
 
+// DerivativesMetricsArchiveFetcher is an optional exchange capability for
+// immutable historical open interest and long/short ratio archive files,
+// resampled to timeframe using closing ("last") snapshot semantics.
+type DerivativesMetricsArchiveFetcher interface {
+	FetchDerivativesMetricsArchive(ctx context.Context, symbol, timeframe string, startMS, endMS int64) (
+		items []*DerivativesMetric, available bool, err *errs.Error)
+}
+
+// DerivativesMetricsFetcher is an optional exchange capability for historical
+// derivatives open interest and long/short ratio snapshots over [startMS, endMS]
+// (combining historical archives and recent REST endpoints when supported).
+type DerivativesMetricsFetcher interface {
+	FetchDerivativesMetrics(ctx context.Context, symbol, timeframe string, startMS, endMS int64, limit int, params map[string]interface{}) (
+		items []*DerivativesMetric, supported bool, err *errs.Error)
+}
+
 /*
 Exchange interface
 交易所接口

@@ -1,6 +1,8 @@
 package bybit
 
 import (
+	"context"
+	"math"
 	"sort"
 	"strconv"
 
@@ -498,4 +500,227 @@ func parseFundingRates(e *Bybit, marketType string, args map[string]interface{},
 		})
 	}
 	return result, nil
+}
+
+func bybitOpenInterestInterval(timeframe string) (string, bool) {
+	switch timeframe {
+	case "5m":
+		return "5min", true
+	case "15m":
+		return "15min", true
+	case "30m":
+		return "30min", true
+	case "1h":
+		return "1h", true
+	case "4h":
+		return "4h", true
+	case "1d":
+		return "1d", true
+	default:
+		return "", false
+	}
+}
+
+// FetchDerivativesMetrics fetches historical open interest and global account
+// long/short ratio snapshots on Bybit V5 linear/inverse contracts. Metrics not
+// exposed by Bybit V5 remain math.NaN() so downstream stores persist NULL.
+func (e *Bybit) FetchDerivativesMetrics(ctx context.Context, symbol, timeframe string, startMS, endMS int64, limit int, params map[string]interface{}) ([]*banexg.DerivativesMetric, bool, *errs.Error) {
+	if ctx != nil && ctx.Err() != nil {
+		return nil, false, errs.New(errs.CodeTimeout, ctx.Err())
+	}
+	args, market, err := e.LoadArgsMarket(symbol, params)
+	if err != nil {
+		return nil, false, err
+	}
+	if market == nil || (!market.Linear && !market.Inverse) || market.Spot || market.Option || market.Future {
+		return nil, false, nil
+	}
+	intervalStr, ok := bybitOpenInterestInterval(timeframe)
+	if !ok {
+		return nil, false, errs.NewMsg(errs.CodeInvalidTimeFrame, "unsupported bybit open interest timeframe: %s", timeframe)
+	}
+	delete(args, banexg.ParamContext)
+	delete(args, "fields")
+	if until := utils.PopMapVal(args, banexg.ParamUntil, int64(0)); until > 0 && endMS <= 0 {
+		endMS = until
+	}
+	if startMS > 0 && endMS > 0 && startMS > endMS {
+		return []*banexg.DerivativesMetric{}, true, nil
+	}
+	category, catErr := bybitCategoryFromMarket(market)
+	if catErr != nil {
+		return nil, false, catErr
+	}
+
+	byTS := make(map[int64]*banexg.DerivativesMetric)
+	if err := e.fetchBybitOpenInterestPages(ctx, market, category, intervalStr, startMS, endMS, limit, args, byTS); err != nil {
+		return nil, true, err
+	}
+	_ = e.fetchBybitAccountRatioPages(ctx, market, category, intervalStr, startMS, endMS, limit, args, byTS)
+
+	items := make([]*banexg.DerivativesMetric, 0, len(byTS))
+	for _, item := range byTS {
+		if startMS > 0 && item.Timestamp < startMS {
+			continue
+		}
+		if endMS > 0 && item.Timestamp > endMS {
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Timestamp < items[j].Timestamp })
+	if limit > 0 && len(items) > limit {
+		if startMS <= 0 && endMS > 0 {
+			items = items[len(items)-limit:]
+		} else {
+			items = items[:limit]
+		}
+	}
+	return items, true, nil
+}
+
+func (e *Bybit) fetchBybitOpenInterestPages(ctx context.Context, market *banexg.Market, category, intervalStr string, startMS, endMS int64, limit int, baseArgs map[string]interface{}, byTS map[int64]*banexg.DerivativesMetric) *errs.Error {
+	const maxBatch = 200
+	cursor := ""
+	seen := make(map[string]bool)
+	for {
+		if ctx != nil && ctx.Err() != nil {
+			return errs.New(errs.CodeTimeout, ctx.Err())
+		}
+		batchLimit := maxBatch
+		if limit > 0 {
+			rem := limit - len(byTS)
+			if rem <= 0 {
+				break
+			}
+			batchLimit = min(rem, maxBatch)
+		}
+		reqArgs := utils.SafeParams(baseArgs)
+		reqArgs["category"] = category
+		reqArgs["symbol"] = market.ID
+		reqArgs["intervalTime"] = intervalStr
+		reqArgs["limit"] = batchLimit
+		reqArgs[banexg.ParamNoCache] = true
+		if startMS > 0 {
+			reqArgs["startTime"] = startMS
+		}
+		if endMS > 0 {
+			reqArgs["endTime"] = endMS
+		}
+		setV5Cursor(reqArgs, cursor)
+		tryNum := e.GetRetryNum("FetchDerivativesMetrics", 1)
+		rsp := requestRetry[V5ListResult](e, MethodPublicGetV5MarketOpenInterest, reqArgs, tryNum)
+		if rsp.Error != nil {
+			return rsp.Error
+		}
+		if len(rsp.Result.List) == 0 {
+			break
+		}
+		var oldest int64
+		for _, raw := range rsp.Result.List {
+			ts := parseBybitInt(raw["timestamp"])
+			if ts <= 0 {
+				continue
+			}
+			if oldest == 0 || ts < oldest {
+				oldest = ts
+			}
+			oi, oiErr := utils.ParseNum(raw["openInterest"])
+			if oiErr != nil || math.IsNaN(oi) || math.IsInf(oi, 0) {
+				continue
+			}
+			dst := byTS[ts]
+			if dst == nil {
+				dst = banexg.NewDerivativesMetric(market.Symbol, ts)
+				dst.Info = make(map[string]interface{})
+				byTS[ts] = dst
+			}
+			dst.OpenInterest = oi
+			for k, v := range raw {
+				dst.Info[k] = v
+			}
+		}
+		next := rsp.Result.NextPageCursor
+		if next == "" || seen[next] || len(rsp.Result.List) < batchLimit || (startMS > 0 && oldest > 0 && oldest <= startMS) {
+			break
+		}
+		seen[next] = true
+		cursor = next
+	}
+	return nil
+}
+
+func (e *Bybit) fetchBybitAccountRatioPages(ctx context.Context, market *banexg.Market, category, periodStr string, startMS, endMS int64, limit int, baseArgs map[string]interface{}, byTS map[int64]*banexg.DerivativesMetric) *errs.Error {
+	const maxBatch = 500
+	cursor := ""
+	seen := make(map[string]bool)
+	fetched := 0
+	for {
+		if ctx != nil && ctx.Err() != nil {
+			return errs.New(errs.CodeTimeout, ctx.Err())
+		}
+		batchLimit := maxBatch
+		if limit > 0 {
+			rem := limit - fetched
+			if rem <= 0 {
+				break
+			}
+			batchLimit = min(rem, maxBatch)
+		}
+		reqArgs := utils.SafeParams(baseArgs)
+		reqArgs["category"] = category
+		reqArgs["symbol"] = market.ID
+		reqArgs["period"] = periodStr
+		reqArgs["limit"] = batchLimit
+		reqArgs[banexg.ParamNoCache] = true
+		if startMS > 0 {
+			reqArgs["startTime"] = startMS
+		}
+		if endMS > 0 {
+			reqArgs["endTime"] = endMS
+		}
+		setV5Cursor(reqArgs, cursor)
+		tryNum := e.GetRetryNum("FetchDerivativesMetrics", 1)
+		rsp := requestRetry[V5ListResult](e, MethodPublicGetV5MarketAccountRatio, reqArgs, tryNum)
+		if rsp.Error != nil {
+			return rsp.Error
+		}
+		if len(rsp.Result.List) == 0 {
+			break
+		}
+		var oldest int64
+		for _, raw := range rsp.Result.List {
+			ts := parseBybitInt(raw["timestamp"])
+			if ts <= 0 {
+				continue
+			}
+			if oldest == 0 || ts < oldest {
+				oldest = ts
+			}
+			buyRatio, bErr := utils.ParseNum(raw["buyRatio"])
+			sellRatio, sErr := utils.ParseNum(raw["sellRatio"])
+			if bErr != nil || sErr != nil || sellRatio <= 0 {
+				continue
+			}
+			ratio := buyRatio / sellRatio
+			if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+				continue
+			}
+			dst := byTS[ts]
+			if dst == nil {
+				dst = banexg.NewDerivativesMetric(market.Symbol, ts)
+				dst.Info = make(map[string]interface{})
+				byTS[ts] = dst
+			}
+			dst.GlobalLongShortAccountRatio = ratio
+			fetched++
+		}
+		next := rsp.Result.NextPageCursor
+		if next == "" || seen[next] || len(rsp.Result.List) < batchLimit || (startMS > 0 && oldest > 0 && oldest <= startMS) {
+			break
+		}
+		seen[next] = true
+		cursor = next
+	}
+	return nil
 }

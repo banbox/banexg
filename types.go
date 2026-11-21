@@ -3,6 +3,7 @@ package banexg
 import (
 	"compress/gzip"
 	"encoding/gob"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -605,6 +606,41 @@ type LastPrice struct {
 	Timestamp int64                  `json:"timestamp"`
 	Price     float64                `json:"price"`
 	Info      map[string]interface{} `json:"info"`
+}
+
+// DerivativesMetric represents a point-in-time derivatives open interest and
+// long/short ratio snapshot measured at Timestamp (UTC milliseconds).
+// Missing or unsupported metrics MUST be set to math.NaN() (see NewDerivativesMetric)
+// so downstream stores can persist explicit SQL NULLs rather than synthetic zeros.
+type DerivativesMetric struct {
+	Symbol                         string                 `json:"symbol"`
+	Timestamp                      int64                  `json:"timestamp"`
+	OpenInterest                   float64                `json:"openInterest"`                   // total open interest in base asset (linear) or contracts (inverse)
+	OpenInterestValue              float64                `json:"openInterestValue"`              // notional open interest value in quote/base currency
+	TopTraderLongShortAccountRatio float64                `json:"topTraderLongShortAccountRatio"` // top trader long/short account count ratio
+	TopTraderLongShortPosRatio     float64                `json:"topTraderLongShortPosRatio"`     // top trader long/short position ratio
+	GlobalLongShortAccountRatio    float64                `json:"globalLongShortAccountRatio"`    // global long/short account count ratio
+	TakerLongShortVolRatio         float64                `json:"takerLongShortVolRatio"`         // taker buy/sell volume ratio
+	Info                           map[string]interface{} `json:"info,omitempty"`
+}
+
+// OpenInterestHist aliases DerivativesMetric for callers focused on open interest history.
+type OpenInterestHist = DerivativesMetric
+
+// NewDerivativesMetric initializes all numeric metric fields to math.NaN() so
+// partial endpoints only populate available metrics and preserve NULL semantics.
+func NewDerivativesMetric(symbol string, timestamp int64) *DerivativesMetric {
+	nan := math.NaN()
+	return &DerivativesMetric{
+		Symbol:                         symbol,
+		Timestamp:                      timestamp,
+		OpenInterest:                   nan,
+		OpenInterestValue:              nan,
+		TopTraderLongShortAccountRatio: nan,
+		TopTraderLongShortPosRatio:     nan,
+		GlobalLongShortAccountRatio:    nan,
+		TakerLongShortVolRatio:         nan,
+	}
 }
 
 /*

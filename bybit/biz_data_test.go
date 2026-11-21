@@ -3,6 +3,7 @@ package bybit
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/banbox/banexg"
@@ -464,5 +465,51 @@ func TestFetchOHLCVParams(t *testing.T) {
 	}
 	if klines[0].Time != 1 || klines[1].Time != 2 {
 		t.Fatalf("unexpected kline order: %d,%d", klines[0].Time, klines[1].Time)
+	}
+}
+
+func TestFetchDerivativesMetricsBybit(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	exg.Markets["BTC/USDT:USDT"].Swap = true
+	exg.Markets["BTC/USDT:USDT"].Contract = true
+
+	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
+		switch endpoint {
+		case MethodPublicGetV5MarketOpenInterest:
+			requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketOpenInterest, banexg.MarketLinear, "BTCUSDT")
+			if params["intervalTime"] != "1h" {
+				t.Fatalf("expected intervalTime=1h, got %v", params["intervalTime"])
+			}
+			return &banexg.HttpRes{
+				Status:  200,
+				Content: `{"retCode":0,"retMsg":"OK","result":{"category":"linear","symbol":"BTCUSDT","list":[{"openInterest":"45100.5","timestamp":"1704074400000"},{"openInterest":"45000.25","timestamp":"1704070800000"}],"nextPageCursor":""}}`,
+			}
+		case MethodPublicGetV5MarketAccountRatio:
+			requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketAccountRatio, banexg.MarketLinear, "BTCUSDT")
+			if params["period"] != "1h" {
+				t.Fatalf("expected period=1h, got %v", params["period"])
+			}
+			return &banexg.HttpRes{
+				Status:  200,
+				Content: `{"retCode":0,"retMsg":"OK","result":{"category":"linear","list":[{"symbol":"BTCUSDT","buyRatio":"0.60","sellRatio":"0.40","timestamp":"1704070800000"},{"symbol":"BTCUSDT","buyRatio":"0.55","sellRatio":"0.45","timestamp":"1704074400000"}],"nextPageCursor":""}}`,
+			}
+		default:
+			t.Fatalf("unexpected endpoint %s", endpoint)
+			return nil
+		}
+	})
+
+	items, supported, err := exg.FetchDerivativesMetrics(context.Background(), "BTC/USDT:USDT", "1h", 1704070800000, 1704074400000, 0, nil)
+	if err != nil || !supported {
+		t.Fatalf("FetchDerivativesMetrics failed: supported=%v err=%v", supported, err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if items[0].Timestamp != 1704070800000 || math.Abs(items[0].OpenInterest-45000.25) > 1e-9 || math.Abs(items[0].GlobalLongShortAccountRatio-1.5) > 1e-9 {
+		t.Fatalf("unexpected first item: %+v", items[0])
+	}
+	if !math.IsNaN(items[0].OpenInterestValue) || !math.IsNaN(items[0].TopTraderLongShortPosRatio) {
+		t.Fatalf("expected unsupported Bybit fields to remain NaN, got %+v", items[0])
 	}
 }

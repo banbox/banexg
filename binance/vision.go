@@ -7,14 +7,18 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
+	"github.com/banbox/banexg/utils"
 )
 
 var binanceVisionBaseURL = "https://data.binance.vision/data"
@@ -131,6 +135,416 @@ func (e *Binance) FetchFundingRateArchive(ctx context.Context, symbol string, st
 		return nil, false, nil
 	}
 	return dedupeVisionFundingRates(result), true, nil
+}
+
+type visionDailyPeriod struct {
+	date    string
+	startMS int64
+	endMS   int64
+}
+
+type visionDayFetchResult struct {
+	body  []byte
+	found bool
+	err   *errs.Error
+}
+
+// FetchDerivativesMetricsArchive reads immutable daily Binance Vision 5m metrics
+// files for perpetual contracts over inclusive [startMS, endMS] and resamples
+// them to timeframe using closing ("last") snapshot semantics.
+func (e *Binance) FetchDerivativesMetricsArchive(ctx context.Context, symbol, timeframe string, startMS, endMS int64) ([]*banexg.DerivativesMetric, bool, *errs.Error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if startMS > endMS {
+		return nil, true, nil
+	}
+	market, err := e.GetMarket(symbol)
+	if err != nil {
+		return nil, false, err
+	}
+	tfMS, alignOffMS, ok := derivativesPeriodMS(timeframe)
+	if !ok {
+		return nil, false, nil
+	}
+	items, nextStartMS, avail, fetchErr := e.fetchDerivativesMetricsArchivePartial(ctx, market, timeframe, tfMS, alignOffMS, startMS, endMS)
+	if fetchErr != nil {
+		return nil, false, fetchErr
+	}
+	if !avail || nextStartMS <= endMS {
+		return nil, false, nil
+	}
+	return items, true, nil
+}
+
+func (e *Binance) fetchDerivativesMetricsArchivePartial(ctx context.Context, market *banexg.Market, timeframe string, tfMS, alignOffMS, startMS, endMS int64) ([]*banexg.DerivativesMetric, int64, bool, *errs.Error) {
+	if startMS > endMS {
+		return nil, endMS + 1, true, nil
+	}
+	marketPath, ok := visionFundingMarketPath(market)
+	if !ok || market.ID == "" {
+		return nil, startMS, false, nil
+	}
+	firstBucketStart := utils.AlignTfMSecsOffset(max(int64(0), startMS-1), tfMS, alignOffMS)
+	rawStartMS := firstBucketStart + 1
+	lastSampleMS := max(rawStartMS, endMS-1)
+	days := visionDailyPeriods(rawStartMS, lastSampleMS)
+	if len(days) == 0 {
+		return nil, endMS + 1, true, nil
+	}
+
+	marketID := strings.ToUpper(market.ID)
+	results, fetchErr := e.fetchVisionMetricsDays(ctx, marketPath, marketID, days)
+	if fetchErr != nil {
+		return nil, startMS, false, fetchErr
+	}
+
+	var raw []*banexg.DerivativesMetric
+	archiveFound := false
+	trailingMissingStart := int64(0)
+	for i, day := range days {
+		res := results[i]
+		if !res.found {
+			if !archiveFound {
+				continue
+			}
+			// Check whether any later day exists; an interior hole invalidates
+			// contiguous archive coverage, whereas all-missing trailing days are
+			// simply not yet published and can be stitched from REST.
+			for j := i + 1; j < len(results); j++ {
+				if results[j].found {
+					return nil, startMS, false, nil
+				}
+			}
+			trailingMissingStart = day.startMS
+			break
+		}
+		archiveFound = true
+		parsed, parseErr := parseVisionDerivativesMetrics(res.body, market.Symbol, rawStartMS, endMS)
+		if parseErr != nil {
+			return nil, startMS, false, errs.NewFull(parseErr.Code, parseErr,
+				"parse Binance Vision metrics file %s", day.date)
+		}
+		raw = append(raw, parsed...)
+	}
+	if !archiveFound {
+		return nil, startMS, false, nil
+	}
+
+	raw = mergeAndDedupeDerivativesMetrics(raw)
+	// When endMS is an exact UTC day boundary and the previous day's CSV ended at
+	// 23:55:00 rather than 24:00:00, probe the boundary day's CSV for 00:00:00.
+	if trailingMissingStart == 0 && endMS == utcDayStartMS(endMS) && (len(raw) == 0 || raw[len(raw)-1].Timestamp < endMS) {
+		endDate := time.UnixMilli(endMS).UTC().Format("2006-01-02")
+		relPath := fmt.Sprintf("%s/daily/metrics/%s/%s-metrics-%s.zip", marketPath, marketID, marketID, endDate)
+		body, found, probeErr := e.fetchVisionRelPath(ctx, relPath)
+		if probeErr != nil {
+			return nil, startMS, false, probeErr
+		}
+		if found {
+			parsed, parseErr := parseVisionDerivativesMetrics(body, market.Symbol, rawStartMS, endMS)
+			if parseErr != nil {
+				return nil, startMS, false, errs.NewFull(parseErr.Code, parseErr,
+					"parse Binance Vision metrics file %s", endDate)
+			}
+			raw = mergeAndDedupeDerivativesMetrics(append(raw, parsed...))
+		}
+	}
+
+	effectiveEndMS := endMS
+	if trailingMissingStart > 0 && trailingMissingStart < effectiveEndMS {
+		// Allow 24:00:00 row already present in the last found day file.
+		if len(raw) > 0 && raw[len(raw)-1].Timestamp == trailingMissingStart {
+			effectiveEndMS = trailingMissingStart
+		} else {
+			effectiveEndMS = trailingMissingStart - 1
+		}
+	}
+
+	resampled, coveredThroughMS := resampleVisionDerivativesMetrics(raw, market.Symbol, tfMS, alignOffMS, startMS, effectiveEndMS)
+	nextStartMS := endMS + 1
+	if trailingMissingStart > 0 {
+		if coveredThroughMS > 0 {
+			nextStartMS = coveredThroughMS + 1
+		} else {
+			nextStartMS = max(startMS, trailingMissingStart)
+		}
+	} else if coveredThroughMS < endMS {
+		// If the final bucket at endMS could not be closed from archived 5m rows,
+		// allow REST to supply the unclosed/missing tail from coveredThroughMS+1.
+		if coveredThroughMS > 0 {
+			nextStartMS = coveredThroughMS + 1
+		} else {
+			nextStartMS = startMS
+		}
+	}
+	return resampled, nextStartMS, true, nil
+}
+
+func (e *Binance) fetchVisionMetricsDays(ctx context.Context, marketPath, marketID string, days []visionDailyPeriod) ([]visionDayFetchResult, *errs.Error) {
+	results := make([]visionDayFetchResult, len(days))
+	if len(days) == 1 {
+		relPath := fmt.Sprintf("%s/daily/metrics/%s/%s-metrics-%s.zip", marketPath, marketID, marketID, days[0].date)
+		body, found, err := e.fetchVisionRelPath(ctx, relPath)
+		if err != nil {
+			return nil, err
+		}
+		results[0] = visionDayFetchResult{body: body, found: found}
+		return results, nil
+	}
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	workers := min(cap(binanceVisionHTTPFlow), len(days))
+	if workers < 1 {
+		workers = 1
+	}
+	var idx atomic.Int64
+	idx.Store(-1)
+	var firstErr *errs.Error
+	var errOnce sync.Once
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				i := int(idx.Add(1))
+				if i >= len(days) || workerCtx.Err() != nil {
+					return
+				}
+				relPath := fmt.Sprintf("%s/daily/metrics/%s/%s-metrics-%s.zip", marketPath, marketID, marketID, days[i].date)
+				body, found, err := e.fetchVisionRelPath(workerCtx, relPath)
+				if err != nil {
+					if ctx.Err() == nil && workerCtx.Err() != nil {
+						return
+					}
+					errOnce.Do(func() {
+						firstErr = err
+						cancel()
+					})
+					return
+				}
+				results[i] = visionDayFetchResult{body: body, found: found}
+			}
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, errs.New(errs.CodeTimeout, err)
+	}
+	return results, nil
+}
+
+func visionDailyPeriods(startMS, endMS int64) []visionDailyPeriod {
+	if startMS > endMS {
+		return nil
+	}
+	startTime := time.UnixMilli(startMS).UTC()
+	cur := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, time.UTC)
+	endTime := time.UnixMilli(endMS).UTC()
+	last := time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, time.UTC)
+	out := make([]visionDailyPeriod, 0)
+	for !cur.After(last) {
+		next := cur.AddDate(0, 0, 1)
+		out = append(out, visionDailyPeriod{
+			date:    cur.Format("2006-01-02"),
+			startMS: cur.UnixMilli(),
+			endMS:   next.UnixMilli(),
+		})
+		cur = next
+	}
+	return out
+}
+
+func resampleVisionDerivativesMetrics(raw []*banexg.DerivativesMetric, symbol string, tfMS, alignOffMS, startMS, endMS int64) ([]*banexg.DerivativesMetric, int64) {
+	if len(raw) == 0 {
+		return nil, 0
+	}
+	const fiveMinMS = int64(5 * 60 * 1000)
+	if tfMS <= fiveMinMS {
+		var out []*banexg.DerivativesMetric
+		var maxTS int64
+		for _, item := range raw {
+			if item.Timestamp > endMS {
+				continue
+			}
+			if item.Timestamp > maxTS {
+				maxTS = item.Timestamp
+			}
+			if item.Timestamp >= startMS {
+				cp := *item
+				out = append(out, &cp)
+			}
+		}
+		return out, maxTS
+	}
+
+	var out []*banexg.DerivativesMetric
+	var curBucketEnd int64
+	var curLast *banexg.DerivativesMetric
+	var coveredThrough int64
+	flush := func() {
+		if curLast == nil || curBucketEnd > endMS {
+			curLast = nil
+			return
+		}
+		// Require the final 5m slot of the coarse bucket to be present so a
+		// truncated archive day never fabricates a premature coarse snapshot.
+		if curLast.Timestamp <= curBucketEnd-fiveMinMS {
+			curLast = nil
+			return
+		}
+		if curBucketEnd > coveredThrough {
+			coveredThrough = curBucketEnd
+		}
+		if curBucketEnd >= startMS {
+			snap := *curLast
+			snap.Symbol = symbol
+			snap.Timestamp = curBucketEnd
+			out = append(out, &snap)
+		}
+		curLast = nil
+	}
+
+	for _, item := range raw {
+		if item == nil || item.Timestamp <= 0 || item.Timestamp > endMS {
+			continue
+		}
+		bucketEnd := utils.AlignTfMSecsOffset(max(int64(0), item.Timestamp-1), tfMS, alignOffMS) + tfMS
+		if curLast != nil && bucketEnd != curBucketEnd {
+			flush()
+		}
+		curBucketEnd = bucketEnd
+		curLast = item
+	}
+	flush()
+	return out, coveredThrough
+}
+
+func parseVisionDerivativesMetrics(data []byte, symbol string, startMS, endMS int64) ([]*banexg.DerivativesMetric, *errs.Error) {
+	var result []*banexg.DerivativesMetric
+	err := readVisionZipCSV(data, isVisionMetricsHeader, func(row []string) error {
+		item, rowErr := parseVisionDerivativesMetricRow(row, symbol)
+		if rowErr != nil {
+			return rowErr
+		}
+		if item == nil {
+			return nil
+		}
+		if item.Timestamp >= startMS && item.Timestamp <= endMS {
+			result = append(result, item)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mergeAndDedupeDerivativesMetrics(result), nil
+}
+
+func isVisionMetricsHeader(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "create_time" || value == "create time"
+}
+
+func parseVisionDerivativesMetricRow(row []string, symbol string) (*banexg.DerivativesMetric, error) {
+	if len(row) < 4 {
+		return nil, fmt.Errorf("expected at least 4 columns, got %d", len(row))
+	}
+	ts, err := parseVisionCreateTime(row[0])
+	if err != nil {
+		return nil, fmt.Errorf("create_time: %w", err)
+	}
+	item := banexg.NewDerivativesMetric(symbol, ts)
+	// Standard Binance Vision metrics CSV schema:
+	// 0: create_time
+	// 1: symbol
+	// 2: sum_open_interest
+	// 3: sum_open_interest_value
+	// 4: count_toptrader_long_short_ratio (account count ratio)
+	// 5: sum_toptrader_long_short_ratio   (position ratio)
+	// 6: count_long_short_ratio           (global account ratio)
+	// 7: sum_taker_long_short_vol_ratio   (taker buy/sell volume ratio)
+	if v, ok, err := parseOptionalVisionFloat(row, 2); err != nil {
+		return nil, err
+	} else if ok {
+		item.OpenInterest = v
+	}
+	if v, ok, err := parseOptionalVisionFloat(row, 3); err != nil {
+		return nil, err
+	} else if ok {
+		item.OpenInterestValue = v
+	}
+	if v, ok, err := parseOptionalVisionFloat(row, 4); err != nil {
+		return nil, err
+	} else if ok {
+		item.TopTraderLongShortAccountRatio = v
+	}
+	if v, ok, err := parseOptionalVisionFloat(row, 5); err != nil {
+		return nil, err
+	} else if ok {
+		item.TopTraderLongShortPosRatio = v
+	}
+	if v, ok, err := parseOptionalVisionFloat(row, 6); err != nil {
+		return nil, err
+	} else if ok {
+		item.GlobalLongShortAccountRatio = v
+	}
+	if v, ok, err := parseOptionalVisionFloat(row, 7); err != nil {
+		return nil, err
+	} else if ok {
+		item.TakerLongShortVolRatio = v
+	}
+	if !hasAnyValidDerivativesMetric(item) {
+		return nil, nil
+	}
+	return item, nil
+}
+
+func parseVisionCreateTime(raw string) (int64, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, fmt.Errorf("empty timestamp")
+	}
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		if n >= 100_000_000_000_000 {
+			n /= 1000
+		}
+		return n, nil
+	}
+	for _, layout := range []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999",
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05",
+	} {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t.UnixMilli(), nil
+		}
+	}
+	return 0, fmt.Errorf("unsupported timestamp %q", s)
+}
+
+func parseOptionalVisionFloat(row []string, index int) (float64, bool, error) {
+	if index >= len(row) {
+		return math.NaN(), false, nil
+	}
+	s := strings.TrimSpace(row[index])
+	if s == "" || strings.EqualFold(s, "nan") || strings.EqualFold(s, "null") {
+		return math.NaN(), false, nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return math.NaN(), false, fmt.Errorf("column %d: %w", index, err)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return math.NaN(), false, nil
+	}
+	return v, true, nil
 }
 
 func visionFundingMarketPath(market *banexg.Market) (string, bool) {
