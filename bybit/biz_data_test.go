@@ -325,6 +325,55 @@ func TestFetchFundingRateHistoryPaginatesBackward(t *testing.T) {
 	}
 }
 
+func TestFetchFundingRateHistoryUnlimitedRangePaginatesAllPages(t *testing.T) {
+	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
+	exg.Markets["BTC/USDT:USDT"].Swap = true
+	exg.Markets["BTC/USDT:USDT"].Info = map[string]interface{}{"fundingInterval": 480}
+
+	const (
+		since    = int64(1_000_000)
+		interval = int64(8 * 60 * 60 * 1000)
+		total    = 240
+	)
+	until := since + (total-1)*interval
+	calls := 0
+	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
+		requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketFundingHistory, banexg.MarketLinear, "BTCUSDT")
+		calls++
+		pageLimit := params["limit"].(int)
+		endTime := params["endTime"].(int64)
+		list := make([]map[string]interface{}, 0, pageLimit)
+		for i := total - 1; i >= 0 && len(list) < pageLimit; i-- {
+			stamp := since + int64(i)*interval
+			if stamp <= endTime {
+				list = append(list, map[string]interface{}{
+					"symbol":               "BTCUSDT",
+					"fundingRate":          "-0.00015",
+					"fundingRateTimestamp": fmt.Sprintf("%d", stamp),
+				})
+			}
+		}
+		body := mustMarshal(t, map[string]interface{}{
+			"retCode": 0, "retMsg": "OK",
+			"result": map[string]interface{}{"category": "linear", "list": list},
+		})
+		return &banexg.HttpRes{Status: 200, Content: body}
+	})
+
+	items, err := exg.FetchFundingRateHistory("BTC/USDT:USDT", since, 0, map[string]interface{}{
+		banexg.ParamUntil: until,
+	})
+	if err != nil {
+		t.Fatalf("FetchFundingRateHistory failed: %v", err)
+	}
+	if calls != 2 || len(items) != total {
+		t.Fatalf("expected 2 pages and %d settlements, got calls=%d len=%d", total, calls, len(items))
+	}
+	if items[0].Timestamp != since || items[len(items)-1].Timestamp != until {
+		t.Fatalf("unexpected boundary [%d, %d], want [%d, %d]", items[0].Timestamp, items[len(items)-1].Timestamp, since, until)
+	}
+}
+
 func TestFetchOHLCVPriceEndpoints(t *testing.T) {
 	exg := newBybitWithMarket("BTCUSDT", "BTC/USDT:USDT", banexg.MarketLinear)
 	cases := []struct {

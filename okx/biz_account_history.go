@@ -1,6 +1,7 @@
 package okx
 
 import (
+	"sort"
 	"strconv"
 
 	"github.com/banbox/banexg"
@@ -189,16 +190,11 @@ func (e *OKX) FetchFundingRates(symbols []string, params map[string]interface{})
 	return result, nil
 }
 
+const maxOKXFundRateBatch = 100
+
 func (e *OKX) FetchFundingRateHistory(symbol string, since int64, limit int, params map[string]interface{}) ([]*banexg.FundingRate, *errs.Error) {
 	if symbol == "" {
 		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for okx FetchFundingRateHistory")
-	}
-	pageLimit := limit
-	if pageLimit <= 0 {
-		pageLimit = 400
-	}
-	if pageLimit > 400 {
-		pageLimit = 400
 	}
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
@@ -208,24 +204,36 @@ func (e *OKX) FetchFundingRateHistory(symbol string, since int64, limit int, par
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "funding rate only supports swap")
 	}
 	args[FldInstId] = market.ID
-	args[FldLimit] = strconv.Itoa(pageLimit)
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
 	after := utils.PopMapVal(args, banexg.ParamAfter, int64(0))
 	before := utils.PopMapVal(args, banexg.ParamBefore, int64(0))
-	if after == 0 {
-		after = until
+	if since > 0 && until > 0 && since > until {
+		return []*banexg.FundingRate{}, nil
 	}
-	if before == 0 {
-		before = since
+	unlimited := limit <= 0 && since > 0 && (until > 0 || after > 0)
+	maxItems := limit
+	if !unlimited && maxItems <= 0 {
+		maxItems = maxOKXFundRateBatch
 	}
-	if since > 0 {
-		args[FldBefore] = strconv.FormatInt(before, 10)
+	// OKX `after` returns records strictly older than `after` (ts < after) and
+	// `before` returns records strictly newer than `before` (ts > before).
+	if after == 0 && until > 0 {
+		after = until + 1
 	}
-	if until > 0 {
-		args[FldAfter] = strconv.FormatInt(after, 10)
+	if before == 0 && since > 1 {
+		before = since - 1
 	}
-	result := make([]*banexg.FundingRate, 0)
+	itemsByTS := make(map[int64]*banexg.FundingRate)
 	for {
+		pageLimit := maxOKXFundRateBatch
+		if !unlimited {
+			remaining := maxItems - len(itemsByTS)
+			if remaining <= 0 {
+				break
+			}
+			pageLimit = min(remaining, maxOKXFundRateBatch)
+		}
+		args[FldLimit] = strconv.Itoa(pageLimit)
 		curAfter := after
 		if after > 0 {
 			args[FldAfter] = strconv.FormatInt(after, 10)
@@ -237,6 +245,8 @@ func (e *OKX) FetchFundingRateHistory(symbol string, since int64, limit int, par
 		} else {
 			delete(args, FldBefore)
 		}
+		// Disable API cache across paginated calls mutating args in place.
+		args[banexg.ParamNoCache] = true
 		tryNum := e.GetRetryNum("FetchFundingRateHistory", 1)
 		res := requestRetry[[]map[string]interface{}](e, MethodPublicGetFundingRateHistory, args, tryNum)
 		if res.Error != nil {
@@ -249,16 +259,31 @@ func (e *OKX) FetchFundingRateHistory(symbol string, since int64, limit int, par
 		page := make([]*banexg.FundingRate, 0, len(arr))
 		for i, item := range arr {
 			his := parseFundingRateHistory(e, &item, res.Result[i])
-			if his != nil {
-				page = append(page, his)
+			if his == nil {
+				continue
 			}
+			page = append(page, his)
+			if since > 0 && his.Timestamp < since {
+				continue
+			}
+			if until > 0 && his.Timestamp > until {
+				continue
+			}
+			itemsByTS[his.Timestamp] = his
 		}
-		result = append(result, page...)
 		nextAfter, ok := shouldContinueFundRateHistory(page, pageLimit, since, curAfter)
 		if !ok {
 			break
 		}
 		after = nextAfter
+	}
+	result := make([]*banexg.FundingRate, 0, len(itemsByTS))
+	for _, item := range itemsByTS {
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Timestamp < result[j].Timestamp })
+	if !unlimited && len(result) > maxItems {
+		result = result[len(result)-maxItems:]
 	}
 	return result, nil
 }

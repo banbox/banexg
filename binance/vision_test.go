@@ -286,3 +286,89 @@ func makeVisionZip(t *testing.T, name string, rows []string) []byte {
 	}
 	return buf.Bytes()
 }
+
+func TestFetchFundingRateArchiveUsesMonthlyVisionFiles(t *testing.T) {
+	jan := time.Date(2021, 1, 1, 8, 0, 0, 0, time.UTC).UnixMilli()
+	feb := time.Date(2021, 2, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	janZip := makeVisionZip(t, "ATOMUSDT-fundingRate-2021-01.csv", []string{
+		"calc_time,funding_interval_hours,last_funding_rate",
+		"1609459200000,8,0.00010000",
+		"1609488000000000,8,0.00015000",
+		"1609488000000,8,0.00020000",
+	})
+	febZip := makeVisionZip(t, "ATOMUSDT-fundingRate-2021-02.csv", []string{
+		"calc_time,funding_interval_hours,last_funding_rate",
+		"1612137600000,4,-0.00030000",
+		"1612152000000,4,0.00050000",
+	})
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/zip")
+		if strings.HasSuffix(r.URL.Path, "2021-01.zip") {
+			_, _ = w.Write(janZip)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "2021-02.zip") {
+			_, _ = w.Write(febZip)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	oldBaseURL := binanceVisionBaseURL
+	binanceVisionBaseURL = server.URL
+	t.Cleanup(func() { binanceVisionBaseURL = oldBaseURL })
+
+	market := &banexg.Market{
+		ID:     "ATOMUSDT",
+		Symbol: "ATOM/USDT:USDT",
+		Type:   banexg.MarketLinear,
+		Linear: true,
+		Swap:   true,
+	}
+	spot := &banexg.Market{
+		ID:     "ATOMUSDT",
+		Symbol: "ATOM/USDT",
+		Type:   banexg.MarketSpot,
+		Spot:   true,
+	}
+	exchange := &Binance{Exchange: &banexg.Exchange{
+		ExgInfo: &banexg.ExgInfo{
+			ID:         "binance",
+			MarketType: banexg.MarketLinear,
+			Markets:    banexg.MarketMap{market.Symbol: market, spot.Symbol: spot},
+		},
+		HttpClient: server.Client(),
+	}}
+
+	spotExchange := &Binance{Exchange: &banexg.Exchange{
+		ExgInfo: &banexg.ExgInfo{
+			ID:         "binance",
+			MarketType: banexg.MarketSpot,
+			Markets:    banexg.MarketMap{spot.Symbol: spot},
+		},
+		HttpClient: server.Client(),
+	}}
+	if _, available, err := spotExchange.FetchFundingRateArchive(context.Background(), spot.Symbol, jan, feb); err != nil || available {
+		t.Fatalf("spot market should not have funding archive: available=%v err=%v", available, err)
+	}
+
+	got, available, err := exchange.FetchFundingRateArchive(context.Background(), market.Symbol, jan, feb)
+	if err != nil || !available {
+		t.Fatalf("FetchFundingRateArchive() = %v, %v, %v", got, available, err)
+	}
+	if len(got) != 2 || got[0].Timestamp != jan || got[0].FundingRate != 0.0002 || got[1].Timestamp != feb || got[1].FundingRate != -0.0003 {
+		t.Fatalf("unexpected funding archive rows: %+v", got)
+	}
+	if got[1].Info["fundingIntervalHours"] != int64(4) {
+		t.Fatalf("expected fundingIntervalHours=4, got %+v", got[1].Info)
+	}
+	wantPaths := []string{
+		"/futures/um/monthly/fundingRate/ATOMUSDT/ATOMUSDT-fundingRate-2021-01.zip",
+		"/futures/um/monthly/fundingRate/ATOMUSDT/ATOMUSDT-fundingRate-2021-02.zip",
+	}
+	if !reflect.DeepEqual(paths, wantPaths) {
+		t.Fatalf("requested funding Vision paths = %#v, want %#v", paths, wantPaths)
+	}
+}

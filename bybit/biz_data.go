@@ -90,9 +90,6 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 	if symbol == "" {
 		return nil, errs.NewMsg(errs.CodeParamRequired, "symbol is required for bybit FetchFundingRateHistory")
 	}
-	if limit <= 0 {
-		limit = maxFundRateBatch
-	}
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
@@ -103,6 +100,13 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 	args["symbol"] = market.ID
 	args["category"] = market.Type
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	if since > 0 && until > 0 && since > until {
+		return []*banexg.FundingRate{}, nil
+	}
+	unlimited := limit <= 0 && since > 0 && until > 0
+	if !unlimited && limit <= 0 {
+		limit = maxFundRateBatch
+	}
 	interval := bybitFundingIntervalMS(market)
 	if since > 0 {
 		args["startTime"] = since
@@ -116,13 +120,16 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 	if until > 0 {
 		args["endTime"] = until
 	}
-	itemsByTimestamp := make(map[int64]*banexg.FundingRate, limit)
+	itemsByTimestamp := make(map[int64]*banexg.FundingRate, max(limit, 0))
 	for {
-		remaining := limit - len(itemsByTimestamp)
-		if remaining <= 0 {
-			break
+		batchLimit := maxFundRateBatch
+		if !unlimited {
+			remaining := limit - len(itemsByTimestamp)
+			if remaining <= 0 {
+				break
+			}
+			batchLimit = min(remaining, maxFundRateBatch)
 		}
-		batchLimit := min(remaining, maxFundRateBatch)
 		args["limit"] = batchLimit
 		list, hasMore, _, err := e.getFundRateHis(market.Type, until, interval, args)
 		if err != nil {
@@ -152,7 +159,7 @@ func (e *Bybit) FetchFundingRateHistory(symbol string, since int64, limit int, p
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Timestamp < items[j].Timestamp })
-	if len(items) > limit {
+	if !unlimited && len(items) > limit {
 		items = items[len(items)-limit:]
 	}
 	return items, nil

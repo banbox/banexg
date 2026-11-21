@@ -1,6 +1,10 @@
 package okx
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/banbox/banexg"
@@ -143,4 +147,78 @@ func TestShouldContinueFundRateHistory(t *testing.T) {
 	if ok {
 		t.Fatalf("expected stop when no progress, got %v %v", next, ok)
 	}
+}
+
+func TestFetchFundingRateHistoryRangePaginationAndAscendingOrder(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatalf("new okx: %v", err)
+	}
+	seedMarket(exg, "BTC-USDT-SWAP", "BTC/USDT:USDT", banexg.MarketLinear)
+	exg.Markets["BTC/USDT:USDT"].Swap = true
+
+	const (
+		since    = int64(1700000000000)
+		interval = int64(8 * 3600 * 1000)
+		total    = 130
+	)
+	until := since + (total-1)*interval
+	server := newOKXFundingTestServer(t, since, interval, total)
+	defer server.Close()
+	exg.Hosts.Prod[HostPublic] = server.URL
+	exg.HttpClient = server.Client()
+
+	items, fetchErr := exg.FetchFundingRateHistory("BTC/USDT:USDT", since, 0, map[string]interface{}{
+		banexg.ParamUntil: until,
+	})
+	if fetchErr != nil {
+		t.Fatalf("FetchFundingRateHistory failed: %v", fetchErr)
+	}
+	if len(items) != total {
+		t.Fatalf("expected %d items across pages, got %d", total, len(items))
+	}
+	if items[0].Timestamp != since || items[len(items)-1].Timestamp != until {
+		t.Fatalf("inclusive bounds lost: [%d, %d] vs [%d, %d]", items[0].Timestamp, items[len(items)-1].Timestamp, since, until)
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i-1].Timestamp >= items[i].Timestamp {
+			t.Fatalf("items not ascending at %d: %d >= %d", i, items[i-1].Timestamp, items[i].Timestamp)
+		}
+	}
+}
+
+func newOKXFundingTestServer(t *testing.T, since, interval int64, total int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		after, _ := strconv.ParseInt(q.Get("after"), 10, 64)
+		before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+		limit, _ := strconv.Atoi(q.Get("limit"))
+		if limit <= 0 || limit > 100 {
+			limit = 100
+		}
+		data := make([]map[string]interface{}, 0, limit)
+		for i := total - 1; i >= 0 && len(data) < limit; i-- {
+			ts := since + int64(i)*interval
+			if after > 0 && ts >= after {
+				continue
+			}
+			if before > 0 && ts <= before {
+				continue
+			}
+			data = append(data, map[string]interface{}{
+				"instType":     "SWAP",
+				"instId":       "BTC-USDT-SWAP",
+				"fundingRate":  "0.0001",
+				"realizedRate": "0.0001",
+				"fundingTime":  strconv.FormatInt(ts, 10),
+				"method":       "current_period",
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"code": "0",
+			"msg":  "",
+			"data": data,
+		})
+	}))
 }
