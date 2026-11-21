@@ -17,8 +17,18 @@ func (e *Bybit) FetchOHLCV(symbol, timeframe string, since int64, limit int, par
 		return nil, err
 	}
 	price := utils.PopMapVal(args, "price", "")
+	switch price {
+	case "premium", "premium_index":
+		price = "premiumIndex"
+	case "", "mark", "index", "premiumIndex":
+	default:
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported price kline type: %s", price)
+	}
 	if market.Option && price != "mark" {
 		return nil, errs.NewMsg(errs.CodeNotSupport, "option market only supports mark price kline")
+	}
+	if market.Spot && price != "" {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "spot market does not support %s price kline", price)
 	}
 	args["symbol"] = market.ID
 	maxLimit := 1000

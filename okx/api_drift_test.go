@@ -210,3 +210,39 @@ func TestFetchOHLCVClampsLimitTo300(t *testing.T) {
 		t.Fatalf("fetch OHLCV: %v", err)
 	}
 }
+
+func TestFetchOHLCVPriceCandlesMarkIndexAndPremiumUnsupported(t *testing.T) {
+	exg, _ := newMockOKX(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		switch r.URL.Path {
+		case "/api/v5/market/mark-price-candles", "/market/mark-price-candles":
+			if q.Get(FldInstId) != "BTC-USDT-SWAP" {
+				t.Errorf("unexpected mark instId: %s", q.Get(FldInstId))
+			}
+		case "/api/v5/market/index-candles", "/market/index-candles":
+			if q.Get(FldInstId) != "BTC-USDT" {
+				t.Errorf("unexpected index instId: %s", q.Get(FldInstId))
+			}
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"code":"0","msg":"","data":[["1704067260000","42010","42050","41990","42020","1"],["1704067200000","42000","42030","41980","42010","1"]]}`))
+	}, MethodMarketGetMarkPriceCandles, MethodMarketGetIndexCandles)
+	seedMarket(exg, "BTC-USDT-SWAP", "BTC/USDT:USDT", banexg.MarketLinear)
+	exg.Markets["BTC/USDT:USDT"].Swap = true
+	exg.Markets["BTC/USDT:USDT"].Contract = true
+	exg.Markets["BTC/USDT:USDT"].BaseID = "BTC"
+	exg.Markets["BTC/USDT:USDT"].QuoteID = "USDT"
+
+	markRows, err := exg.FetchOHLCV("BTC/USDT:USDT", "1m", 0, 2, map[string]interface{}{"price": "mark", banexg.ParamNoCache: true})
+	if err != nil || len(markRows) != 2 || markRows[0].Time != 1704067200000 || markRows[0].Volume != 0 {
+		t.Fatalf("unexpected mark rows (confirm must not leak into Volume): rows=%+v err=%v", markRows, err)
+	}
+	idxRows, err := exg.FetchOHLCV("BTC/USDT:USDT", "1m", 0, 2, map[string]interface{}{"price": "index", banexg.ParamNoCache: true})
+	if err != nil || len(idxRows) != 2 || idxRows[1].Close != 42020 || idxRows[1].Volume != 0 {
+		t.Fatalf("unexpected index rows: rows=%+v err=%v", idxRows, err)
+	}
+	if _, err := exg.FetchOHLCV("BTC/USDT:USDT", "1m", 0, 2, map[string]interface{}{"price": "premiumIndex"}); err == nil {
+		t.Fatal("expected okx premiumIndex klines to return unsupported error")
+	}
+}

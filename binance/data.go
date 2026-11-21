@@ -461,6 +461,7 @@ const (
 	MethodFapiPublicGetContinuousKlines                               = "fapiPublicGetContinuousKlines"
 	MethodFapiPublicGetMarkPriceKlines                                = "fapiPublicGetMarkPriceKlines"
 	MethodFapiPublicGetIndexPriceKlines                               = "fapiPublicGetIndexPriceKlines"
+	MethodFapiPublicGetPremiumIndexKlines                             = "fapiPublicGetPremiumIndexKlines"
 	MethodFapiPublicGetFundingRate                                    = "fapiPublicGetFundingRate"
 	MethodFapiPublicGetFundingInfo                                    = "fapiPublicGetFundingInfo"
 	MethodFapiPublicGetPremiumIndex                                   = "fapiPublicGetPremiumIndex"

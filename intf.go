@@ -15,6 +15,14 @@ type OHLCVArchiveFetcher interface {
 		klines []*Kline, available bool, err *errs.Error)
 }
 
+// PriceOHLCVArchiveFetcher is an optional exchange capability for immutable
+// historical price-index candlestick files (priceType: "mark", "index", "premiumIndex").
+// Callers can fall back to FetchOHLCV with params["price"] when available is false.
+type PriceOHLCVArchiveFetcher interface {
+	FetchPriceOHLCVArchive(ctx context.Context, priceType, symbol, timeframe string, startMS, endMS int64) (
+		klines []*Kline, available bool, err *errs.Error)
+}
+
 // FundingRateArchiveFetcher is an optional exchange capability for immutable
 // historical funding rate files. Callers can fall back to FetchFundingRateHistory
 // when available is false; an error means the archive request itself failed.

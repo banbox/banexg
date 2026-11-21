@@ -89,6 +89,72 @@ func (e *Binance) FetchOHLCVArchive(ctx context.Context, symbol, timeframe strin
 	return dedupeVisionKlines(result), true, nil
 }
 
+// FetchPriceOHLCVArchive reads immutable monthly and daily Binance Vision
+// markPriceKlines, indexPriceKlines, or premiumIndexKlines archives over
+// [startMS, endMS) for USD-M and COIN-M futures. Callers can fall back to
+// FetchOHLCV with params["price"] when available is false.
+func (e *Binance) FetchPriceOHLCVArchive(ctx context.Context, priceType, symbol, timeframe string, startMS, endMS int64) ([]*banexg.Kline, bool, *errs.Error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	normalizedPrice, err := normalizeBinancePriceType(priceType)
+	if err != nil {
+		return nil, false, err
+	}
+	if normalizedPrice == "" {
+		return nil, false, errs.NewMsg(errs.CodeParamInvalid, "priceType is required for FetchPriceOHLCVArchive")
+	}
+	if startMS >= endMS {
+		return nil, true, nil
+	}
+	market, err := e.GetMarket(symbol)
+	if err != nil {
+		return nil, false, err
+	}
+	marketPath, ok := visionPriceKlineMarketPath(market, normalizedPrice)
+	if !ok {
+		return nil, false, nil
+	}
+	category, targetID, ok := visionPriceKlineTarget(market, normalizedPrice)
+	if !ok {
+		return nil, false, nil
+	}
+	visionTF, ok := visionPriceKlineTimeframe(timeframe)
+	if !ok {
+		return nil, false, nil
+	}
+	files := visionArchiveFiles(startMS, endMS)
+	if len(files) == 0 {
+		return nil, true, nil
+	}
+
+	var result []*banexg.Kline
+	archiveFound := false
+	for _, file := range files {
+		body, found, fetchErr := e.fetchVisionKlineCategoryFile(ctx, marketPath, category, targetID, visionTF, file)
+		if fetchErr != nil {
+			return nil, false, fetchErr
+		}
+		if !found {
+			if !archiveFound {
+				continue
+			}
+			return nil, false, nil
+		}
+		archiveFound = true
+		klines, parseErr := parseVisionPriceKlines(body, startMS, endMS)
+		if parseErr != nil {
+			return nil, false, errs.NewFull(parseErr.Code, parseErr,
+				"parse Binance Vision %s file %s-%s", category, file.granularity, file.period)
+		}
+		result = append(result, klines...)
+	}
+	if !archiveFound {
+		return nil, false, nil
+	}
+	return dedupeVisionKlines(result), true, nil
+}
+
 // FetchFundingRateArchive reads immutable monthly Binance Vision fundingRate
 // files for perpetual contracts over inclusive [startMS, endMS]. Callers can
 // fall back to FetchFundingRateHistory when available is false.
@@ -602,6 +668,53 @@ func visionTimeframe(timeframe string) (string, bool) {
 	}
 }
 
+func visionPriceKlineMarketPath(market *banexg.Market, priceType string) (string, bool) {
+	if market == nil || market.Spot || market.Option {
+		return "", false
+	}
+	if priceType == "premiumIndex" && market.Future {
+		return "", false
+	}
+	switch {
+	case market.Linear:
+		return "futures/um", true
+	case market.Inverse:
+		return "futures/cm", true
+	default:
+		return "", false
+	}
+}
+
+func visionPriceKlineTarget(market *banexg.Market, priceType string) (string, string, bool) {
+	if market == nil {
+		return "", "", false
+	}
+	switch priceType {
+	case "mark":
+		id := strings.ToUpper(strings.TrimSpace(market.ID))
+		return "markPriceKlines", id, id != ""
+	case "index":
+		pair := strings.ToUpper(strings.TrimSpace(binanceIndexPairID(market)))
+		return "indexPriceKlines", pair, pair != ""
+	case "premiumIndex":
+		id := strings.ToUpper(strings.TrimSpace(market.ID))
+		return "premiumIndexKlines", id, id != ""
+	default:
+		return "", "", false
+	}
+}
+
+func visionPriceKlineTimeframe(timeframe string) (string, bool) {
+	switch strings.TrimSpace(timeframe) {
+	case "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w":
+		return strings.TrimSpace(timeframe), true
+	case "1M", "1mo":
+		return "1mo", true
+	default:
+		return "", false
+	}
+}
+
 func visionArchiveFiles(startMS, endMS int64) []visionArchiveFile {
 	if startMS >= endMS {
 		return nil
@@ -631,8 +744,13 @@ func visionArchiveFiles(startMS, endMS int64) []visionArchiveFile {
 
 func (e *Binance) fetchVisionFile(ctx context.Context, marketPath, marketID, timeframe string,
 	file visionArchiveFile) ([]byte, bool, *errs.Error) {
-	relPath := fmt.Sprintf("%s/%s/klines/%s/%s/%s-%s-%s.zip",
-		marketPath, file.granularity, marketID, timeframe, marketID, timeframe, file.period)
+	return e.fetchVisionKlineCategoryFile(ctx, marketPath, "klines", marketID, timeframe, file)
+}
+
+func (e *Binance) fetchVisionKlineCategoryFile(ctx context.Context, marketPath, category, targetID, timeframe string,
+	file visionArchiveFile) ([]byte, bool, *errs.Error) {
+	relPath := fmt.Sprintf("%s/%s/%s/%s/%s/%s-%s-%s.zip",
+		marketPath, file.granularity, category, targetID, timeframe, targetID, timeframe, file.period)
 	return e.fetchVisionRelPath(ctx, relPath)
 }
 
@@ -815,6 +933,60 @@ func parseVisionKlines(data []byte, startMS, endMS int64, inverse bool) ([]*bane
 		return nil, err
 	}
 	return dedupeVisionKlines(result), nil
+}
+
+func parseVisionPriceKlines(data []byte, startMS, endMS int64) ([]*banexg.Kline, *errs.Error) {
+	var result []*banexg.Kline
+	err := readVisionZipCSV(data, isVisionHeader, func(row []string) error {
+		kline, rowErr := parseVisionPriceKlineRow(row)
+		if rowErr != nil {
+			return rowErr
+		}
+		if kline.Time >= startMS && kline.Time < endMS {
+			result = append(result, kline)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return dedupeVisionKlines(result), nil
+}
+
+func parseVisionPriceKlineRow(row []string) (*banexg.Kline, error) {
+	if len(row) < 5 {
+		return nil, fmt.Errorf("expected at least 5 columns, got %d", len(row))
+	}
+	openTime, err := strconv.ParseInt(strings.TrimSpace(row[0]), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("open time: %w", err)
+	}
+	if openTime >= 100_000_000_000_000 {
+		openTime /= 1000
+	}
+	open, err := parseVisionFloat(row, 1)
+	if err != nil {
+		return nil, err
+	}
+	high, err := parseVisionFloat(row, 2)
+	if err != nil {
+		return nil, err
+	}
+	low, err := parseVisionFloat(row, 3)
+	if err != nil {
+		return nil, err
+	}
+	closePrice, err := parseVisionFloat(row, 4)
+	if err != nil {
+		return nil, err
+	}
+	return &banexg.Kline{
+		Time:  openTime,
+		Open:  open,
+		High:  high,
+		Low:   low,
+		Close: closePrice,
+	}, nil
 }
 
 func parseVisionFundingRates(data []byte, symbol string, startMS, endMS int64) ([]*banexg.FundingRate, *errs.Error) {

@@ -567,6 +567,7 @@ func New(Options map[string]interface{}) (*Binance, *errs.Error) {
 				MethodFapiPublicGetContinuousKlines:                               {Path: "continuousKlines", Host: HostFApiPublic, Method: "GET", Cost: 1, More: map[string]interface{}{"byLimit": []int{99, 1, 499, 2, 1000, 5, 10000, 10}}},
 				MethodFapiPublicGetMarkPriceKlines:                                {Path: "markPriceKlines", Host: HostFApiPublic, Method: "GET", Cost: 1, More: map[string]interface{}{"byLimit": []int{99, 1, 499, 2, 1000, 5, 10000, 10}}},
 				MethodFapiPublicGetIndexPriceKlines:                               {Path: "indexPriceKlines", Host: HostFApiPublic, Method: "GET", Cost: 1, More: map[string]interface{}{"byLimit": []int{99, 1, 499, 2, 1000, 5, 10000, 10}}},
+				MethodFapiPublicGetPremiumIndexKlines:                             {Path: "premiumIndexKlines", Host: HostFApiPublic, Method: "GET", Cost: 1, More: map[string]interface{}{"byLimit": []int{99, 1, 499, 2, 1000, 5, 10000, 10}}},
 				MethodFapiPublicGetFundingRate:                                    {Path: "fundingRate", Host: HostFApiPublic, Method: "GET", Cost: 1},
 				MethodFapiPublicGetFundingInfo:                                    {Path: "fundingInfo", Host: HostFApiPublic, Method: "GET", Cost: 1},
 				MethodFapiPublicGetPremiumIndex:                                   {Path: "premiumIndex", Host: HostFApiPublic, Method: "GET", Cost: 1},

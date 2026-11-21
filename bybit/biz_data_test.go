@@ -83,6 +83,22 @@ func TestFetchOHLCV_OptionPriceSupport(t *testing.T) {
 	if _, err := exg.FetchOHLCV(market.Symbol, "1m", 0, 999, map[string]interface{}{"price": "mark"}); err != nil {
 		t.Fatalf("expected option mark kline support: %v", err)
 	}
+
+	spot := &banexg.Market{Symbol: "BTC/USDT", ID: "BTCUSDT", Spot: true, Type: banexg.MarketSpot}
+	swap := &banexg.Market{Symbol: "BTC/USDT:USDT", ID: "BTCUSDT", Swap: true, Linear: true, Type: banexg.MarketLinear}
+	exg.Markets[spot.Symbol] = spot
+	exg.Markets[swap.Symbol] = swap
+	if _, err := exg.FetchOHLCV(spot.Symbol, "1m", 0, 10, map[string]interface{}{"price": "premiumIndex"}); err == nil {
+		t.Fatal("expected spot premiumIndex kline to be rejected")
+	}
+	setBybitTestRequest(t, func(_ context.Context, endpoint string, params map[string]interface{}, _ int, _ bool, _ bool) *banexg.HttpRes {
+		requireBybitReq(t, endpoint, params, MethodPublicGetV5MarketPremiumIndexPriceKline, banexg.MarketLinear, swap.ID)
+		return &banexg.HttpRes{Status: 200, Content: `{"retCode":0,"retMsg":"OK","result":{"category":"linear","list":[["1704067200000","-0.0012","-0.0005","-0.0020","-0.0015"]]}}`}
+	})
+	premRows, err := exg.FetchOHLCV(swap.Symbol, "1h", 1704067200000, 1, map[string]interface{}{"price": "premium"})
+	if err != nil || len(premRows) != 1 || math.Abs(premRows[0].Close - -0.0015) > 1e-9 || premRows[0].Volume != 0 {
+		t.Fatalf("unexpected bybit premium kline result: rows=%+v err=%v", premRows, err)
+	}
 }
 
 func TestFetchFundingRate_Errors(t *testing.T) {

@@ -571,22 +571,96 @@ func parseBnbOHLCV(rsp *banexg.HttpRes, volIndex, buyVolIndex int) ([]*banexg.Kl
 	return res, nil
 }
 
+func normalizeBinancePriceType(raw string) (string, *errs.Error) {
+	switch strings.TrimSpace(raw) {
+	case "":
+		return "", nil
+	case "mark":
+		return "mark", nil
+	case "index":
+		return "index", nil
+	case "premiumIndex", "premium", "premium_index":
+		return "premiumIndex", nil
+	default:
+		return "", errs.NewMsg(errs.CodeParamInvalid, "unsupported kline price type: %s", raw)
+	}
+}
+
+func binanceIndexPairID(market *banexg.Market) string {
+	if market == nil {
+		return ""
+	}
+	if market.Info != nil {
+		if pair, ok := market.Info["pair"].(string); ok && strings.TrimSpace(pair) != "" {
+			return strings.TrimSpace(pair)
+		}
+	}
+	if market.BaseID != "" && market.QuoteID != "" {
+		return market.BaseID + market.QuoteID
+	}
+	return strings.Split(market.ID, "_")[0]
+}
+
+func parseBnbPriceOHLCV(rsp *banexg.HttpRes) ([]*banexg.Kline, *errs.Error) {
+	var klines = make([][]interface{}, 0)
+	err := utils.UnmarshalString(rsp.Content, &klines, utils.JsonNumAuto)
+	if err != nil {
+		return nil, errs.NewFull(errs.CodeUnmarshalFail, err, "parse bnb price ohlcv fail")
+	}
+	if len(klines) == 0 {
+		return nil, nil
+	}
+	res := make([]*banexg.Kline, 0, len(klines))
+	for _, bar := range klines {
+		if len(bar) < 5 {
+			continue
+		}
+		var barTime int64
+		switch v := bar[0].(type) {
+		case int64:
+			barTime = v
+		case float64:
+			barTime = int64(v)
+		case string:
+			barTime, _ = strconv.ParseInt(v, 10, 64)
+		}
+		openStr, _ := bar[1].(string)
+		highStr, _ := bar[2].(string)
+		lowStr, _ := bar[3].(string)
+		closeStr, _ := bar[4].(string)
+		open, _ := strconv.ParseFloat(openStr, 64)
+		high, _ := strconv.ParseFloat(highStr, 64)
+		low, _ := strconv.ParseFloat(lowStr, 64)
+		closeP, _ := strconv.ParseFloat(closeStr, 64)
+		res = append(res, &banexg.Kline{
+			Time:  barTime,
+			Open:  open,
+			High:  high,
+			Low:   low,
+			Close: closeP,
+		})
+	}
+	return res, nil
+}
+
 /*
 fetches historical candlestick data containing the open, high, low, and close price, and the volume of a market
 :see: https://binance-docs.github.io/apidocs/spot/en/#kline-candlestick-data
 :see: https://binance-docs.github.io/apidocs/voptions/en/#kline-candlestick-data
 :see: https://binance-docs.github.io/apidocs/futures/en/#index-price-kline-candlestick-data
 :see: https://binance-docs.github.io/apidocs/futures/en/#mark-price-kline-candlestick-data
+:see: https://binance-docs.github.io/apidocs/futures/en/#premium-index-kline-data
 :see: https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data
 :see: https://binance-docs.github.io/apidocs/delivery/en/#index-price-kline-candlestick-data
 :see: https://binance-docs.github.io/apidocs/delivery/en/#mark-price-kline-candlestick-data
+:see: https://binance-docs.github.io/apidocs/delivery/en/#premium-index-kline-data
 :see: https://binance-docs.github.io/apidocs/delivery/en/#kline-candlestick-data
 :param str symbol: unified symbol of the market to fetch OHLCV data for
 :param str timeframe: the length of time each candle represents
 :param int [since]: timestamp in ms of the earliest candle to fetch
 :param int [limit]: the maximum amount of candles to fetch
 :param dict [params]: extra parameters specific to the exchange API endpoint
-:param str [params.price]: "mark" or "index" for mark price and index price candles
+:param str [params.price]: "mark", "index", or "premiumIndex" ("premium") for mark/index/premium-index candles
 :param int [params.until]: timestamp in ms of the latest candle to fetch
 :param boolean [params.paginate]: default False, when True will automatically paginate by calling self endpoint multiple times. See in the docs all the [availble parameters](https://github.com/ccxt/ccxt/wiki/Manual#pagination-params)
 :returns int[][]: A list of candles ordered, open, high, low, close, volume
@@ -596,7 +670,19 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	if err != nil {
 		return nil, err
 	}
-	priceType := utils.PopMapVal(args, "price", "")
+	rawPriceType := utils.PopMapVal(args, "price", "")
+	priceType, err := normalizeBinancePriceType(rawPriceType)
+	if err != nil {
+		return nil, err
+	}
+	if priceType != "" {
+		if (!market.Linear && !market.Inverse) || market.Spot || market.Option {
+			return nil, errs.NewMsg(errs.CodeNotSupport, "price=%s klines require linear or inverse contract market", priceType)
+		}
+		if priceType == "premiumIndex" && market.Future {
+			return nil, errs.NewMsg(errs.CodeNotSupport, "premiumIndex klines require perpetual contract market")
+		}
+	}
 	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
 	//binance docs say that the default limit 500, max 1500 for futures, max 1000 for spot markets
 	//the reality is that the time range wider than 500 candles won't work right
@@ -608,7 +694,7 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	args["interval"] = e.GetTimeFrame(timeframe)
 	args["limit"] = limit
 	if priceType == "index" {
-		args["pair"] = market.ID
+		args["pair"] = binanceIndexPairID(market)
 	} else {
 		args["symbol"] = market.ID
 	}
@@ -643,6 +729,12 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 		} else {
 			method = MethodFapiPublicGetIndexPriceKlines
 		}
+	} else if priceType == "premiumIndex" {
+		if market.Inverse {
+			method = MethodDapiPublicGetPremiumIndexKlines
+		} else {
+			method = MethodFapiPublicGetPremiumIndexKlines
+		}
 	} else if market.Linear {
 		method = MethodFapiPublicGetKlines
 	} else if market.Inverse {
@@ -657,13 +749,15 @@ func (e *Binance) FetchOHLCV(symbol, timeframe string, since int64, limit int, p
 	}
 	if market.Option {
 		return parseOptionOHLCV(rsp)
-	} else {
-		volIndex, buyVolIdx := 5, 9
-		if market.Inverse {
-			volIndex, buyVolIdx = 7, 10
-		}
-		return parseBnbOHLCV(rsp, volIndex, buyVolIdx)
 	}
+	if priceType != "" {
+		return parseBnbPriceOHLCV(rsp)
+	}
+	volIndex, buyVolIdx := 5, 9
+	if market.Inverse {
+		volIndex, buyVolIdx = 7, 10
+	}
+	return parseBnbOHLCV(rsp, volIndex, buyVolIdx)
 }
 
 /*

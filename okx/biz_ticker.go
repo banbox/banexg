@@ -2,6 +2,7 @@ package okx
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/banbox/banexg"
@@ -39,10 +40,28 @@ func (e *OKX) FetchTicker(symbol string, params map[string]interface{}) (*banexg
 	return ticker, nil
 }
 
+func okxIndexInstID(market *banexg.Market) string {
+	if market == nil {
+		return ""
+	}
+	if market.BaseID != "" && market.QuoteID != "" {
+		return market.BaseID + "-" + market.QuoteID
+	}
+	parts := strings.Split(market.ID, "-")
+	if len(parts) >= 2 {
+		return parts[0] + "-" + parts[1]
+	}
+	return market.ID
+}
+
 func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, params map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
 	args, market, err := e.LoadArgsMarket(symbol, params)
 	if err != nil {
 		return nil, err
+	}
+	price := strings.TrimSpace(utils.PopMapVal(args, "price", ""))
+	if price != "" {
+		return e.fetchPriceOHLCV(market, price, timeframe, since, limit, args)
 	}
 	if limit <= 0 {
 		limit = 100
@@ -84,6 +103,99 @@ func (e *OKX) FetchOHLCV(symbol, timeframe string, since int64, limit int, param
 		return nil, res.Error
 	}
 	return parseOHLCV(res.Result), nil
+}
+
+func (e *OKX) fetchPriceOHLCV(market *banexg.Market, price, timeframe string, since int64, limit int, args map[string]interface{}) ([]*banexg.Kline, *errs.Error) {
+	switch price {
+	case "premiumIndex", "premium", "premium_index":
+		return nil, errs.NewMsg(errs.CodeNotSupport, "okx does not support premiumIndex klines")
+	case "mark", "index":
+	default:
+		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupported price kline type: %s", price)
+	}
+	if market.Spot {
+		return nil, errs.NewMsg(errs.CodeNotSupport, "spot market does not support %s klines", price)
+	}
+	bar := e.GetTimeFrame(timeframe)
+	if bar == "" {
+		return nil, errs.NewMsg(errs.CodeInvalidTimeFrame, "invalid timeframe: %s", timeframe)
+	}
+	instID := market.ID
+	recentMethod, histMethod := MethodMarketGetMarkPriceCandles, MethodMarketGetHistoryMarkPriceCandles
+	if price == "index" {
+		instID = okxIndexInstID(market)
+		recentMethod, histMethod = MethodMarketGetIndexCandles, MethodMarketGetHistoryIndexCandles
+	}
+	until := utils.PopMapVal(args, banexg.ParamUntil, int64(0))
+	totalLimit := limit
+	if totalLimit <= 0 {
+		totalLimit = 100
+	} else if totalLimit > 500 {
+		totalLimit = 500
+	}
+	tryNum := e.GetRetryNum("FetchOHLCV", 1)
+	nowMs := time.Now().UnixMilli()
+	if since <= 0 {
+		pageLimit := min(totalLimit, 100)
+		args[FldInstId] = instID
+		args[FldBar] = bar
+		args[FldLimit] = strconv.Itoa(pageLimit)
+		if until > 0 {
+			args[FldAfter] = strconv.FormatInt(until, 10)
+		}
+		method := recentMethod
+		if until > 0 && nowMs-until > 86400000 {
+			method = histMethod
+		}
+		res := requestRetry[[][]string](e, method, args, tryNum)
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		return parsePriceOHLCV(res.Result), nil
+	}
+
+	tfMS := int64(utils.TFToSecs(timeframe)) * 1000
+	if tfMS <= 0 {
+		return nil, errs.NewMsg(errs.CodeInvalidTimeFrame, "invalid timeframe: %s", timeframe)
+	}
+	targetEnd := until
+	if targetEnd <= 0 {
+		targetEnd = since + int64(totalLimit)*tfMS
+	}
+	var out []*banexg.Kline
+	for curSince := since; curSince < targetEnd && len(out) < totalLimit; {
+		pageLimit := min(100, totalLimit-len(out))
+		pageEnd := min(targetEnd, curSince+int64(pageLimit)*tfMS)
+		reqArgs := utils.SafeParams(args)
+		reqArgs[FldInstId] = instID
+		reqArgs[FldBar] = bar
+		reqArgs[FldLimit] = strconv.Itoa(pageLimit)
+		reqArgs[FldBefore] = strconv.FormatInt(curSince-1, 10)
+		reqArgs[FldAfter] = strconv.FormatInt(pageEnd, 10)
+		method := recentMethod
+		if nowMs-curSince > 86400000 {
+			method = histMethod
+		}
+		res := requestRetry[[][]string](e, method, reqArgs, tryNum)
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		bars := parsePriceOHLCV(res.Result)
+		for _, item := range bars {
+			if item.Time >= curSince && (until <= 0 || item.Time < until) {
+				out = append(out, item)
+				if len(out) >= totalLimit {
+					break
+				}
+			}
+		}
+		if len(bars) > 0 && bars[len(bars)-1].Time+tfMS > curSince {
+			curSince = bars[len(bars)-1].Time + tfMS
+		} else {
+			curSince = pageEnd
+		}
+	}
+	return out, nil
 }
 
 func (e *OKX) FetchTickerPrice(symbol string, params map[string]interface{}) (map[string]float64, *errs.Error) {
@@ -277,6 +389,29 @@ func parseOHLCV(rows [][]string) []*banexg.Kline {
 		})
 	}
 	// OKX返回数据是降序的（最新在前），需要反转为升序（最旧在前）以与其他交易所保持一致
+	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
+		res[i], res[j] = res[j], res[i]
+	}
+	return res
+}
+
+func parsePriceOHLCV(rows [][]string) []*banexg.Kline {
+	if len(rows) == 0 {
+		return nil
+	}
+	res := make([]*banexg.Kline, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 5 {
+			continue
+		}
+		res = append(res, &banexg.Kline{
+			Time:  parseInt(row[0]),
+			Open:  parseFloat(row[1]),
+			High:  parseFloat(row[2]),
+			Low:   parseFloat(row[3]),
+			Close: parseFloat(row[4]),
+		})
+	}
 	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
 		res[i], res[j] = res[j], res[i]
 	}
