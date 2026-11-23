@@ -389,7 +389,6 @@ func parseAccountPosition(e *Binance, p *FuturePosition, a *FutureAsset, market 
 		liquidationPrice, _ := utils.PrecFloat64(leftSide/rightSide, prec.Price, true, prec.ModePrice)
 		res.LiquidationPrice = liquidationPrice
 	}
-	res.Hedged = res.Side != banexg.PosSideBoth
 	return res, nil
 }
 
@@ -443,7 +442,11 @@ func (p *BaseContPosition) ToStdPos() *banexg.Position {
 	}
 	unp, _ := strconv.ParseFloat(p.UnRealizedProfit, 64)
 	side := strings.ToLower(p.PositionSide)
-	if side != banexg.PosSideLong && side != banexg.PosSideShort {
+	// Hedge mode reports LONG/SHORT; one-way (net) mode reports BOTH, which is
+	// mapped to long/short by the amount sign below. Hedged follows the venue's
+	// position side, not the mapped direction.
+	hedged := side == banexg.PosSideLong || side == banexg.PosSideShort
+	if !hedged {
 		if posAmt > 0 {
 			side = banexg.PosSideLong
 		} else if posAmt < 0 {
@@ -457,6 +460,7 @@ func (p *BaseContPosition) ToStdPos() *banexg.Position {
 		Contracts:     math.Abs(posAmt),
 		UnrealizedPnl: unp,
 		Side:          side,
+		Hedged:        hedged,
 	}
 	return &pos
 }
@@ -576,7 +580,6 @@ func calcPositionRisk(res *banexg.Position, e *Binance, market *banexg.Market, i
 	marginRatio, _ := utils.PrecFloat64(maintMargin/collateral, 4, true, 0)
 	percentage, _ := utils.PrecFloat64(res.UnrealizedPnl*100/initMargin, 2, true, 0)
 	res.Collateral = collateral
-	res.Hedged = res.Side != banexg.PosSideBoth
 	res.Notional = notional
 	res.InitialMargin = initMargin
 	res.InitialMarginPct = 1 / float64(res.Leverage)
