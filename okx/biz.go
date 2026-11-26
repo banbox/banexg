@@ -54,6 +54,10 @@ func makeSign(e *OKX) banexg.FuncSign {
 		}
 		url := api.Url
 		headers := http.Header{}
+		if e.Hosts.TestNet {
+			// Demo Trading shares the production REST host and is selected by this header
+			headers.Set("x-simulated-trading", "1")
+		}
 		body := ""
 		isPrivate := api.Host == HostPrivate
 
@@ -348,7 +352,7 @@ func parseInstrument(e *OKX, inst *Instrument) *banexg.Market {
 			Cost:     &banexg.LimitRange{},
 			Market:   &banexg.LimitRange{},
 		},
-		Active:  inst.State == "live",
+		Active:  inst.State == "live" || inst.State == "post_only",
 		Created: created,
 		Info:    info,
 	}

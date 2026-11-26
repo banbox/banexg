@@ -133,7 +133,9 @@ const (
 	OptDumpPath        = "DumpPath"
 	OptDumpBatchSize   = "DumpBatchSize"
 	OptReplayPath      = "ReplayPath"
-	OptEnv             = "Env"
+	OptEnv             = "Env"   // "" (production), "test", or an exchange environment such as "demo"
+	OptSite            = "Site"  // regional site of the account, e.g. okx: eea/us, bybit: eu/tr/kz
+	OptHosts           = "Hosts" // map of host key to url, overrides any built-in host
 	OptWsTimeout       = "WsTimeout"
 	OptRecvWindow      = "RecvWindow"
 )

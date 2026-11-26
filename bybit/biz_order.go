@@ -494,9 +494,6 @@ func validateBybitOrderExtraArgs(market *banexg.Market, orderType string, args m
 			return err
 		}
 	}
-	if err := rejectBybitArgs(args, !market.Option, "slippageTolerance only supports spot/linear/inverse market", "slippageTolerance", "slippageToleranceType"); err != nil {
-		return err
-	}
 	return nil
 }
 

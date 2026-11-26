@@ -58,6 +58,30 @@ func TestMakeSignPublicPrivate(t *testing.T) {
 	}
 }
 
+func TestDemoTradingHeaderAndHosts(t *testing.T) {
+	const header = "x-simulated-trading"
+	prod, _ := New(nil)
+	demo, err := New(map[string]interface{}{banexg.OptEnv: "test"})
+	if err != nil {
+		t.Fatalf("new okx demo: %v", err)
+	}
+	api := demo.Apis[MethodPublicGetInstruments]
+	api.Url = demo.GetHost(api.Host) + "/" + api.Path
+	if got := demo.Sign(api, nil).Headers.Get(header); got != "1" {
+		t.Fatalf("demo request must carry %s: 1, got %q", header, got)
+	}
+	if got := prod.Sign(prod.Apis[MethodPublicGetInstruments], nil).Headers.Get(header); got != "" {
+		t.Fatalf("production request must not carry %s, got %q", header, got)
+	}
+	for _, hosts := range []map[string]string{prod.Hosts.Prod, prod.Hosts.Test} {
+		for key, host := range hosts {
+			if strings.Contains(host, ":8443") {
+				t.Fatalf("retired websocket port in %s: %s", key, host)
+			}
+		}
+	}
+}
+
 // ============================================================================
 // API Integration Tests - require local.json with valid credentials
 // Run manually with: go test -run TestAPI_LoadMarkets -v
@@ -79,5 +103,26 @@ func TestAPI_LoadMarkets(t *testing.T) {
 		}
 		t.Logf("market: %s, type: %s, active: %v", symbol, mar.Type, mar.Active)
 		count++
+	}
+}
+
+func TestRegionalSiteHosts(t *testing.T) {
+	cases := []struct{ env, site, rest, ws string }{
+		{"", "eea", "https://eea.okx.com/api/v5", "wss://wseea.okx.com/ws/v5/private"},
+		{"test", "eea", "https://eea.okx.com/api/v5", "wss://wseeapap.okx.com/ws/v5/private"},
+		{"", "us", "https://us.okx.com/api/v5", "wss://wsus.okx.com/ws/v5/private"},
+		{"test", "us", "https://us.okx.com/api/v5", "wss://wsuspap.okx.com/ws/v5/private"},
+	}
+	for _, c := range cases {
+		exg, err := New(map[string]interface{}{banexg.OptEnv: c.env, banexg.OptSite: c.site})
+		if err != nil {
+			t.Fatalf("new okx %s/%s: %v", c.env, c.site, err)
+		}
+		if exg.GetHost(HostPrivate) != c.rest || exg.GetHost(HostWsPrivate) != c.ws {
+			t.Errorf("%s/%s hosts: %s %s", c.env, c.site, exg.GetHost(HostPrivate), exg.GetHost(HostWsPrivate))
+		}
+	}
+	if _, err := New(map[string]interface{}{banexg.OptSite: "mars"}); err == nil {
+		t.Fatal("unknown site should fail")
 	}
 }

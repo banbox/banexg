@@ -93,6 +93,10 @@ ETH/USDT:USDT-211225-40000-C    # U本位期权
 3. **重试机制**: `RequestApiRetry`自动重试网络错误，配置`Retries`
 4. **配置注入**: Options支持`OptApiKey/OptEnv/OptMarketType`等20+选项
 5. **环境切换**: `OptEnv="test"`切换TestNet，`Hosts`自动选择地址
+   - `OptEnv`: 留空为生产，`test`为测试网/模拟盘，或交易所自有环境名（如 bybit 的`demo`）
+   - `OptSite`: 账户注册的区域站（okx: `eea`/`us`；bybit: `tr`/`kz`/`ge`/`id`/`ae`/`eu`/`jp`/`hk`）
+   - `OptHosts`: `map[host键]地址`，优先级最高，可覆盖任意内置地址
+   - 新增环境或区域站只需在该交易所`entry.go`的`Hosts.Variants`里加一组覆盖地址：键为环境名、区域站名，或`<区域站>-<环境>`（如`eea-test`），由`ExgHosts.Select`统一叠加
 
 ## 五、关键技术实现
 

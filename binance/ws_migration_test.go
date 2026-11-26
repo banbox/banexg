@@ -2,6 +2,7 @@ package binance
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,16 +114,7 @@ func TestDefaultTradeStream(t *testing.T) {
 	}
 }
 
-func TestMarginUserDataRequestAndEvent(t *testing.T) {
-	req := marginUserDataRequest(7, "token-1")
-	if req["method"] != marginUserDataSubKey {
-		t.Fatalf("method = %v", req["method"])
-	}
-	params := req["params"].(map[string]interface{})
-	if params["listenToken"] != "token-1" {
-		t.Fatalf("listenToken = %v", params["listenToken"])
-	}
-
+func TestUserDataEventEnvelope(t *testing.T) {
 	msg, err := unwrapUserDataEvent(`{"subscriptionId":1,"event":{"e":"executionReport","s":"BTCUSDT","i":9007199254740993}}`)
 	if err != nil {
 		t.Fatal(err)
@@ -132,14 +124,30 @@ func TestMarginUserDataRequestAndEvent(t *testing.T) {
 	}
 }
 
-func TestMarginUserListenTokenEndpointAndOptionSTP(t *testing.T) {
-	exg, err := New(nil)
+func TestMarginAndOptionUserDataUsePrivateRoute(t *testing.T) {
+	exg, err := New(map[string]interface{}{banexg.OptApiKey: "key", banexg.OptApiSecret: "secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := exg.Apis[MethodSapiPostUserListenToken]
-	if api == nil || api.Path != "userListenToken" || api.Method != "POST" || api.Host != HostSApi {
-		t.Fatalf("unexpected user listen token API: %+v", api)
+	post, put := listenKeyMethods(banexg.MarketMargin)
+	for method, verb := range map[string]string{post: "POST", put: "PUT"} {
+		api := exg.Apis[method]
+		if api == nil || api.Path != "margin/listen-key" || api.Method != verb || api.Host != HostSApiV2 {
+			t.Fatalf("unexpected margin listenKey api %s: %+v", method, api)
+		}
+		api.Url = exg.GetHost(api.Host) + "/" + api.Path
+		req := exg.Sign(api, map[string]interface{}{banexg.MidListenKey: "abc"})
+		if req.Headers.Get("X-MBX-APIKEY") != "key" || strings.Contains(req.Url+req.Body, "signature") {
+			t.Fatalf("margin listenKey is an api-key only request: %s %s", req.Url, req.Body)
+		}
+	}
+	for _, marketType := range []string{banexg.MarketMargin, banexg.MarketOption} {
+		if got := exg.userDataWsURL(marketType, "abc"); got != "wss://fstream.binance.com/private/ws/abc" {
+			t.Fatalf("%s user data url = %s", marketType, got)
+		}
+	}
+	if post, _ := listenKeyMethods(banexg.MarketOption); post != MethodEapiPrivatePostListenKey {
+		t.Fatalf("option listenKey method = %s", post)
 	}
 
 	var order OptionOrder
@@ -148,5 +156,72 @@ func TestMarginUserListenTokenEndpointAndOptionSTP(t *testing.T) {
 	}
 	if order.SelfTradePreventionMode != "EXPIRE_TAKER" {
 		t.Fatalf("selfTradePreventionMode = %q", order.SelfTradePreventionMode)
+	}
+}
+
+func TestOptionStreamsUseRoutedHost(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exg.OnWsMsg = func(*banexg.WsClient, *banexg.WsMsg) {}
+	for msgHash, route := range map[string]string{"depth": "public", "kline": "market"} {
+		host := linearWsHost(exg.GetHost(banexg.MarketOption), linearWsRoute(msgHash))
+		if host != "wss://fstream.binance.com/"+route+"/ws" {
+			t.Fatalf("option %s host = %s", msgHash, host)
+		}
+	}
+	test, _ := New(map[string]interface{}{banexg.OptEnv: "test"})
+	for key, host := range test.Hosts.Test {
+		if strings.Contains(host, "binancefuture.com") || strings.Contains(host, "nbstream") {
+			t.Fatalf("retired testnet host %s: %s", key, host)
+		}
+	}
+}
+
+func TestSpotUserDataUsesSignedWsApiSubscription(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spotURL := exg.userDataWsURL(banexg.MarketSpot, ""); spotURL != exg.GetHost(WssApi) {
+		t.Fatalf("spot user data must use the WebSocket API, got %s", spotURL)
+	}
+	// the retired listenKey REST endpoint must not be called for spot
+	if err := exg.postListenKey(&banexg.Account{Data: map[string]interface{}{}}, map[string]interface{}{banexg.ParamMarket: banexg.MarketSpot}); err != nil {
+		t.Fatalf("spot auth should be a no-op: %v", err)
+	}
+
+	creds := &banexg.Credential{ApiKey: "key", Secret: "secret"}
+	req, err := spotUserDataRequest(3, creds, 1700000000000, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := req["params"].(map[string]interface{})
+	want, _ := utils.Signature("apiKey=key&recvWindow=5000&timestamp=1700000000000", "secret", "hmac", "sha256", "hex")
+	if req["method"] != spotUserDataSubKey || params["signature"] != want || params["apiKey"] != "key" {
+		t.Fatalf("unexpected spot subscribe request: %+v", req)
+	}
+}
+
+func TestSignedRequestSignsPercentEncodedPayload(t *testing.T) {
+	exg, err := New(map[string]interface{}{banexg.OptApiKey: "key", banexg.OptApiSecret: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := exg.Apis[MethodFapiPrivateDeleteBatchOrders]
+	api.Url = exg.GetHost(api.Host) + "/" + api.Path
+	req := exg.Sign(api, map[string]interface{}{"symbol": "币安人生USDT", banexg.ParamOrderIds: []string{"1", "2"}})
+	if req.Error != nil {
+		t.Fatal(req.Error)
+	}
+	query := req.Url[strings.Index(req.Url, "?")+1:]
+	signed, sign, ok := strings.Cut(query, "&signature=")
+	want, _ := utils.Signature(signed, "secret", "hmac", "sha256", "hex")
+	if !ok || sign != want {
+		t.Fatalf("signature must cover the exact payload sent: %s", query)
+	}
+	if strings.ContainsAny(signed, "[],币") || !strings.Contains(signed, "orderidlist=%5B1%2C2%5D") {
+		t.Fatalf("payload must be percent-encoded before signing: %s", signed)
 	}
 }

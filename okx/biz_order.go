@@ -119,9 +119,7 @@ func (e *OKX) CreateOrder(symbol, odType, side string, amount, price float64, pa
 		delete(args, banexg.ParamPxAmendType)
 	}
 	if market.Spot {
-		if tradeQuoteCcy := getTradeQuoteCcy(market); tradeQuoteCcy != "" {
-			args[FldTradeQuoteCcy] = tradeQuoteCcy
-		}
+		setTradeQuoteCcy(args, market)
 	}
 	if market.Contract {
 		posSide := utils.PopMapVal(args, banexg.ParamPositionSide, "net")

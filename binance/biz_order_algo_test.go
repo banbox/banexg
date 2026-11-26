@@ -1,10 +1,13 @@
 package binance
 
 import (
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/banbox/banexg"
+	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/log"
 	"github.com/banbox/banexg/utils"
 	"github.com/banbox/bntp"
@@ -260,4 +263,99 @@ func TestAlgoOrderLifecycle(t *testing.T) {
 	// if !foundHistory {
 	// 	t.Logf("Lifecycle: Order %s not found in history (might be delay)", algoId)
 	// }
+}
+
+// algoRouteExchange mocks both fapi and dapi private hosts and records the requests seen on each.
+func algoRouteExchange(t *testing.T, calls *[]string, queries *[]url.Values, body string) *Binance {
+	t.Helper()
+	var host string
+	e := completeOrderExchange(t, func(w http.ResponseWriter, r *http.Request) {
+		*calls = append(*calls, r.Method+" "+r.URL.Path)
+		r.ParseForm()
+		*queries = append(*queries, r.Form)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/dapi/v1/order"):
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"code":-4120,"msg":"Order type not supported for this endpoint. Please use the Algo Order API endpoints instead."}`))
+		case r.Method == http.MethodDelete:
+			w.Write([]byte(`{"code":"200","algoId":7,"clientAlgoId":"cid"}`))
+		case strings.HasSuffix(r.URL.Path, "openAlgoOrders"):
+			w.Write([]byte("[" + body + "]"))
+		default:
+			w.Write([]byte(body))
+		}
+	})
+	host = e.Hosts.Prod[HostFApiPrivate]
+	e.Hosts.Prod[HostFApiPrivate] = host + "/fapi/v1"
+	e.Hosts.Prod[HostDApiPrivate] = host + "/dapi/v1"
+	e.Markets["BTC/USD:BTC"] = &banexg.Market{ID: "BTCUSD_PERP", Symbol: "BTC/USD:BTC", Type: banexg.MarketInverse, Inverse: true, Swap: true, Contract: true, Settle: "BTC",
+		Precision: &banexg.Precision{Amount: 1, Price: 0.1, ModeAmount: banexg.PrecModeTickSize, ModePrice: banexg.PrecModeTickSize}}
+	e.Markets["BTC/USDT:USDT"].Contract = true
+	e.Markets["BTC/USDT:USDT"].Precision = e.Markets["BTC/USD:BTC"].Precision
+	for _, m := range e.Markets {
+		m.Info = map[string]interface{}{"orderTypes": []string{"STOP_MARKET"}}
+	}
+	return e
+}
+
+const algoOrderRsp = `{"algoId":7,"clientAlgoId":"cid","algoType":"CONDITIONAL","orderType":"STOP_MARKET","symbol":"%s","side":"SELL","algoStatus":"NEW","triggerPrice":"90","quantity":"2","createTime":1,"updateTime":2}`
+
+func TestAlgoRoutesByMarket(t *testing.T) {
+	for _, tc := range []struct{ symbol, id, prefix string }{
+		{"BTC/USDT:USDT", "BTCUSDT", "/fapi/v1"},
+		{"BTC/USD:BTC", "BTCUSD_PERP", "/dapi/v1"},
+	} {
+		t.Run(tc.symbol, func(t *testing.T) {
+			var calls []string
+			var queries []url.Values
+			e := algoRouteExchange(t, &calls, &queries, strings.ReplaceAll(algoOrderRsp, "%s", tc.id))
+			od, err := e.CreateOrder(tc.symbol, banexg.OdTypeStopMarket, banexg.OdSideSell, 2, 0, map[string]interface{}{
+				banexg.ParamStopLossPrice: 90.0, banexg.ParamClientOrderId: "cid"})
+			if err != nil || od == nil || od.ID != "algo:7" || od.Symbol != tc.symbol {
+				t.Fatalf("create: %+v %v", od, err)
+			}
+			// COIN-M tries the plain endpoint first and falls back to algo on -4120
+			if tc.prefix == "/dapi/v1" && (len(calls) != 2 || calls[0] != "POST /dapi/v1/order") {
+				t.Fatalf("inverse create calls: %v", calls)
+			}
+			q := queries[len(queries)-1]
+			if calls[len(calls)-1] != "POST "+tc.prefix+"/algoOrder" || q.Get("symbol") != tc.id || q.Get("algoType") != "CONDITIONAL" ||
+				q.Get("triggerPrice") == "" || q.Get("clientAlgoId") != "cid" || q.Has("stopPrice") || q.Has("newClientOrderId") || q.Get("quantity") != "2" {
+				t.Fatalf("create request: %v %v", calls[0], q)
+			}
+
+			calls, queries = calls[:0], queries[:0]
+			if _, err = e.CancelOrder("algo:7", tc.symbol, nil); err != nil {
+				t.Fatalf("cancel: %v", err)
+			}
+			if calls[0] != "DELETE "+tc.prefix+"/algoOrder" || queries[0].Get("algoId") != "7" || queries[0].Get("symbol") != tc.id {
+				t.Fatalf("cancel request: %v %v", calls[0], queries[0])
+			}
+
+			calls, queries = calls[:0], queries[:0]
+			ods, err := e.FetchOpenOrders(tc.symbol, 0, 0, map[string]interface{}{banexg.ParamAlgoOrder: true})
+			if err != nil || len(ods) != 1 || ods[0].ID != "algo:7" || ods[0].Symbol != tc.symbol {
+				t.Fatalf("open: %v", err)
+			}
+			if calls[0] != "GET "+tc.prefix+"/openAlgoOrders" || queries[0].Get("symbol") != tc.id {
+				t.Fatalf("open request: %v %v", calls[0], queries[0])
+			}
+		})
+	}
+}
+
+func TestInverseAlgoQueryNotSupported(t *testing.T) {
+	var calls []string
+	var queries []url.Values
+	e := algoRouteExchange(t, &calls, &queries, "{}")
+	args := map[string]interface{}{banexg.ParamAlgoOrder: true}
+	if _, err := e.FetchOrder("BTC/USD:BTC", "algo:7", args); err == nil || err.Code != errs.CodeNotSupport {
+		t.Fatalf("fetch order: %v", err)
+	}
+	if _, err := e.FetchOrders("BTC/USD:BTC", 0, 10, map[string]interface{}{banexg.ParamAlgoOrder: true}); err == nil || err.Code != errs.CodeNotSupport {
+		t.Fatalf("fetch orders: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("unexpected requests: %v", calls)
+	}
 }

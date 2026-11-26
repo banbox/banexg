@@ -3868,3 +3868,22 @@ func TestApi_FetchOrderHistoryToCSV(t *testing.T) {
 		writeMapSliceToCSV(t, dataList, csvPath)
 	}
 }
+
+func TestCreateOrderOptionMarketSlippageTolerance(t *testing.T) {
+	exg := newBybitWithMarket("BTC-30DEC22-18000-C", "BTC/USDT:USDT-30DEC22-18000-C", banexg.MarketOption)
+	ensureBybitMarketPrecision(exg, "BTC/USDT:USDT-30DEC22-18000-C")
+	setBybitTestRequestWithEndpoint(t, MethodPrivatePostV5OrderCreate, func(params map[string]interface{}) *banexg.HttpRes {
+		if params["slippageToleranceType"] != "Percent" || params["slippageTolerance"] != "0.5" {
+			t.Fatalf("unexpected slippage params: %v %v", params["slippageToleranceType"], params["slippageTolerance"])
+		}
+		body := `{"retCode":0,"retMsg":"OK","result":{"orderId":"order-opt-slip","orderLinkId":"link-opt-slip"},"retExtInfo":{},"time":1700000000000}`
+		return &banexg.HttpRes{Status: 200, Content: body}
+	})
+	if _, err := exg.CreateOrder("BTC/USDT:USDT-30DEC22-18000-C", banexg.OdTypeMarket, banexg.OdSideBuy, 1, 0, map[string]interface{}{
+		banexg.ParamClientOrderId: "link-opt-slip",
+		"slippageTolerance":       0.5,
+		"slippageToleranceType":   "Percent",
+	}); err != nil {
+		t.Fatalf("CreateOrder option slippage failed: %v", err)
+	}
+}

@@ -10,6 +10,26 @@ import (
 	"github.com/banbox/banexg/utils"
 )
 
+// algoMethod picks the fapi (USD-M) or dapi (COIN-M) algo route by contract side.
+func algoMethod(linear bool, fapiMethod, dapiMethod string) string {
+	if linear {
+		return fapiMethod
+	}
+	return dapiMethod
+}
+
+func isAlgoMarketType(marketType string) bool {
+	return marketType == banexg.MarketLinear || marketType == banexg.MarketInverse
+}
+
+// errAlgoQueryNotSupport: COIN-M docs only list POST/DELETE algoOrder and GET openAlgoOrders.
+func errAlgoQueryNotSupport(market *banexg.Market) *errs.Error {
+	if market.Linear {
+		return nil
+	}
+	return errs.NewMsg(errs.CodeNotSupport, "COIN-M algo order single/history query is not provided by Binance, use FetchOpenOrders with algoOrder")
+}
+
 func (e *Binance) createAlgoOrder(market *banexg.Market, args map[string]interface{}, tryNum int) (*banexg.Order, *errs.Error) {
 	utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 	args["symbol"] = market.ID
@@ -43,7 +63,7 @@ func (e *Binance) createAlgoOrder(market *banexg.Market, args map[string]interfa
 		}
 	}
 
-	rsp := e.RequestApiRetry(context.Background(), MethodFapiPrivatePostAlgoOrder, args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), algoMethod(market.Linear, MethodFapiPrivatePostAlgoOrder, MethodDapiPrivatePostAlgoOrder), args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -53,7 +73,10 @@ func (e *Binance) createAlgoOrder(market *banexg.Market, args map[string]interfa
 	return parseOrder[*AlgoOrder](mapSymbol, rsp)
 }
 
-func (e *Binance) fetchAlgoOrder(id, clientOrderId string, args map[string]interface{}) (*banexg.Order, *errs.Error) {
+func (e *Binance) fetchAlgoOrder(market *banexg.Market, id, clientOrderId string, args map[string]interface{}) (*banexg.Order, *errs.Error) {
+	if err := errAlgoQueryNotSupport(market); err != nil {
+		return nil, err
+	}
 	if clientOrderId != "" {
 		args["clientAlgoId"] = clientOrderId
 	} else {
@@ -75,6 +98,9 @@ func (e *Binance) fetchAlgoOrder(id, clientOrderId string, args map[string]inter
 }
 
 func (e *Binance) fetchAlgoOrders(args map[string]interface{}, market *banexg.Market) ([]*banexg.Order, *errs.Error) {
+	if err := errAlgoQueryNotSupport(market); err != nil {
+		return nil, err
+	}
 	tryNum := e.GetRetryNum("FetchOrders", 1)
 	rsp := e.RequestApiRetry(context.Background(), MethodFapiPrivateGetAllAlgoOrders, args, tryNum)
 	if rsp.Error != nil {
@@ -86,12 +112,12 @@ func (e *Binance) fetchAlgoOrders(args map[string]interface{}, market *banexg.Ma
 	return parseOrders[*AlgoOrder](mapSymbol, rsp)
 }
 
-func (e *Binance) fetchAlgoOpenOrders(args map[string]interface{}, market *banexg.Market) ([]*banexg.Order, *errs.Error) {
+func (e *Binance) fetchAlgoOpenOrders(args map[string]interface{}, marketType string, market *banexg.Market) ([]*banexg.Order, *errs.Error) {
 	if market != nil {
 		args["symbol"] = market.ID
 	}
 	tryNum := e.GetRetryNum("FetchOpenOrders", 1)
-	rsp := e.RequestApiRetry(context.Background(), MethodFapiPrivateGetOpenAlgoOrders, args, tryNum)
+	rsp := e.RequestApiRetry(context.Background(), algoMethod(marketType == banexg.MarketLinear, MethodFapiPrivateGetOpenAlgoOrders, MethodDapiPrivateGetOpenAlgoOrders), args, tryNum)
 	if rsp.Error != nil {
 		return nil, rsp.Error
 	}
@@ -106,7 +132,7 @@ func (e *Binance) fetchAlgoOpenOrders(args map[string]interface{}, market *banex
 			if market, ok := marketMap[mid]; ok {
 				return market.Symbol
 			}
-			market := e.GetMarketById(mid, banexg.MarketLinear)
+			market := e.GetMarketById(mid, marketType)
 			marketMap[mid] = market
 			return market.Symbol
 		}
@@ -125,7 +151,7 @@ func (e *Binance) cancelAlgoOrder(id string, clientOrderId string, market *banex
 		}
 		args["algoId"] = id
 	}
-	method := MethodFapiPrivateDeleteAlgoOrder
+	method := algoMethod(market.Linear, MethodFapiPrivateDeleteAlgoOrder, MethodDapiPrivateDeleteAlgoOrder)
 	tryNum := e.GetRetryNum("CancelAlgoOrder", 1)
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {

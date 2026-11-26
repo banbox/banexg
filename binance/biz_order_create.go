@@ -2,6 +2,7 @@ package binance
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	"github.com/banbox/banexg"
@@ -295,16 +296,21 @@ func (e *Binance) CreateOrder(symbol, odType, side string, amount float64, price
 		tryNum = e.GetRetryNum("CreateOrder", 3)
 	}
 
-	if market.Linear {
-		if odType == banexg.OdTypeStop || odType == banexg.OdTypeStopMarket ||
-			odType == banexg.OdTypeTakeProfit || odType == banexg.OdTypeTakeProfitMarket ||
-			odType == banexg.OdTypeTrailingStopMarket {
-			return e.createAlgoOrder(market, args, tryNum)
-		}
+	isStop := odType == banexg.OdTypeStop || odType == banexg.OdTypeStopMarket ||
+		odType == banexg.OdTypeTakeProfit || odType == banexg.OdTypeTakeProfitMarket ||
+		odType == banexg.OdTypeTrailingStopMarket
+	if market.Linear && isStop {
+		return e.createAlgoOrder(market, args, tryNum)
 	}
+	algoArgs := maps.Clone(args)
 
 	rsp := e.RequestApiRetry(context.Background(), method, args, tryNum)
 	if rsp.Error != nil {
+		// COIN-M still accepts stop orders here until Binance enforces -4120 (date not announced),
+		// after which they must go through the algo endpoint like USD-M
+		if market.Inverse && isStop && strings.Contains(rsp.Error.Error(), "Algo Order API") {
+			return e.createAlgoOrder(market, algoArgs, tryNum)
+		}
 		return nil, rsp.Error
 	}
 	var mapSymbol = func(mid string) string {

@@ -25,9 +25,9 @@ func (e *Binance) FetchOrder(symbol, orderId string, params map[string]interface
 	if complete && (!market.Linear || !market.Swap || isAlgo || strings.HasPrefix(orderId, "algo:")) {
 		return nil, errs.NewMsg(errs.CodeNotSupport, "complete order snapshot requires a regular linear perpetual order")
 	}
-	if market.Linear && (isAlgo || strings.HasPrefix(orderId, "algo:")) {
+	if isAlgoMarketType(market.Type) && (isAlgo || strings.HasPrefix(orderId, "algo:")) {
 		clientOrderId := utils.PopMapVal(args, banexg.ParamClientOrderId, "")
-		return e.fetchAlgoOrder(orderId, clientOrderId, args)
+		return e.fetchAlgoOrder(market, orderId, clientOrderId, args)
 	}
 	args["symbol"] = market.ID
 	args["orderId"] = orderId
@@ -214,7 +214,7 @@ func (e *Binance) FetchOrders(symbol string, since int64, limit int, params map[
 		args["limit"] = limit
 		loopArgNum += 1
 	}
-	if market.Linear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+	if isAlgoMarketType(market.Type) && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
 		return e.fetchAlgoOrders(args, market)
 	}
 	loopIntv := utils.PopMapVal(args, banexg.ParamLoopIntv, int64(0))
@@ -335,9 +335,9 @@ func (e *Binance) FetchOpenOrders(symbol string, since int64, limit int, params 
 		args = utils.SafeParams(params)
 		marketType, _ = e.GetArgsMarketType(args, "")
 	}
-	if marketType == banexg.MarketLinear && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
+	if isAlgoMarketType(marketType) && utils.PopMapVal(args, banexg.ParamAlgoOrder, false) {
 		args[banexg.ParamContext] = ctx
-		return e.fetchAlgoOpenOrders(args, market)
+		return e.fetchAlgoOpenOrders(args, marketType, market)
 	}
 	marginMode := utils.PopMapVal(args, banexg.ParamMarginMode, "")
 	method := MethodPrivateGetOpenOrders
@@ -506,14 +506,12 @@ func (e *Binance) CancelOrder(id string, symbol string, params map[string]interf
 	method := MethodPrivateDeleteOrder
 	if market.Option {
 		method = MethodEapiPrivateDeleteOrder
-	} else if market.Linear {
+	} else if market.Linear || market.Inverse {
 		isAlgoOrder := utils.PopMapVal(args, banexg.ParamAlgoOrder, false)
 		if isAlgoOrder || strings.HasPrefix(id, "algo:") {
 			return e.cancelAlgoOrder(id, clientOrderId, market)
 		}
-		method = MethodFapiPrivateDeleteOrder
-	} else if market.Inverse {
-		method = MethodDapiPrivateDeleteOrder
+		method = algoMethod(market.Linear, MethodFapiPrivateDeleteOrder, MethodDapiPrivateDeleteOrder)
 	} else if market.Type == banexg.MarketMargin || marginMode != "" {
 		method = MethodSapiDeleteMarginOrder
 		if marginMode == "isolated" {

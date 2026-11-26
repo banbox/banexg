@@ -168,9 +168,13 @@ type ExgHosts struct {
 	Logo    string
 	Test    map[string]string
 	Prod    map[string]string
-	Www     string
-	Doc     []string
-	Fees    string
+	// Variants are named host override sets layered over Prod/Test, selected by OptEnv/OptSite.
+	// Keys: an environment name such as "demo", a regional site such as "eea", or
+	// "<site>-<env>" for a site inside a non-production environment such as "eea-test".
+	Variants map[string]map[string]string
+	Www      string
+	Doc      []string
+	Fees     string
 }
 
 type ExgFee struct {

@@ -18,6 +18,9 @@ func TestMapOKXErrorUsesNeutralCodes(t *testing.T) {
 		{"51063", "Order does not exist", errs.CodeOrderNotFound},
 		{"51117", "Reduce-only rule", errs.CodeReduceOnlyRejected},
 		{"50011", "Rate limit reached", errs.CodeRateLimit},
+		{"59113", "KYC level 2 or above is required for placing orders", errs.CodeForbidden},
+		{"54094", "Order rejected. The cool-off period is active for the current instId.", errs.CodeForbidden},
+		{"54109", "You haven't activated trading for this pair.", errs.CodeForbidden},
 		{"99999", "New exchange failure", errs.CodeExchangeError},
 	}
 	for _, test := range tests {

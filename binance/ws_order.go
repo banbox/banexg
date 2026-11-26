@@ -48,12 +48,17 @@ func (e *Binance) GetWsClient(marType, msgHash string) (*banexg.WsClient, *errs.
 		return nil, errs.NewMsg(errs.CodeParamInvalid, "unsupport wss host for %s: %s", e.Name, marType)
 	}
 	streamHash := msgHash
-	if marType == banexg.MarketLinear {
+	prefix := ""
+	if marType == banexg.MarketLinear || marType == banexg.MarketOption {
 		route := linearWsRoute(msgHash)
 		host = linearWsHost(host, route)
 		streamHash = route + "@" + msgHash
+		if marType == banexg.MarketOption {
+			// options share the USD-M host; ws clients are keyed by url, so keep their connections apart
+			prefix = "opt"
+		}
 	}
-	wsUrl := host + "/" + e.Stream(marType, streamHash)
+	wsUrl := host + "/" + prefix + e.Stream(marType, streamHash)
 	client, err := e.GetClient(wsUrl, marType, "")
 	if err != nil {
 		return nil, err

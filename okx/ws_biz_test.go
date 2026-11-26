@@ -1,6 +1,7 @@
 package okx
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -362,4 +363,92 @@ func TestAPI_WatchAccount(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestApplyWsOrderBookSequence(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatalf("new okx: %v", err)
+	}
+	seedMarket(exg, "BTC-USDT", "BTC/USDT", banexg.MarketSpot)
+	push := func(action string, prev, seq int, asks ...string) (*banexg.OrderBook, bool) {
+		item := map[string]interface{}{
+			"instId": "BTC-USDT", "ts": "1700000000000", "prevSeqId": prev, "seqId": seq,
+			"bids": []interface{}{}, "asks": []interface{}{},
+		}
+		if len(asks) > 0 {
+			item["asks"] = []interface{}{[]interface{}{asks[0], "1", "0", "1"}}
+		}
+		return exg.applyWsOrderBookUpdate(nil, item, WsChanBooks, action)
+	}
+	if book, resync := push("snapshot", -1, 10, "101"); book == nil || resync || book.Nonce != 10 {
+		t.Fatalf("snapshot: %+v %v", book, resync)
+	}
+	if book, resync := push("update", 10, 15, "102"); book == nil || resync || book.Nonce != 15 {
+		t.Fatalf("normal update: %+v %v", book, resync)
+	}
+	if book, resync := push("update", 15, 15); book == nil || resync || book.Nonce != 15 {
+		t.Fatalf("heartbeat: %+v %v", book, resync)
+	}
+	if book, resync := push("update", 15, 3, "103"); book == nil || resync || book.Nonce != 3 {
+		t.Fatalf("sequence reset: %+v %v", book, resync)
+	}
+	if book, resync := push("update", 7, 9, "104"); book != nil || !resync {
+		t.Fatalf("gap should resync: %+v %v", book, resync)
+	}
+	if _, ok := exg.OrderBooks["BTC/USDT"]; ok {
+		t.Fatalf("book should be dropped after gap")
+	}
+	if book, resync := push("update", 9, 11, "105"); book != nil || resync {
+		t.Fatalf("update before new snapshot should be ignored: %+v %v", book, resync)
+	}
+	// channels without prevSeqId (books5) are not sequence checked
+	item := map[string]interface{}{"instId": "BTC-USDT", "ts": "1", "asks": []interface{}{}, "bids": []interface{}{}}
+	if book, resync := exg.applyWsOrderBookUpdate(nil, item, WsChanBooks5, ""); book == nil || resync {
+		t.Fatalf("books5: %+v %v", book, resync)
+	}
+}
+
+func TestRecentKeysBounded(t *testing.T) {
+	var r recentKeys
+	if !r.add("a") || r.add("a") {
+		t.Fatalf("duplicate not detected")
+	}
+	for i := 0; i < recentKeysCap+10; i++ {
+		r.add(fmt.Sprint("k", i))
+	}
+	if len(r.set) != recentKeysCap {
+		t.Fatalf("set not bounded: %d", len(r.set))
+	}
+	if !r.add("a") {
+		t.Fatalf("old key should have been evicted")
+	}
+}
+
+func TestHandleWsOrdersDedupFills(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatalf("new okx: %v", err)
+	}
+	seedMarket(exg, "BTC-USDT", "BTC/USDT", banexg.MarketSpot)
+	client := &banexg.WsClient{}
+	chanKey := client.Prefix("mytrades")
+	out := banexg.GetWsOutChan(exg.Exchange, chanKey, func(cap int) chan *banexg.MyTrade { return make(chan *banexg.MyTrade, cap) }, nil)
+	fill := map[string]interface{}{"instId": "BTC-USDT", "ordId": "1", "tradeId": "t1", "fillSz": "1", "fillPx": "10", "accFillSz": "1", "state": "filled", "side": "buy", "ordType": "limit"}
+	live := map[string]interface{}{"instId": "BTC-USDT", "ordId": "2", "fillSz": "0", "state": "canceled", "side": "buy", "ordType": "limit"}
+	msg := map[string]interface{}{"data": []interface{}{fill, fill, live, live}}
+	exg.handleWsOrders(client, msg, map[string]interface{}{"instType": "SPOT"})
+	if n := len(out); n != 3 {
+		t.Fatalf("expected 1 fill + 2 state pushes, got %d", n)
+	}
+}
+
+func TestNoticeEventDoesNotPanic(t *testing.T) {
+	exg, err := New(nil)
+	if err != nil {
+		t.Fatalf("new okx: %v", err)
+	}
+	h := makeHandleWsMsg(exg)
+	h(&banexg.WsClient{Key: "k"}, &banexg.WsMsg{Text: `{"event":"notice","code":"64008","msg":"upgrade"}`})
+	h(&banexg.WsClient{Key: "k"}, &banexg.WsMsg{Text: `{"event":"notice","code":"1","msg":"x"}`})
 }

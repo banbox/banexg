@@ -5,6 +5,16 @@ import (
 	"github.com/banbox/banexg/errs"
 )
 
+func okxHosts(rest, ws string) map[string]string {
+	return map[string]string{
+		HostPublic:     "https://" + rest + "/api/v5",
+		HostPrivate:    "https://" + rest + "/api/v5",
+		HostWsPublic:   "wss://" + ws + "/ws/v5/public",
+		HostWsPrivate:  "wss://" + ws + "/ws/v5/private",
+		HostWsBusiness: "wss://" + ws + "/ws/v5/business",
+	}
+}
+
 func New(options map[string]interface{}) (*OKX, *errs.Error) {
 	exg := &OKX{
 		WsPendingRecons: make(map[string]*WsPendingRecon),
@@ -18,19 +28,15 @@ func New(options map[string]interface{}) (*OKX, *errs.Error) {
 			Options:    options,
 			TimeFrames: timeFrameMap,
 			Hosts: &banexg.ExgHosts{
-				Test: map[string]string{
-					HostPublic:     "https://www.okx.com/api/v5",
-					HostPrivate:    "https://www.okx.com/api/v5",
-					HostWsPublic:   "wss://wspap.okx.com:8443/ws/v5/public",
-					HostWsPrivate:  "wss://wspap.okx.com:8443/ws/v5/private",
-					HostWsBusiness: "wss://wspap.okx.com:8443/ws/v5/business",
-				},
-				Prod: map[string]string{
-					HostPublic:     "https://www.okx.com/api/v5",
-					HostPrivate:    "https://www.okx.com/api/v5",
-					HostWsPublic:   "wss://ws.okx.com:8443/ws/v5/public",
-					HostWsPrivate:  "wss://ws.okx.com:8443/ws/v5/private",
-					HostWsBusiness: "wss://ws.okx.com:8443/ws/v5/business",
+				// Env "test" is OKX Demo Trading: same REST host plus the x-simulated-trading header
+				Test: okxHosts("www.okx.com", "wspap.okx.com"),
+				Prod: okxHosts("www.okx.com", "ws.okx.com"),
+				// accounts registered on my.okx.com (EEA) or app.okx.com (US/AU) must use their own domain
+				Variants: map[string]map[string]string{
+					"eea":      okxHosts("eea.okx.com", "wseea.okx.com"),
+					"eea-test": okxHosts("eea.okx.com", "wseeapap.okx.com"),
+					"us":       okxHosts("us.okx.com", "wsus.okx.com"),
+					"us-test":  okxHosts("us.okx.com", "wsuspap.okx.com"),
 				},
 				Www: "https://www.okx.com",
 				Doc: []string{

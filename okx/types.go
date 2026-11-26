@@ -31,6 +31,8 @@ type OKX struct {
 	// WsMyTradesChanKey stores the channel key for mytrades output.
 	// Used to ensure algo orders (business endpoint) write to the same channel as regular orders (private endpoint).
 	WsMyTradesChanKey string
+	// wsFillSeen de-duplicates repeated order-channel fill pushes.
+	wsFillSeen recentKeys
 }
 
 // Instrument describes /public/instruments response item.

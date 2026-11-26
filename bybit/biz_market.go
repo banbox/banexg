@@ -364,7 +364,7 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 	}
 	var result = make(banexg.MarketMap)
 	for i, it := range arr {
-		amtPrec, minOrderQty, maxOrderQty, minOrderAmt, maxOrderAmt := it.LotSizeFilter.parse()
+		amtPrec, _, maxOrderQty, minOrderAmt, maxOrderAmt := it.LotSizeFilter.parse()
 		var quotePrec float64
 		var maxMarketOrderQty float64
 		if it.LotSizeFilter != nil {
@@ -397,8 +397,7 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 				Min: 1,
 			},
 			Amount: &banexg.LimitRange{
-				Min: minOrderQty,
-				Max: maxOrderQty,
+				Max: maxOrderQty, // minOrderQty is deprecated, minOrderAmt is checked instead
 			},
 			Price: &banexg.LimitRange{},
 			Cost: &banexg.LimitRange{
@@ -408,7 +407,6 @@ func (e *Bybit) fetchSpotMarkets(params map[string]interface{}) (banexg.MarketMa
 		}
 		if maxMarketOrderQty > 0 {
 			mar.Limits.Market = &banexg.LimitRange{
-				Min: minOrderQty,
 				Max: maxMarketOrderQty,
 			}
 		}
@@ -552,6 +550,9 @@ func (e *Bybit) fetchFutureMarkets(params map[string]interface{}) (banexg.Market
 
 func (e *Bybit) fetchOptionMarkets(params map[string]interface{}) (banexg.MarketMap, *errs.Error) {
 	params["category"] = "option"
+	if v, _ := params["baseCoin"].(string); v == "" {
+		params["baseCoin"] = "All" // default returns BTC only
+	}
 	method := MethodPublicGetV5MarketInstrumentsInfo
 	items, arr, _, err := getMarketsLoop[*OptionMarket](e, method, params, 1000)
 	if err != nil {

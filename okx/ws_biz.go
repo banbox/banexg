@@ -69,6 +69,17 @@ func makeHandleWsMsg(e *OKX) banexg.FuncOnWsMsg {
 				}
 				return
 			}
+			if event == "notice" {
+				// 64008: the server closes this connection soon for a service upgrade.
+				// WsClient exposes no public way to reconnect by conn, so only warn; the normal
+				// disconnect/reconnect path restores subscriptions when the server closes it.
+				if code := getMapString(msg, "code"); code == "64008" {
+					log.Warn("ws service upgrade notice, connection will close soon", zap.String("client", client.Key), zap.String("msg", getMapString(msg, "msg")))
+				} else {
+					log.Info("ws notice", zap.String("client", client.Key), zap.String("code", code), zap.String("msg", getMapString(msg, "msg")))
+				}
+				return
+			}
 			if event == "error" {
 				log.Error("ws event error", zap.String("msg", banexg.RedactLogText(item.Text)))
 				// Check if this is a login-related error
@@ -863,7 +874,11 @@ func (e *OKX) handleWsOrderBooks(client *banexg.WsClient, msg map[string]interfa
 	action := getMapString(msg, "action")
 	chanKey := client.Prefix(channel)
 	for _, item := range items {
-		book := e.applyWsOrderBookUpdate(client, item, channel, action)
+		book, resync := e.applyWsOrderBookUpdate(client, item, channel, action)
+		if resync {
+			log.Warn("ws order book sequence gap, resubscribing", zap.String("channel", channel), zap.String("instId", getMapString(item, "instId")))
+			e.resubscribeWsChannel(client, channel, getMapString(item, "instId"))
+		}
 		if book == nil {
 			continue
 		}
@@ -871,10 +886,26 @@ func (e *OKX) handleWsOrderBooks(client *banexg.WsClient, msg map[string]interfa
 	}
 }
 
-func (e *OKX) applyWsOrderBookUpdate(client *banexg.WsClient, item map[string]interface{}, channel, action string) *banexg.OrderBook {
+// resubscribeWsChannel unsubscribes and subscribes a public channel/instId so that a fresh snapshot is pushed.
+func (e *OKX) resubscribeWsChannel(client *banexg.WsClient, channel, instId string) {
+	keys := []string{buildWsKey(channel, instId)}
+	args := []map[string]interface{}{{FldChannel: channel, FldInstId: instId}}
+	for _, isSub := range []bool{false, true} {
+		if err := e.writeWsArgs(client, 0, isSub, keys, args); err != nil {
+			log.Error("resubscribe ws channel fail", zap.String("key", keys[0]), zap.Bool("sub", isSub), zap.Error(err))
+			return
+		}
+	}
+}
+
+// applyWsOrderBookUpdate applies one book push. The book's Nonce holds the last seqId.
+// resync is true when an incremental push does not continue the local book (prevSeqId != last seqId);
+// the local book is then dropped and the caller must resubscribe to get a new snapshot.
+// Channels without prevSeqId (books5, bbo-tbt) are never sequence checked.
+func (e *OKX) applyWsOrderBookUpdate(client *banexg.WsClient, item map[string]interface{}, channel, action string) (*banexg.OrderBook, bool) {
 	instId := getMapString(item, "instId")
 	if instId == "" {
-		return nil
+		return nil, false
 	}
 	market := getMarketByIDAny(e, instId, "")
 	symbol := instId
@@ -886,8 +917,22 @@ func (e *OKX) applyWsOrderBookUpdate(client *banexg.WsClient, item map[string]in
 	asks := parseWsBookSide(asksRaw)
 	bids := parseWsBookSide(bidsRaw)
 	ts := parseInt(getMapString(item, "ts"))
+	_, hasSeq := item["prevSeqId"]
+	seqId := parseInt(getMapString(item, "seqId"))
 	e.OdBookLock.Lock()
 	book, ok := e.OrderBooks[symbol]
+	if hasSeq && action != "snapshot" {
+		if !ok {
+			// incremental push without a local snapshot: wait for the snapshot of the pending subscription
+			e.OdBookLock.Unlock()
+			return nil, false
+		}
+		if parseInt(getMapString(item, "prevSeqId")) != book.Nonce {
+			delete(e.OrderBooks, symbol)
+			e.OdBookLock.Unlock()
+			return nil, true
+		}
+	}
 	if !ok || action == "snapshot" {
 		limit := len(asks)
 		if len(bids) > limit {
@@ -901,12 +946,13 @@ func (e *OKX) applyWsOrderBookUpdate(client *banexg.WsClient, item map[string]in
 			TimeStamp: ts,
 			Asks:      banexg.NewOdBookSide(false, limit, asks),
 			Bids:      banexg.NewOdBookSide(true, limit, bids),
+			Nonce:     seqId,
 			Limit:     limit,
 			Cache:     make([]map[string]string, 0),
 		}
 		e.OrderBooks[symbol] = book
 		e.OdBookLock.Unlock()
-		return book
+		return book, false
 	}
 	e.OdBookLock.Unlock()
 	if len(asks) > 0 {
@@ -916,7 +962,10 @@ func (e *OKX) applyWsOrderBookUpdate(client *banexg.WsClient, item map[string]in
 		book.Bids.Update(bids)
 	}
 	book.TimeStamp = ts
-	return book
+	if hasSeq {
+		book.Nonce = seqId
+	}
+	return book, false
 }
 
 func (e *OKX) handleWsOHLCV(client *banexg.WsClient, msg map[string]interface{}, arg map[string]interface{}) {
@@ -1263,6 +1312,11 @@ func (e *OKX) handleWsOrders(client *banexg.WsClient, msg map[string]interface{}
 	for _, item := range items {
 		trade := parseWsMyTrade(e, item, instType)
 		if trade == nil {
+			continue
+		}
+		// the order channel may push the same fill repeatedly; state is part of the key so that a
+		// later state change of the order (e.g. canceled after a partial fill) is never dropped
+		if trade.ID != "" && !e.wsFillSeen.add(getMapString(item, "instId")+"|"+trade.ID+"|"+getMapString(item, "state")) {
 			continue
 		}
 		subKey := buildWsKeyWithType("orders", instType, "")

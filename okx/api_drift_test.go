@@ -246,3 +246,27 @@ func TestFetchOHLCVPriceCandlesMarkIndexAndPremiumUnsupported(t *testing.T) {
 		t.Fatal("expected okx premiumIndex klines to return unsupported error")
 	}
 }
+
+func TestSetTradeQuoteCcyHonoursCaller(t *testing.T) {
+	market := &banexg.Market{Quote: "USDC", Info: map[string]interface{}{"tradeQuoteCcyList": map[string]bool{"USDC": true, "USD": true}}}
+	args := map[string]interface{}{}
+	setTradeQuoteCcy(args, market)
+	if args[FldTradeQuoteCcy] != "USDC" {
+		t.Fatalf("default should be market quote: %v", args)
+	}
+	args = map[string]interface{}{FldTradeQuoteCcy: "USD"}
+	setTradeQuoteCcy(args, market)
+	if args[FldTradeQuoteCcy] != "USD" {
+		t.Fatalf("caller value must win: %v", args)
+	}
+}
+
+func TestInstrumentPostOnlyIsActive(t *testing.T) {
+	exg, _ := New(nil)
+	for state, want := range map[string]bool{"live": true, "post_only": true, "suspend": false} {
+		m := parseInstrument(exg, &Instrument{InstType: "SWAP", InstId: "BTC-USDT-SWAP", BaseCcy: "BTC", QuoteCcy: "USDT", CtType: "linear", CtVal: "1", SettleCcy: "USDT", State: state, TickSz: "0.1", LotSz: "1", MinSz: "1"})
+		if m == nil || m.Active != want {
+			t.Fatalf("state %s: %+v", state, m)
+		}
+	}
+}

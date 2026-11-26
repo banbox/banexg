@@ -273,9 +273,7 @@ func (e *OKX) createAlgoOrder(market *banexg.Market, odType, side string, amount
 		args[FldAlgoClOrdId] = clOrdId
 	}
 	if market.Spot {
-		if tradeQuoteCcy := getTradeQuoteCcy(market); tradeQuoteCcy != "" {
-			args[FldTradeQuoteCcy] = tradeQuoteCcy
-		}
+		setTradeQuoteCcy(args, market)
 	}
 	if !closePosition {
 		if market.Spot && odType == banexg.OdTypeMarket {

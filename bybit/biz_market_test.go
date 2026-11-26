@@ -457,7 +457,7 @@ func TestFetchMarkets_SpotMapping(t *testing.T) {
 	assertFloatNear(t, market.Precision.Amount, 0.001)
 	assertFloatNear(t, market.Precision.Price, 0.1)
 	assertFloatNear(t, market.Precision.Quote, 0.01)
-	assertFloatNear(t, market.Limits.Amount.Min, 0.01)
+	assertFloatNear(t, market.Limits.Amount.Min, 0)
 	assertFloatNear(t, market.Limits.Amount.Max, 20)
 	assertFloatNear(t, market.Limits.Cost.Min, 5)
 	assertFloatNear(t, market.Limits.Cost.Max, 1000)
@@ -2554,4 +2554,51 @@ func TestApi_FetchFundingRateHistoryWithSince(t *testing.T) {
 	fetchFundingRateHistoryOrFail(t, exg, "BTC/USDT:USDT", since, 5, map[string]interface{}{
 		banexg.ParamUntil: until,
 	})
+}
+
+func TestFetchOptionMarkets_DefaultsBaseCoinAll(t *testing.T) {
+	exg := mustNewBybit(t, "BybitTestOptionBaseCoinAll")
+	var got []interface{}
+	setBybitTestRequest(t, func(_ context.Context, _ string, params map[string]interface{}, _ int, _, _ bool) *banexg.HttpRes {
+		got = append(got, params["baseCoin"])
+		return &banexg.HttpRes{Content: mustInstrumentsInfoResp(t, "option", nil, "", 1700000000000)}
+	})
+	if _, err := exg.fetchOptionMarkets(map[string]interface{}{}); err != nil {
+		t.Fatalf("fetchOptionMarkets failed: %v", err)
+	}
+	if _, err := exg.fetchOptionMarkets(map[string]interface{}{"baseCoin": "ETH"}); err != nil {
+		t.Fatalf("fetchOptionMarkets failed: %v", err)
+	}
+	if len(got) != 2 || got[0] != "All" || got[1] != "ETH" {
+		t.Fatalf("unexpected baseCoin params: %v", got)
+	}
+}
+
+func TestBybitTransactionLogRateCost(t *testing.T) {
+	exg := mustNewBybit(t, "BybitTestTxLogCost")
+	entry := exg.Apis[MethodPrivateGetV5AccountTransactionLog]
+	// 25 req/s => 40ms per request = RateLimit(20ms) * cost
+	if entry == nil || entry.Cost*float64(exg.RateLimit) != 40 {
+		t.Fatalf("expected 40ms per transaction-log request, got %+v rate=%v", entry, exg.RateLimit)
+	}
+}
+
+func TestBybitEnvAndSiteHosts(t *testing.T) {
+	cases := []struct{ env, site, rest, wsPrivate, wsPublic string }{
+		{"", "", "https://api.bybit.com", "wss://stream.bybit.com/v5/private", "wss://stream.bybit.com/v5/public/linear"},
+		{"test", "", "https://api-testnet.bybit.com", "wss://stream-testnet.bybit.com/v5/private", "wss://stream-testnet.bybit.com/v5/public/linear"},
+		{"demo", "", "https://api-demo.bybit.com", "wss://stream-demo.bybit.com/v5/private", "wss://stream.bybit.com/v5/public/linear"},
+		{"", "tr", "https://api.bybit.tr", "wss://stream.bybit.tr/v5/private", "wss://stream.bybit.tr/v5/public/linear"},
+		{"", "eu", "https://api.bybit.eu", "wss://stream.bybit.com/v5/private", "wss://stream.bybit.com/v5/public/linear"},
+		{"test", "jp", "https://api-testnet.manepa.jp", "wss://stream-testnet.bybit.com/v5/private", "wss://stream-testnet.bybit.com/v5/public/linear"},
+	}
+	for _, c := range cases {
+		exg, err := New(map[string]interface{}{banexg.OptEnv: c.env, banexg.OptSite: c.site})
+		if err != nil {
+			t.Fatalf("new bybit %s/%s: %v", c.env, c.site, err)
+		}
+		if exg.GetHost(HostPrivate) != c.rest || exg.GetHost(HostWsPrivate) != c.wsPrivate || exg.GetHost(HostWsPublicLinear) != c.wsPublic {
+			t.Errorf("%s/%s hosts: %s %s %s", c.env, c.site, exg.GetHost(HostPrivate), exg.GetHost(HostWsPrivate), exg.GetHost(HostWsPublicLinear))
+		}
+	}
 }

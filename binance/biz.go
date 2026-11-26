@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"net/http"
+	neturl "net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,6 +90,19 @@ func markRiskyApis(e *Binance) {
 	}
 }
 
+// signBinance signs text with the account secret: HMAC keys give hex, RSA/Ed25519 keys give url-encoded base64
+func signBinance(secret, text string) (string, *errs.Error) {
+	method, hash := "hmac", "sha256"
+	if strings.Contains(secret, "PRIVATE KEY") {
+		if len(secret) > 120 {
+			method, hash = "rsa", "sha256"
+		} else {
+			method, hash = "eddsa", "ed25519"
+		}
+	}
+	return utils.Signature(text, secret, method, hash, "hex")
+}
+
 func makeSign(e *Binance) banexg.FuncSign {
 	return func(api *banexg.Entry, args map[string]interface{}) *banexg.HttpReq {
 		// ParamSettleCoins is introduced for bybit; binance APIs do not support it.
@@ -116,7 +130,7 @@ func makeSign(e *Binance) banexg.FuncSign {
 			}
 			headers.Add("X-MBX-APIKEY", creds.ApiKey)
 			isPrivate = true
-		} else if path == "userDataStream" || path == "listenKey" || path == "userListenToken" {
+		} else if path == "listenKey" || path == "margin/listen-key" {
 			//v1 special case for userDataStream
 			accID, creds, err = e.GetAccountCreds(accID)
 			if err != nil {
@@ -142,39 +156,16 @@ func makeSign(e *Binance) banexg.FuncSign {
 			if e.RecvWindow > 0 {
 				extendParams["recvWindow"] = e.RecvWindow
 			}
-			if path == "batchOrders" || strings.Contains(path, "sub-account") || path == "capital/withdraw/apply" || strings.Contains(path, "staking") {
-				query = append(query, utils.UrlEncodeMap(extendParams, true))
-				if api.Method == "DELETE" && path == "batchOrders" {
-					if orderIds, ok := extendParams[banexg.ParamOrderIds]; ok {
-						if ids, ok := orderIds.([]string); ok {
-							idText := strings.Join(ids, ",")
-							query = append(query, "orderidlist=["+idText+"]")
-						}
-					}
-					if orderIds, ok := extendParams[banexg.ParamOrigClientOrderIDs]; ok {
-						if ids, ok := orderIds.([]string); ok {
-							idText := strings.Join(ids, ",")
-							query = append(query, "origclientorderidlist=["+idText+"]")
-						}
+			// Binance verifies signatures over the percent-encoded payload, so the signed text must be the encoded one
+			query = append(query, utils.UrlEncodeMap(extendParams, true))
+			if api.Method == "DELETE" && path == "batchOrders" {
+				for key, name := range map[string]string{banexg.ParamOrderIds: "orderidlist", banexg.ParamOrigClientOrderIDs: "origclientorderidlist"} {
+					if ids, ok := extendParams[key].([]string); ok {
+						query = append(query, name+"="+neturl.QueryEscape("["+strings.Join(ids, ",")+"]"))
 					}
 				}
-			} else {
-				query = append(query, utils.UrlEncodeMap(extendParams, false))
 			}
-			var sign, method, hash string
-			var digest = "hex"
-			var secret = creds.Secret
-			if strings.Contains(secret, "PRIVATE KEY") {
-				if len(secret) > 120 {
-					method, hash = "rsa", "sha256"
-				} else {
-					method, hash = "eddsa", "ed25519"
-				}
-			} else {
-				method, hash = "hmac", "sha256"
-			}
-			queryText := strings.Join(query, "&")
-			sign, err = utils.Signature(queryText, secret, method, hash, digest)
+			sign, err := signBinance(creds.Secret, strings.Join(query, "&"))
 			if err != nil {
 				return &banexg.HttpReq{Error: err, Private: true}
 			}

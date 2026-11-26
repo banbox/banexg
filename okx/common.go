@@ -9,6 +9,7 @@ import (
 	"github.com/banbox/banexg"
 	"github.com/banbox/banexg/errs"
 	"github.com/banbox/banexg/utils"
+	"github.com/sasha-s/go-deadlock"
 )
 
 // banexg MarketType -> OKX instType
@@ -203,6 +204,16 @@ func getTradeQuoteCcy(market *banexg.Market) string {
 	return market.Quote
 }
 
+// setTradeQuoteCcy defaults args[tradeQuoteCcy] to the market quote unless the caller already passed one.
+func setTradeQuoteCcy(args map[string]interface{}, market *banexg.Market) {
+	if getMapString(args, FldTradeQuoteCcy) != "" {
+		return
+	}
+	if ccy := getTradeQuoteCcy(market); ccy != "" {
+		args[FldTradeQuoteCcy] = ccy
+	}
+}
+
 func pickArchiveMethod(args map[string]interface{}, since, until int64, recentMethod, archiveMethod string) string {
 	useArchive := utils.PopMapVal(args, banexg.ParamArchive, false)
 	if useArchive {
@@ -231,5 +242,33 @@ func validateClOrdId(clOrdId string) bool {
 			return false
 		}
 	}
+	return true
+}
+
+const recentKeysCap = 4096
+
+// recentKeys is a bounded set of the most recent keys; the zero value is ready to use.
+type recentKeys struct {
+	lock deadlock.Mutex
+	set  map[string]struct{}
+	ring []string
+	next int
+}
+
+// add records key and reports false when it was already present.
+func (r *recentKeys) add(key string) bool {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if _, ok := r.set[key]; ok {
+		return false
+	}
+	if r.set == nil {
+		r.set = make(map[string]struct{}, recentKeysCap)
+		r.ring = make([]string, recentKeysCap)
+	}
+	delete(r.set, r.ring[r.next])
+	r.ring[r.next] = key
+	r.next = (r.next + 1) % recentKeysCap
+	r.set[key] = struct{}{}
 	return true
 }

@@ -6,11 +6,22 @@ import (
 )
 
 func New(Options map[string]interface{}) (*Bybit, *errs.Error) {
-	hostName := "bybit.com"
-	apiTest := "https://api-testnet." + hostName
-	apiProd := "https://api." + hostName
-	wsTestBase := "wss://stream-testnet.bybit.com/v5"
-	wsProdBase := "wss://stream.bybit.com/v5"
+	// hosts builds the host set of one domain; an empty rest or ws leaves that part to the base set
+	hosts := func(rest, ws string) map[string]string {
+		res := map[string]string{}
+		if rest != "" {
+			res[HostPublic] = "https://" + rest
+			res[HostPrivate] = "https://" + rest
+		}
+		if ws != "" {
+			res[HostWsPublicSpot] = "wss://" + ws + "/v5/public/spot"
+			res[HostWsPublicLinear] = "wss://" + ws + "/v5/public/linear"
+			res[HostWsPublicInverse] = "wss://" + ws + "/v5/public/inverse"
+			res[HostWsPublicOption] = "wss://" + ws + "/v5/public/option"
+			res[HostWsPrivate] = "wss://" + ws + "/v5/private"
+		}
+		return res
+	}
 	api := func(path, host, method string, cost float64, cacheSecs ...int) *banexg.Entry {
 		e := &banexg.Entry{Path: path, Host: host, Method: method, Cost: cost}
 		if len(cacheSecs) > 0 {
@@ -29,23 +40,26 @@ func New(Options map[string]interface{}) (*Bybit, *errs.Error) {
 			Options:    Options,
 			TimeFrames: timeFrameMap,
 			Hosts: &banexg.ExgHosts{
-				Test: map[string]string{
-					HostPublic:          apiTest,
-					HostPrivate:         apiTest,
-					HostWsPublicSpot:    wsTestBase + "/public/spot",
-					HostWsPublicLinear:  wsTestBase + "/public/linear",
-					HostWsPublicInverse: wsTestBase + "/public/inverse",
-					HostWsPublicOption:  wsTestBase + "/public/option",
-					HostWsPrivate:       wsTestBase + "/private",
-				},
-				Prod: map[string]string{
-					HostPublic:          apiProd,
-					HostPrivate:         apiProd,
-					HostWsPublicSpot:    wsProdBase + "/public/spot",
-					HostWsPublicLinear:  wsProdBase + "/public/linear",
-					HostWsPublicInverse: wsProdBase + "/public/inverse",
-					HostWsPublicOption:  wsProdBase + "/public/option",
-					HostWsPrivate:       wsProdBase + "/private",
+				Test: hosts("api-testnet.bybit.com", "stream-testnet.bybit.com"),
+				Prod: hosts("api.bybit.com", "stream.bybit.com"),
+				Variants: map[string]map[string]string{
+					// demo trading: own REST host and private stream, market data comes from mainnet
+					"demo": {
+						HostPublic:    "https://api-demo.bybit.com",
+						HostPrivate:   "https://api-demo.bybit.com",
+						HostWsPrivate: "wss://stream-demo.bybit.com/v5/private",
+					},
+					// regional sites; the docs list no websocket host for ae/eu and no testnet stream for jp/hk
+					"tr":      hosts("api.bybit.tr", "stream.bybit.tr"),
+					"kz":      hosts("api.bybit.kz", "stream.bybit.kz"),
+					"ge":      hosts("api.bybitgeorgia.ge", "stream.bybitgeorgia.ge"),
+					"id":      hosts("api.bybit.id", "stream.bybit.id"),
+					"ae":      hosts("api.bybit.ae", ""),
+					"eu":      hosts("api.bybit.eu", ""),
+					"jp":      hosts("api.manepa.jp", "stream.manepa.jp"),
+					"jp-test": hosts("api-testnet.manepa.jp", ""),
+					"hk":      hosts("api.spark-fintech.com", "stream.spark-fintech.com"),
+					"hk-test": hosts("api-testnet.spark-fintech.com", ""),
 				},
 				Www: "https://www.bybit.com",
 				Doc: []string{
@@ -210,7 +224,7 @@ func New(Options map[string]interface{}) (*Bybit, *errs.Error) {
 				MethodPrivateGetV5AssetCoinGreeks:                                  api("v5/asset/coin-greeks", HostPrivate, "GET", 1),
 				MethodPrivateGetV5AccountFeeRate:                                   api("v5/account/fee-rate", HostPrivate, "GET", 10),
 				MethodPrivateGetV5AccountInfo:                                      api("v5/account/info", HostPrivate, "GET", 5),
-				MethodPrivateGetV5AccountTransactionLog:                            api("v5/account/transaction-log", HostPrivate, "GET", 1),
+				MethodPrivateGetV5AccountTransactionLog:                            api("v5/account/transaction-log", HostPrivate, "GET", 2),
 				MethodPrivateGetV5AccountContractTransactionLog:                    api("v5/account/contract-transaction-log", HostPrivate, "GET", 1),
 				MethodPrivateGetV5AccountSmpGroup:                                  api("v5/account/smp-group", HostPrivate, "GET", 1),
 				MethodPrivateGetV5AccountMmpState:                                  api("v5/account/mmp-state", HostPrivate, "GET", 5),

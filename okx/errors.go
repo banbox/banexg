@@ -39,7 +39,8 @@ func newOKXError(nativeCode, message string) *errs.Error {
 		code = errs.CodeInsufficientMargin
 	case base >= 50101 && base <= 50114 || base == 50119 || base >= 60004 && base <= 60009 || base == 60024 || base == 60032:
 		code = errs.CodeAccKeyError
-	case base == 50030 || base == 50035 || base == 50120 || base == 50121 || base == 64003:
+	case base == 50030 || base == 50035 || base == 50120 || base == 50121 || base == 64003 ||
+		base == 54094 || base == 54109 || base == 59113:
 		code = errs.CodeForbidden
 	case base == 50011 || base == 50040 || base == 50061 || base == 58102 || base == 60014 || base == 60023:
 		code = errs.CodeRateLimit
